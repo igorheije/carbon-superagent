@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/* Carbon tokens — Agno-based monochrome with a single success-green accent.
+   Accent = active / success / emphasis. Danger is separate: errors, deletions, urgent.
+   Dark is the default for the mission-control surface; light via data-theme. */
+:root {
+  --accent: #22c55e;
+  --accent-hover: #16a34a;
+  --accent-ink: #052e16; /* text on accent fills: 9.6:1 on #22c55e */
+  --ok: #4ade80;
+  --warn: #f59e0b;
+  --danger: #f87171;
+
+  --bg: #09090b;
+  --bg-muted: #111113;
+  --surface: #111113;
+  --surface-muted: #18181b;
+  --surface-sunken: #0c0c0e;
+  --text: #f9f9f9;
+  --text-muted: #a1a1aa;
+  --text-subtle: #8b8b94;
+  --border: #26262a;
+  --border-strong: #34343a;
+  --line: #1c1c20;
+  --crosshair: #34343a;
+  --accent-weak: rgba(34, 197, 94, 0.12);
+  --btn-fill: #ffffff;
+  --btn-fill-text: #09090b;
+
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --ring: 0 0 0 3px rgba(34, 197, 94, 0.32);
+
+  /* ascii-reveal theming */
+  --ascii-accent: var(--accent);
+  --ascii-flash: var(--accent);
+  --ascii-skeleton: var(--text-subtle);
+  --ascii-font: var(--font-geist-mono), ui-monospace, monospace;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-muted: #fafafa;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f5;
+  --surface-sunken: #ededee;
+  --text: #09090b;
+  --text-muted: #52525b;
+  --text-subtle: #71717a;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --line: #ededee;
+  --crosshair: #d4d4d8;
+  --accent: #15803d; /* white text 5.0:1 */
+  --accent-hover: #166534;
+  --accent-ink: #ffffff;
+  --accent-weak: #ecfdf3;
+  --ok: #15803d;
+  --warn: #b45309;
+  --danger: #dc2626;
+  --ring: 0 0 0 3px rgba(21, 128, 61, 0.3);
+  --btn-fill: #09090b;
+  --btn-fill-text: #ffffff;
+  --shadow-md: 0 4px 12px rgba(9, 9, 11, 0.07), 0 2px 4px rgba(9, 9, 11, 0.04);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-muted: var(--bg-muted);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-weak: var(--accent-weak);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-btn: var(--btn-fill);
+  --color-btn-text: var(--btn-fill-text);
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --radius-card: 16px;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Blueprint grid with crosshair marks, faded by a radial mask. */
+.blueprint {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--crosshair) 35%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--crosshair) 35%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 30%, transparent 80%);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

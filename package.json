@@ -1,0 +1,52 @@
+{
+  "name": "carbon-superagent",
+  "version": "0.2.0",
+  "scripts": {
+    "dev": "next dev --turbopack -H 127.0.0.1 -p 3417",
+    "build": "next build --turbopack",
+    "start": "node bin/carbon.mjs start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "setup": "node bin/carbon.mjs setup",
+    "doctor": "node bin/carbon.mjs doctor",
+    "check": "tsc --noEmit && eslint && vitest run",
+    "reset-password": "node bin/carbon.mjs reset-password"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "ascii-reveal": "0.3.0",
+    "lucide-react": "^0.544.0",
+    "motion": "^12.23.12",
+    "next": "15.5.4",
+    "picocolors": "^1.1.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22.18.8",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "carbon": "bin/carbon.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leolegends/carbon-superagent.git"
+  },
+  "description": "Agentes autônomos que pegam uma tarefa do Linear ou GitHub e entregam um PR revisável, rodando no seu computador com Claude Code ou Codex."
+}
