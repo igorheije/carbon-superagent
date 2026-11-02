@@ -7,12 +7,34 @@ tarefa → intake → plan → research → code → test → review → deliver
           (worktree isolado por tarefa · você só é chamado quando precisa decidir)
 ```
 
+**Site:** LANDING_URL · **Licença:** MIT
+
+![Mission control: pipeline de agentes, fila, sessão ao vivo e plano com critérios de aceite](docs/screenshots/mission-control.png)
+
+<table><tr>
+<td><img src="docs/screenshots/knowledge.png" alt="Base de conhecimento do projeto"></td>
+<td><img src="docs/screenshots/new-task.png" alt="Nova tarefa com modelo e esforço"></td>
+</tr></table>
+
+## Inspiração
+
+O Carbon nasceu da filosofia do [**deepseek-ai/dsh-superagent-prototype**](https://github.com/deepseek-ai/dsh-superagent-prototype): um agente que leva a tarefa de ponta a ponta, com etapas explícitas (intake, plano, pesquisa, código, teste, revisão, entrega, reflexão), memória e autoaprendizado, e que só chama o humano quando há uma decisão a tomar. *Menos atenção humana, mais valor entregue.*
+
+Aqui essa ideia virou uma plataforma web local:
+
+- em vez de um protótipo de linha de comando, um painel com o pipeline, a sessão do agente e o plano ao vivo;
+- em vez de um modelo próprio, os agentes de código que você já paga: **Claude Code** ou **Codex**;
+- ligada ao seu **Linear** e ao seu **GitHub**, com uma base de conhecimento por repositório e lições que você promove.
+
+Projeto independente, sem afiliação com DeepSeek, Anthropic, OpenAI ou Agno.
+
 ## Começar em 2 minutos
 
 Requisitos: **Node 22.13+**, **git** e **um** agente logado: **Claude Code** ou **Codex** (não precisa dos dois; com os dois, você escolhe por tarefa).
 
 ```sh
-git clone <este-repo> carbon && cd carbon
+git clone https://github.com/leolegends/carbon-superagent.git && cd carbon-superagent
+npm install
 npm run setup
 ```
 
@@ -128,4 +150,4 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 ## Identidade e créditos
 
 - Visual baseado no Agno Design System (monocromático, Geist/Geist Mono, grid blueprint), com **verde success** como único destaque e vermelho reservado para erro, remoção e urgência.
-- Animações de reveal, skeletons e o mascote de loading (elmo espartano em `public/carbon-helmet.svg`) usam [`ascii-reveal`](https://github.com/quanhoangindex/ascii-reveal) (MIT), fixado em `0.3.0`. A lib respeita `prefers-reduced-motion` (vira um fade curto).
+- Animações de reveal, skeletons e o mascote de loading (anel de carbono em `public/carbon-mark.svg`) usam [`ascii-reveal`](https://github.com/quanhoangindex/ascii-reveal) (MIT), fixado em `0.3.0`. A lib respeita `prefers-reduced-motion` (vira um fade curto).

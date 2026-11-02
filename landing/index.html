@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carbon SuperAgent</title>
+<meta name="description" content="Agentes autônomos que pegam uma tarefa do Linear ou GitHub e entregam um PR revisável, rodando no seu computador com Claude Code ou Codex. Open source, MIT.">
+<meta property="og:title" content="Carbon SuperAgent">
+<meta property="og:description" content="Da tarefa ao PR revisável, no seu computador, com Claude Code ou Codex.">
+<meta property="og:image" content="assets/mission-control.png">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0b; --surface: #111113; --surface-2: #17171a;
+    --line: #232327; --line-strong: #34343a;
+    --ink: #f4f4f5; --muted: #9b9ba3; --subtle: #6b6b73;
+    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
+    --radius: 14px;
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+      --line: #e6e6e8; --line-strong: #d4d4d8;
+      --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+      --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+    }
+  }
+  :root[data-theme="dark"] { --bg: #0a0a0b; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 72px 72px; background-position: -1px -1px;
+    background-attachment: fixed;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse at 50% 0%, transparent 0%, var(--bg) 70%);
+  }
+  main, header, footer { position: relative; z-index: 1; }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: var(--mono); }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .eyebrow .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 10px var(--accent); }
+
+  /* nav */
+  .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -.01em; }
+  .brand small { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--accent); font-weight: 500; }
+  .nav-links { display: flex; gap: 8px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 500; text-decoration: none; border: 1px solid var(--line-strong); transition: border-color .2s, background .2s, transform .2s; }
+  .btn:hover { border-color: var(--muted); transform: translateY(-1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #04130a; }
+  .btn-ghost { color: var(--muted); }
+  .hide-sm { display: inline-flex; }
+
+  /* hero */
+  .hero { padding: 72px 0 40px; }
+  .hero h1 { font-size: clamp(44px, 9vw, 112px); line-height: .95; letter-spacing: -.045em; font-weight: 700; margin: 20px 0 0; }
+  .hero h1 .soft { color: var(--subtle); }
+  .lede { max-width: 640px; color: var(--muted); font-size: clamp(17px, 1.6vw, 20px); margin: 28px 0 0; }
+  .lede b { color: var(--ink); font-weight: 500; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+  .install { margin-top: 28px; display: inline-flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-family: var(--mono); font-size: 13px; color: var(--muted); max-width: 100%; overflow-x: auto; white-space: nowrap; }
+  .install .p { color: var(--accent); }
+  .install button { font: inherit; font-size: 11px; color: var(--muted); background: transparent; border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+  .install button:hover { color: var(--ink); }
+
+  /* shot */
+  .shot { margin: 56px 0 0; border: 1px solid var(--line-strong); border-radius: 18px; overflow: hidden; background: var(--surface); box-shadow: 0 40px 120px -40px rgba(34,197,94,.25), 0 2px 0 var(--line); }
+  .shot .bar { display: flex; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .shot .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+  .shot img { display: block; width: 100%; height: auto; }
+
+  section { padding: 104px 0 0; }
+  h2 { font-size: clamp(30px, 4.4vw, 52px); letter-spacing: -.035em; line-height: 1.02; font-weight: 650; margin: 14px 0 0; max-width: 760px; }
+  .sub { color: var(--muted); max-width: 640px; margin: 18px 0 0; }
+
+  /* pipeline */
+  .pipe { margin-top: 44px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+  .stage { padding: 20px 16px 22px; border-right: 1px solid var(--line); position: relative; }
+  .stage:last-child { border-right: 0; }
+  .stage .n { font-family: var(--mono); font-size: 10px; color: var(--subtle); letter-spacing: .12em; }
+  .stage .t { font-weight: 600; margin-top: 10px; font-size: 15px; }
+  .stage .d { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .stage::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+  .pipe.run .stage::after { animation: fill 1s ease forwards; animation-delay: var(--d, 0ms); }
+  .pipe.run .stage.on { background: var(--accent-soft); }
+  @keyframes fill { to { transform: scaleX(1); } }
+
+  /* features bento */
+  .bento { margin-top: 44px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; transition: border-color .25s; }
+  .card:hover { border-color: var(--line-strong); }
+  .card h3 { margin: 12px 0 8px; font-size: 19px; letter-spacing: -.015em; font-weight: 600; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .card .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+  .c3 { grid-column: span 3; } .c2 { grid-column: span 2; } .c4 { grid-column: span 4; }
+  .card img { width: 100%; border-radius: 10px; border: 1px solid var(--line); margin-top: 20px; display: block; }
+
+  /* inspiration */
+  .insp { margin-top: 44px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+  .quote { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 34px; }
+  .quote blockquote { margin: 18px 0 0; font-size: clamp(22px, 2.6vw, 30px); line-height: 1.2; letter-spacing: -.02em; font-weight: 600; }
+  .quote p { color: var(--muted); margin: 18px 0 0; }
+  .credits { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .credits li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .credits a { font-weight: 600; text-decoration: none; }
+  .credits a:hover { color: var(--accent); }
+  .credits span { display: block; color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+  /* quickstart */
+  pre.term { margin: 44px 0 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; font-family: var(--mono); font-size: 13.5px; line-height: 1.9; overflow-x: auto; color: var(--muted); }
+  pre.term .c { color: var(--subtle); }
+  pre.term .p { color: var(--accent); user-select: none; }
+  pre.term b { color: var(--ink); font-weight: 500; }
+  .reqs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .chip { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; color: var(--muted); }
+
+  footer { margin-top: 120px; border-top: 1px solid var(--line); padding: 32px 0 48px; }
+  .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; color: var(--subtle); font-size: 13px; font-family: var(--mono); }
+  .foot a { text-decoration: none; } .foot a:hover { color: var(--ink); }
+
+  /* decode effect (inspired by ascii-reveal, used inside the app) */
+  [data-decode] { font-variant-ligatures: none; }
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s cubic-bezier(.16,1,.3,1); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .pipe.run .stage::after { animation: none; transform: scaleX(1); }
+    html { scroll-behavior: auto; }
+  }
+  @media (max-width: 900px) {
+    .pipe { grid-template-columns: repeat(2, 1fr); }
+    .stage { border-bottom: 1px solid var(--line); }
+    .stage:nth-child(2n) { border-right: 0; }
+    .bento { grid-template-columns: 1fr; }
+    .c3, .c2, .c4 { grid-column: auto; }
+    .insp { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 16px; }
+    .hide-sm { display: none; }
+    .hero { padding-top: 40px; }
+    section { padding-top: 80px; }
+  }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <nav class="nav" aria-label="Principal">
+    <a class="brand" href="#top">Carbon <small>SUPERAGENT</small></a>
+    <div class="nav-links">
+      <a class="btn btn-ghost hide-sm" href="#como-funciona">Como funciona</a>
+      <a class="btn btn-ghost hide-sm" href="#inspiracao">Inspiração</a>
+      <a class="btn" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="top">
+  <div class="wrap">
+    <div class="hero">
+      <p class="eyebrow"><span class="dot"></span>open source · roda local · MIT</p>
+      <h1><span data-decode>Carbon</span> <span class="soft" data-decode>SuperAgent</span></h1>
+      <p class="lede">Agentes autônomos que pegam uma tarefa do <b>Linear</b> ou do <b>GitHub</b> e entregam um <b>PR revisável</b>, rodando no seu computador, com o <b>Claude Code</b> ou o <b>Codex</b> do seu plano. Você só é chamado quando precisa decidir.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#comecar">Começar em 2 minutos →</a>
+        <a class="btn" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">Ver código no GitHub</a>
+      </div>
+      <div class="install" role="group" aria-label="Instalação">
+        <span><span class="p">$</span> git clone https://github.com/leolegends/carbon-superagent && cd carbon-superagent && npm install && npm run setup</span>
+        <button type="button" id="copy">copiar</button>
+      </div>
+    </div>
+
+    <figure class="shot reveal" style="margin-left:0;margin-right:0">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i></div>
+      <img src="assets/mission-control.png" width="1440" height="900" alt="Mission control do Carbon: pipeline de oito agentes, fila de tickets, sessão do agente ao vivo e plano com critérios de aceite" fetchpriority="high">
+    </figure>
+  </div>
+
+  <section id="como-funciona" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>como funciona</p>
+    <h2 class="reveal">Um ticket entra. Oito estágios depois, sai um PR.</h2>
+    <p class="sub reveal">Cada tarefa roda num git worktree isolado. O agente reporta progresso por um protocolo simples, e o painel mostra tudo em tempo real: plano, comandos, testes e pedidos de permissão.</p>
+    <div class="pipe reveal" id="pipe">
+      <div class="stage"><div class="n">01</div><div class="t">Intake</div><div class="d">gate + escopo</div></div>
+      <div class="stage"><div class="n">02</div><div class="t">Plan</div><div class="d">passos + critérios</div></div>
+      <div class="stage"><div class="n">03</div><div class="t">Research</div><div class="d">base de conhecimento</div></div>
+      <div class="stage"><div class="n">04</div><div class="t">Code</div><div class="d">worktree isolado</div></div>
+      <div class="stage"><div class="n">05</div><div class="t">Test</div><div class="d">TDD + regressão</div></div>
+      <div class="stage"><div class="n">06</div><div class="t">Review</div><div class="d">qualidade + segurança</div></div>
+      <div class="stage"><div class="n">07</div><div class="t">Deliver</div><div class="d">commit ou PR draft</div></div>
+      <div class="stage"><div class="n">08</div><div class="t">Reflect</div><div class="d">lições candidatas</div></div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>o que vem pronto</p>
+    <h2 class="reveal">Feito para rodar no seu repositório, não numa demo.</h2>
+    <div class="bento">
+      <article class="card c4 reveal">
+        <span class="k">BASE DE CONHECIMENTO</span>
+        <h3>O repositório é mapeado uma vez, no setup</h3>
+        <p>Grafo de imports, símbolos e busca full-text por projeto. Cada tarefa recebe o mapa e os arquivos mais relevantes, então o research não começa do zero.</p>
+        <img src="assets/knowledge.png" width="1440" height="900" alt="Tela de base de conhecimento com grafo estático e resultados ranqueados" loading="lazy">
+      </article>
+      <article class="card c2 reveal">
+        <span class="k">AUTOAPRENDIZADO</span>
+        <h3>Lições que viram contexto</h3>
+        <p>Ao fim de cada tarefa o agente propõe lições. Você promove as boas e elas entram nos próximos prompts daquele projeto.</p>
+      </article>
+      <article class="card c2 reveal">
+        <span class="k">MODELO E ESFORÇO</span>
+        <h3>Manual ou automático</h3>
+        <p>Escolha modelo e esforço por tarefa, ou deixe o roteador decidir pelo texto. O painel sempre mostra o que está rodando.</p>
+      </article>
+      <article class="card c4 reveal">
+        <span class="k">TAREFA EM 30 SEGUNDOS</span>
+        <h3>Escreva o que fazer. A IA rascunha contexto e critérios.</h3>
+        <p>Usa o que você digitou, a base de conhecimento e as lições promovidas. Ou importe direto de uma issue do Linear ou do GitHub.</p>
+        <img src="assets/new-task.png" width="1440" height="900" alt="Diálogo de nova tarefa com seleção de modelo e esforço" loading="lazy">
+      </article>
+      <article class="card c2 reveal">
+        <span class="k">PERMISSÕES</span>
+        <h3>Sem pop-up a cada comando</h3>
+        <p>Política inteligente, regras por repositório e “permitir nesta tarefa”. Pedidos aparecem no painel; ações perigosas ficam bloqueadas.</p>
+      </article>
+      <article class="card c2 reveal">
+        <span class="k">TIMES</span>
+        <h3>Perfis e skills por persona</h3>
+        <p>Login para engenharia, produto e design. Crie skills ou importe do GitHub para cada tipo de usuário.</p>
+      </article>
+      <article class="card c2 reveal">
+        <span class="k">LOCAL-FIRST</span>
+        <h3>Seus dados ficam na sua máquina</h3>
+        <p>SQLite local, servidor só em 127.0.0.1, senhas com scrypt. Vários projetos, cada um com sua fila e base.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="inspiracao" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>inspiração e créditos</p>
+    <h2 class="reveal">De onde veio a ideia.</h2>
+    <div class="insp">
+      <div class="quote reveal">
+        <span class="k mono" style="color:var(--accent);font-size:11px;letter-spacing:.1em">DEEPSEEK-AI / DSH-SUPERAGENT-PROTOTYPE</span>
+        <blockquote>Menos atenção humana, mais valor entregue.</blockquote>
+        <p>O Carbon nasceu da filosofia do <a href="https://github.com/deepseek-ai/dsh-superagent-prototype" rel="noopener noreferrer">dsh-superagent-prototype</a>, da DeepSeek: um agente que leva uma tarefa de ponta a ponta, com etapas explícitas, memória e reflexão, e que chama o humano só quando há decisão a tomar. Aqui essa ideia virou uma plataforma web local, ligada ao seu Linear, ao seu GitHub e aos agentes de código que você já usa.</p>
+      </div>
+      <ul class="credits">
+        <li class="reveal"><a href="https://docs.anthropic.com/en/docs/claude-code/overview" rel="noopener noreferrer">Claude Code</a> e <a href="https://github.com/openai/codex" rel="noopener noreferrer">Codex CLI</a><span>Os executores. O Carbon orquestra; eles escrevem o código. Basta ter um dos dois.</span></li>
+        <li class="reveal"><a href="https://github.com/quanhoangindex/ascii-reveal" rel="noopener noreferrer">ascii-reveal</a><span>As animações de decodificação em caracteres do painel (MIT).</span></li>
+        <li class="reveal"><a href="https://www.agno.com/" rel="noopener noreferrer">Agno</a><span>Referência da linguagem visual: grid técnico, monocromático, tipografia mono nos detalhes.</span></li>
+        <li class="reveal"><a href="https://vercel.com/font" rel="noopener noreferrer">Geist</a><span>Tipografia sans e mono.</span></li>
+        <li class="reveal"><span style="margin:0">E o nome: carbono, o elemento que se liga a quase tudo. Como um agente que se conecta ao seu fluxo.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="comecar" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>começar</p>
+    <h2 class="reveal">Dois minutos, um terminal.</h2>
+    <p class="sub reveal">O setup interativo checa o ambiente, detecta o agente instalado, cria seu perfil e já indexa o repositório. Depois é só abrir o navegador.</p>
+<pre class="term reveal"><span class="c"># 1. clone e instale</span>
+<span class="p">$ </span><b>git clone https://github.com/leolegends/carbon-superagent</b>
+<span class="p">$ </span><b>cd carbon-superagent && npm install</b>
+
+<span class="c"># 2. setup interativo (ou pelo navegador em /setup)</span>
+<span class="p">$ </span><b>npm run setup</b>
+
+<span class="c"># 3. sobe em http://127.0.0.1:3417</span>
+<span class="p">$ </span><b>npm start</b></pre>
+    <div class="reqs reveal">
+      <span class="chip">Node ≥ 22.13</span>
+      <span class="chip">git</span>
+      <span class="chip">Claude Code ou Codex</span>
+      <span class="chip">gh (opcional, para PRs)</span>
+      <span class="chip">Linear API key (opcional)</span>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <div class="foot">
+    <span>Carbon SuperAgent · licença MIT</span>
+    <span>Projeto independente, sem afiliação com DeepSeek, Anthropic, OpenAI ou Agno.</span>
+    <a href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">github.com/leolegends/carbon-superagent</a>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const GLYPHS = "▓▒░█<>/\\|_-=+*#%@$&";
+
+  // character-grid decode, in the spirit of ascii-reveal
+  const decode = (el, delay) => {
+    const target = el.textContent;
+    if (reduce) return;
+    el.setAttribute("aria-label", target);
+    let frame = 0;
+    const total = 22;
+    const tick = () => {
+      frame++;
+      const progress = frame / total;
+      el.textContent = [...target].map((ch, i) =>
+        ch === " " || i / target.length < progress ? ch : GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+      ).join("");
+      if (frame < total) setTimeout(tick, 34);
+      else el.textContent = target;
+    };
+    setTimeout(tick, delay);
+  };
+  document.querySelectorAll("[data-decode]").forEach((el, i) => decode(el, 120 + i * 180));
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("in");
+      if (entry.target.id === "pipe") runPipe(entry.target);
+      io.unobserve(entry.target);
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+  // light up the eight stages one after another
+  const STAGE_MS = 260;
+  const runPipe = (pipe) => {
+    pipe.classList.add("run");
+    [...pipe.querySelectorAll(".stage")].forEach((stage, i) => {
+      const delay = reduce ? 0 : i * STAGE_MS;
+      stage.style.setProperty("--d", delay + "ms");
+      setTimeout(() => stage.classList.add("on"), delay);
+    });
+  };
+
+  const copy = document.getElementById("copy");
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText("git clone https://github.com/leolegends/carbon-superagent && cd carbon-superagent && npm install && npm run setup");
+      copy.textContent = "copiado";
+    } catch {
+      copy.textContent = "selecione e copie";
+    }
+    setTimeout(() => (copy.textContent = "copiar"), 1800);
+  });
+})();
+</script>
+</body>
+</html>
