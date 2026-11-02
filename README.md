@@ -7,7 +7,7 @@ tarefa → intake → plan → research → code → test → review → deliver
           (worktree isolado por tarefa · você só é chamado quando precisa decidir)
 ```
 
-**Site:** LANDING_URL · **Licença:** MIT
+**Site:** [carbon-superagent.vercel.app](https://carbon-superagent.vercel.app) · **Licença:** MIT
 
 ![Mission control: pipeline de agentes, fila, sessão ao vivo e plano com critérios de aceite](docs/screenshots/mission-control.png)
 
