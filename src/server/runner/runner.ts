@@ -19,6 +19,7 @@ import { appendLog, applyExecutorEvent, emptyContext, reconcilePlan, type RunCon
 import { buildPrompt } from "./prompt";
 import { answeredQuestions, answerQuestion as applyAnswer, decisionsSection, resumeMessage } from "./questions";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeProjectMap } from "./workspace";
+import { releaseWorktree } from "./worktree";
 
 const SAVE_THROTTLE_MS = 400;
 const LESSON_CONFIDENCE = 0.6;
@@ -187,7 +188,7 @@ async function execute(task: Task): Promise<void> {
     const wt = await prepareWorktree(project.repoPath, project.baseBranch, task.key, task.id);
     // A resumed run keeps the commit it may already have; a fresh run starts without one.
     const previousCommit = resuming ? (t.get().workspace?.commit ?? null) : null;
-    t.set({ ...t.get(), workspace: { path: wt.path, branch: wt.branch, base: wt.base, prBase: wt.prBase, commit: previousCommit } });
+    t.set({ ...t.get(), workspace: { path: wt.path, branch: wt.branch, base: wt.base, prBase: wt.prBase, commit: previousCommit, isActive: true } });
     t.log("intake", "tool", `worktree ${wt.branch} ← ${wt.base}`);
     for (const note of wt.notes) t.log("intake", "warn", note);
     const skills = materializeSkills(wt.path, skillsForPersona(task.persona));
@@ -273,10 +274,34 @@ async function execute(task: Task): Promise<void> {
   } finally {
     s.allowAll.delete(task.id);
     expirePending(task.id);
-    s.activeTaskId = null;
     s.executor = null;
     s.tracker = null;
+    await releaseFinishedWorktree(task, t);
+    s.activeTaskId = null;
     notify();
+  }
+}
+
+/**
+ * The worktree only lives while the agent works or waits for an answer. Once the task is done
+ * (or failed) with everything committed, the folder goes away and the branch stays in the repo.
+ */
+async function releaseFinishedWorktree(task: Task, t: Tracker): Promise<void> {
+  const ticket = t.get();
+  const workspace = ticket.workspace;
+  if ((ticket.status !== "done" && ticket.status !== "failed") || !workspace?.path || workspace.isActive === false) return;
+  const project = task.projectId ? findProject(task.projectId) : null;
+  if (!project) return;
+  try {
+    const result = await releaseWorktree(project.repoPath, workspace.path);
+    if (result === "removed" || result === "missing") {
+      t.set({ ...t.get(), workspace: { ...workspace, isActive: false } });
+      t.log(ticket.stage ?? "reflect", "info", `worktree removido; as mudanças ficam no branch ${workspace.branch}`, true);
+    } else if (result === "dirty") {
+      t.log(ticket.stage ?? "reflect", "warn", `worktree mantido: há mudanças não commitadas em ${workspace.path}`, true);
+    }
+  } catch (error) {
+    console.error("[carbon] liberar worktree:", error instanceof Error ? error.message : String(error));
   }
 }
 

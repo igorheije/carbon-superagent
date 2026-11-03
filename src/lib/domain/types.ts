@@ -83,6 +83,12 @@ export interface TicketWorkspace {
   readonly prBase: string | null;
   /** Short SHA of Carbon's commit, once delivered. */
   readonly commit: string | null;
+  /** False once the worktree folder was removed after the task finished (the branch stays). */
+  readonly isActive?: boolean;
+  /** Local branch the task branch was merged into from the panel. */
+  readonly mergedInto?: string | null;
+  /** When the changes were applied to the project folder as uncommitted edits. */
+  readonly appliedAt?: string | null;
 }
 
 export type PermissionStatus = "pending" | "allowed" | "denied" | "expired";

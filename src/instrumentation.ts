@@ -26,6 +26,11 @@ export async function register(): Promise<void> {
     // New built-in skills reach this install right away, not only when the Skills page opens.
     seedBuiltinSkills();
     kick();
+    // Worktrees left behind by finished tasks go away; their branches stay in the repo.
+    const { releaseFinishedWorktrees } = await import("./server/runner/cleanup");
+    void releaseFinishedWorktrees()
+      .then((n) => n > 0 && console.log(`[carbon] ${n} worktree(s) de tarefas terminadas removido(s); branches preservados`))
+      .catch((error: unknown) => console.error("[carbon] limpeza de worktrees:", error instanceof Error ? error.message : String(error)));
     // Projects without an index (new install or upgraded schema) get mapped in the background.
     for (const project of listProjects()) {
       if (!getOverview(project.id)) void indexRepository({ id: project.id, repoPath: project.repoPath }, { withSummary: false, executor: null });

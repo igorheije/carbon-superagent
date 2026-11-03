@@ -180,8 +180,31 @@ function writeOmittedList(target: string, repoPath: string, large: readonly Snap
   );
 }
 
+/** Folder and branch suffix for a task: "<key>-<first 6 chars of the id>". */
+export const worktreeName = (key: string, taskId: string): string => `${slug(key)}-${taskId.slice(0, 6)}`;
+
+export type ReleaseResult = "removed" | "dirty" | "missing" | "error";
+
+/**
+ * Removes a task's worktree once the work is safe in its branch. Uncommitted changes are never
+ * thrown away: a dirty worktree stays. The branch always stays.
+ */
+export async function releaseWorktree(repoPath: string, worktreePath: string): Promise<ReleaseResult> {
+  if (!worktreePath || !existsSync(worktreePath)) {
+    await git(repoPath, ["worktree", "prune"]);
+    return "missing";
+  }
+  const status = await git(worktreePath, ["status", "--porcelain"]);
+  if (!status.ok) return "error";
+  if (status.stdout.trim()) return "dirty";
+  // --force only drops ignored Carbon files (.carbon/, materialized skills); the tree is clean.
+  const removed = await git(repoPath, ["worktree", "remove", "--force", worktreePath]);
+  await git(repoPath, ["worktree", "prune"]);
+  return removed.ok ? "removed" : "error";
+}
+
 export async function prepareWorktree(repoPath: string, baseBranch: string, key: string, taskId: string, root: string): Promise<Worktree> {
-  const name = `${slug(key)}-${taskId.slice(0, 6)}`;
+  const name = worktreeName(key, taskId);
   const branch = `agent/${name}`;
   const target = path.join(root, name);
   const notes: string[] = [];
