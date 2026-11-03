@@ -18,10 +18,13 @@ export async function register(): Promise<void> {
     }
   }
   const { listProjects } = await import("./server/repo/projects");
+  const { seedBuiltinSkills } = await import("./server/repo/skills");
   const { getOverview } = await import("./server/knowledge/store");
   const { indexRepository } = await import("./server/knowledge/indexer");
   try {
     recoverInterruptedTasks();
+    // New built-in skills reach this install right away, not only when the Skills page opens.
+    seedBuiltinSkills();
     kick();
     // Projects without an index (new install or upgraded schema) get mapped in the background.
     for (const project of listProjects()) {
