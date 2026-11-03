@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Carbon tokens — Agno-based monochrome with a single success-green accent.
+/* Carbon tokens — monochrome with a single success-green accent.
    Accent = active / success / emphasis. Danger is separate: errors, deletions, urgent.
    Dark is the default for the mission-control surface; light via data-theme. */
 :root {

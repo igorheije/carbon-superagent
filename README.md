@@ -26,7 +26,7 @@ Aqui essa ideia virou uma plataforma web local:
 - em vez de um modelo próprio, os agentes de código que você já paga: **Claude Code** ou **Codex**;
 - ligada ao seu **Linear**, **GitHub** e **Jira**, e ao **Slack** e **Telegram** do time, com uma base de conhecimento por repositório e lições que você promove.
 
-Projeto independente, sem afiliação com DeepSeek, Anthropic, OpenAI ou Agno.
+Projeto independente, sem afiliação com DeepSeek, Anthropic ou OpenAI.
 
 ## Começar em 2 minutos
 
@@ -190,5 +190,5 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 
 ## Identidade e créditos
 
-- Visual baseado no Agno Design System (monocromático, Geist/Geist Mono, grid blueprint), com **verde success** como único destaque e vermelho reservado para erro, remoção e urgência.
+- Visual próprio: monocromático, Geist/Geist Mono e grid técnico, com **verde success** como único destaque e vermelho reservado para erro, remoção e urgência.
 - Animações de reveal, skeletons e o mascote de loading (anel de carbono em `public/carbon-mark.svg`) usam [`ascii-reveal`](https://github.com/quanhoangindex/ascii-reveal) (MIT), fixado em `0.3.0`. A lib respeita `prefers-reduced-motion` (vira um fade curto).

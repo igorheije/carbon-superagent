@@ -14,7 +14,7 @@
 | D6 | Humano faz merge. Auto-merge desligado por padrão | Herdado do dsh: "people merge until the agent's PRs have been right for a while" | Fechado |
 | D7 | Autoaprendizado **propõe**, humano **promove** | Regra do repo: sistemas de aprendizado não se autopromovem | Fechado |
 
-**Tensão de design:** o DS Agno pede animação contida (e destaque laranja, trocado por verde success na v0.3) ("no infinite decorative loops"). O pedido é "impressionante, animado". Resolução: toda animação é **ligada a estado real** (agente ativo = pulso; dado fluindo = partícula na aresta; nada anima quando o sistema está ocioso). Respeita `prefers-reduced-motion`.
+**Tensão de design:** o design system pede animação contida, sem loops decorativos infinitos. O pedido é "impressionante, animado". Resolução: toda animação é **ligada a estado real** (agente ativo = pulso; dado fluindo = partícula na aresta; nada anima quando o sistema está ocioso). Respeita `prefers-reduced-motion`.
 
 ## 1. Domínio (portado do dsh-superagent)
 
