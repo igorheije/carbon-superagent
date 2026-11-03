@@ -34,6 +34,9 @@
     })().catch((err) => console.error("[carbon] animação interrompida", err));
   };
 
+  // Shared with the other scene files (chat.js).
+  window.carbonFlows = { scene, el, $ };
+
   /* ── mission control ─────────────────────────────────────────── */
   const STAGES = [
     ["triage", "Intake"], ["planner", "Plan"], ["researcher", "Research"], ["coder", "Code"],
@@ -47,13 +50,13 @@
       tests: "14 passed · cobertura 91%", pr: 128,
     },
     {
-      id: "#57", src: "github", title: "Paginação por cursor na listagem de pedidos", repo: "demo/orders-api", who: "@bruno.pm",
+      id: "FRG-57", src: "slack", title: "Paginação por cursor na listagem de pedidos", repo: "demo/orders-api", who: "@bruno.pm",
       plan: ["Trocar offset por cursor opaco", "Índice composto (created_at, id)", "Manter contrato da API v1", "Testes de borda: vazio e última página", "Revisão de performance"],
       files: ["src/orders/list.ts", "src/db/cursor.ts"], perm: "npx prisma migrate dev --name orders_cursor",
       tests: "22 passed · cobertura 88%", pr: 131,
     },
     {
-      id: "ENG-163", src: "linear", title: "Fuso horário errado no relatório semanal", repo: "demo/reports", who: "@carla.ops",
+      id: "OPS-163", src: "jira", title: "Fuso horário errado no relatório semanal", repo: "demo/reports", who: "@carla.ops",
       plan: ["Reproduzir com data na virada do dia", "Normalizar datas para America/Sao_Paulo", "Teste de regressão no cron", "Revisão"],
       files: ["src/reports/weekly.ts", "src/lib/date.ts"], perm: null,
       tests: "9 passed · regressão ok", pr: 133,

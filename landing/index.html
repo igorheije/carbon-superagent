@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Carbon SuperAgent</title>
-<meta name="description" content="Agentes autônomos que pegam uma tarefa do Linear ou GitHub e entregam um PR revisável, rodando no seu computador com Claude Code ou Codex. Open source, MIT.">
+<meta name="description" content="Agentes autônomos que pegam uma tarefa do Linear, GitHub, Jira, Slack ou Telegram e entregam um PR revisável, rodando no seu computador com Claude Code ou Codex. Perguntas com opções de um clique. Open source, MIT.">
 <meta property="og:title" content="Carbon SuperAgent">
-<meta property="og:description" content="Da tarefa ao PR revisável, no seu computador, com Claude Code ou Codex.">
+<meta property="og:description" content="Da tarefa ao PR revisável, no seu computador, com Claude Code ou Codex. Peça no Jira, Slack ou Telegram.">
 <meta property="og:image" content="https://carbon-superagent.vercel.app/assets/mission-control.png">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
@@ -162,6 +162,7 @@
 </style>
 <link rel="stylesheet" href="assets/flows.css">
 <script src="assets/flows.js" defer></script>
+<script src="assets/chat.js" defer></script>
 </head>
 <body>
 <header class="wrap">
@@ -169,6 +170,7 @@
     <a class="brand" href="#top">Carbon <small>SUPERAGENT</small></a>
     <div class="nav-links">
       <a class="btn btn-ghost hide-sm" href="#como-funciona">Como funciona</a>
+      <a class="btn btn-ghost hide-sm" href="#integracoes">Integrações</a>
       <a class="btn btn-ghost hide-sm" href="#inspiracao">Inspiração</a>
       <a class="btn" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">GitHub</a>
     </div>
@@ -180,7 +182,7 @@
     <div class="hero">
       <p class="eyebrow"><span class="dot"></span>open source · roda local · MIT</p>
       <h1><span data-decode>Carbon</span> <span class="soft" data-decode>SuperAgent</span></h1>
-      <p class="lede">Agentes autônomos que pegam uma tarefa do <b>Linear</b> ou do <b>GitHub</b> e entregam um <b>PR revisável</b>, rodando no seu computador, com o <b>Claude Code</b> ou o <b>Codex</b> do seu plano. Você só é chamado quando precisa decidir.</p>
+      <p class="lede">Agentes autônomos que pegam uma tarefa do <b>Linear</b>, <b>GitHub</b>, <b>Jira</b>, ou de uma menção no <b>Slack</b> e no <b>Telegram</b>, e entregam um <b>PR revisável</b>, rodando no seu computador, com o <b>Claude Code</b> ou o <b>Codex</b> do seu plano. Você só é chamado quando precisa decidir, e decide com um clique.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#comecar">Começar em 2 minutos →</a>
         <a class="btn" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">Ver código no GitHub</a>
@@ -314,6 +316,28 @@
     </div>
   </section>
 
+  <section id="integracoes" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>integrações</p>
+    <h2 class="reveal">Peça no chat. Responda com um clique.</h2>
+    <p class="sub reveal">Mencione o bot no Slack ou no Telegram, ou ponha uma label numa issue do Jira: a tarefa entra na fila. Quando o agente precisa decidir, a pergunta chega com opções. Você clica, e ele continua de onde parou, no mesmo worktree.</p>
+    <div class="integ">
+      <figure class="chat reveal" id="chat" role="img" aria-label="Animação: alguém menciona o Carbon no Slack, no Telegram e no Jira; a tarefa entra na fila, o agente pergunta com duas opções, a pessoa clica na recomendada e o PR fica pronto para revisão">
+        <div class="chat-h" aria-hidden="true">
+          <span class="chat-ch"><i data-chat-dot></i><span data-chat-channel>#eng · Slack</span></span>
+          <span class="pill live"><i></i>ao vivo</span>
+        </div>
+        <div class="chat-body" data-chat-body aria-hidden="true"></div>
+      </figure>
+      <ul class="integ-list">
+        <li class="card reveal"><span class="k">JIRA CLOUD</span><h3>Label ou <code>/carbon</code></h3><p>Issue com a label <code>carbon</code> ou um comentário <code>/carbon …</code> vira tarefa. O Carbon comenta o andamento, faz as perguntas e move o status até “Em revisão”.</p></li>
+        <li class="card reveal"><span class="k">SLACK</span><h3><code>@carbon</code> no canal</h3><p>Atualizações na thread da menção e perguntas com um botão por opção, com a recomendada em destaque.</p></li>
+        <li class="card reveal"><span class="k">TELEGRAM</span><h3><code>/carbon</code> no seu chat</h3><p>Só o chat autorizado cria tarefas e responde. As perguntas chegam com botões, direto no celular.</p></li>
+        <li class="card reveal"><span class="k">LINEAR E GITHUB</span><h3>Importe issues</h3><p>Importe na nova tarefa; o link do PR volta comentado no Linear.</p></li>
+      </ul>
+    </div>
+    <p class="integ-note reveal">Webhooks por túnel HTTPS, aceitos só com a assinatura de cada serviço. Tokens ficam no banco local e nunca voltam ao navegador.</p>
+  </section>
+
   <section id="inspiracao" class="wrap">
     <p class="eyebrow reveal"><span class="dot"></span>inspiração e créditos</p>
     <h2 class="reveal">De onde veio a ideia.</h2>
@@ -352,6 +376,7 @@
       <span class="chip">Claude Code ou Codex</span>
       <span class="chip">gh (opcional, para PRs)</span>
       <span class="chip">Linear API key (opcional)</span>
+      <span class="chip">Jira · Slack · Telegram (opcional, via túnel HTTPS)</span>
     </div>
   </section>
 </main>

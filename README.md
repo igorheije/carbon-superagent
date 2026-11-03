@@ -1,6 +1,6 @@
 # Carbon SuperAgent
 
-Agentes autônomos que pegam uma tarefa do **Linear**, do **GitHub** ou escrita à mão e entregam um commit/PR revisável — rodando no **seu computador**, com o **Claude Code** ou o **Codex** do seu plano. Sem API key extra.
+Agentes autônomos que pegam uma tarefa do **Linear**, do **GitHub**, do **Jira**, de uma menção no **Slack** ou no **Telegram** (ou escrita à mão) e entregam um commit/PR revisável — rodando no **seu computador**, com o **Claude Code** ou o **Codex** do seu plano. Sem API key extra. Quando o agente precisa decidir algo, a pergunta chega com opções: um clique, no painel ou no chat, e a tarefa continua de onde parou.
 
 ```
 tarefa → intake → plan → research → code → test → review → deliver → reflect
@@ -24,7 +24,7 @@ Aqui essa ideia virou uma plataforma web local:
 
 - em vez de um protótipo de linha de comando, um painel com o pipeline, a sessão do agente e o plano ao vivo;
 - em vez de um modelo próprio, os agentes de código que você já paga: **Claude Code** ou **Codex**;
-- ligada ao seu **Linear** e ao seu **GitHub**, com uma base de conhecimento por repositório e lições que você promove.
+- ligada ao seu **Linear**, **GitHub** e **Jira**, e ao **Slack** e **Telegram** do time, com uma base de conhecimento por repositório e lições que você promove.
 
 Projeto independente, sem afiliação com DeepSeek, Anthropic, OpenAI ou Agno.
 
@@ -52,10 +52,19 @@ npm run doctor   # diagnóstico do ambiente
 | Peça | O que faz |
 | --- | --- |
 | **Executores** | `claude -p … --output-format stream-json` ou `codex exec --json`. Cada CLI usa o login que já existe no seu computador; o Carbon nunca lê esses tokens. |
-| **Worktree por tarefa** | Cada tarefa roda em `.carbon-data/worktrees/<tarefa>` no branch `agent/<tarefa>`. Seu branch atual nunca é tocado. |
-| **Protocolo de progresso** | O agente imprime `CARBON_STAGE`, `CARBON_PLAN`, `CARBON_TESTS`, `CARBON_FINDING`, `CARBON_LESSON`, `CARBON_QUESTION`; o painel transforma isso em pipeline, plano, testes e review ao vivo. |
-| **Entrega** | O Carbon (não o agente) faz o commit. Com push ligado e `gh` autenticado, abre PR — **draft** no modo `observe`. Tarefas do Linear recebem comentário com o link. |
+| **Worktree por tarefa** | Cada tarefa roda em `.carbon-data/worktrees/<tarefa>` no branch `agent/<tarefa>`. Seu branch atual nunca é tocado. Se a base configurada não existe, usa `origin/<base>`, o branch atual ou `main`/`master`/`develop`/`staging` e avisa no log; em repositório **sem nenhum commit**, cria um branch órfão com uma cópia dos arquivos como base (respeita `.gitignore`, ignora `node_modules`/`.venv`/builds e arquivos acima de 10 MB). |
+| **Protocolo de progresso** | O agente imprime `CARBON_STAGE`, `CARBON_PLAN`, `CARBON_TESTS`, `CARBON_FINDING`, `CARBON_LESSON`, `CARBON_QUESTION` e `CARBON_OPTION`; o painel transforma isso em pipeline, plano, testes, review e perguntas ao vivo. |
+| **Entrega** | O Carbon (não o agente) faz o commit. Com push ligado e `gh` autenticado, abre PR — **draft** no modo `observe`. Tarefas do Linear recebem comentário com o link; as do Jira, comentário e mudança de status. |
+| **Pipeline** | Grafo ao vivo com o agente ativo animado. **Expandir** abre uma visão interativa: clique em cada etapa para ver o que o agente fez nela (métricas, plano, arquivos lidos, testes, achados, PR e o log só daquela etapa). |
 | **Aprendizado** | O agente propõe lições; você promove ou descarta. Lições promovidas entram no prompt das próximas tarefas. Nada se autopromove. |
+
+## Quando o agente pergunta
+
+O agente só para quando uma decisão o bloqueia. Ele envia uma pergunta por decisão (`CARBON_QUESTION`) com 2 a 4 opções (`CARBON_OPTION`), uma delas marcada como recomendada; para nomes e valores (repositório, branch, caminho) ele propõe candidatos que achou no projeto em vez de pedir para você digitar.
+
+- A pergunta aparece num card acima do pipeline e, se configurados, no **Slack** e no **Telegram** com um botão por opção. Um clique responde; "outra resposta" abre um campo livre.
+- A tarefa **continua de onde parou**, no mesmo worktree: no Claude Code a mesma sessão é retomada (`--resume`), com tudo que o agente já leu; no Codex, uma execução nova recebe as decisões no prompt.
+- Respostas viram **decisões fixas**: entram em todos os prompts seguintes da tarefa, inclusive em "rodar de novo", para o agente não perguntar a mesma coisa duas vezes.
 
 ## Descrição gerada por IA
 
@@ -83,7 +92,7 @@ A primeira coisa depois do setup é mapear o repositório:
 
 Em cada tarefa o Carbon injeta no prompt a visão geral, a estrutura e os **arquivos mais relevantes para aquela tarefa** (busca + vizinhos no grafo), e grava o mapa completo em `.carbon/PROJECT_MAP.md` no worktree (fora dos commits). Se o repositório mudou desde a última indexação, o grafo é atualizado antes da tarefa começar.
 
-
+## Pessoas, personas e skills
 
 - **Login por pessoa.** O admin convida em *Configurações → Pessoas*; a senha temporária aparece uma vez e é trocada no primeiro acesso.
 - **Personas**: Engenharia, Produto, Design, QA, Dados. A persona de quem pede a tarefa define o framing do agente, o entregável (ex.: Produto escreve specs em `docs/`) e as skills carregadas.
@@ -92,6 +101,35 @@ Em cada tarefa o Carbon injeta no prompt a visão geral, a estrutura e os **arqu
 ## Projetos
 
 Um Carbon atende vários repositórios. Cada **projeto** tem sua fila de tarefas, base de conhecimento, lições e regras de permissão; agente, modelos, política e pessoas são globais. Troque pelo seletor no topo (cada pessoa tem seu projeto ativo) e gerencie em *Configurações → Projetos*. A fila de execução é única: as tarefas de todos os projetos rodam em ordem, cada uma no repositório do seu projeto.
+
+## Integrações: Jira, Slack e Telegram
+
+Configure em *Configurações → Integrações* (admin). Cada canal tem botão **Testar** e passo a passo na própria tela.
+
+| Canal | Cria tarefa | O Carbon devolve |
+| --- | --- | --- |
+| **Jira Cloud** | Issue com a label `carbon` (configurável) ou comentário `/carbon <pedido>` | Comentário ao entrar na fila, ao perguntar (com as opções), ao concluir (com o PR) e ao falhar; move a issue para "Em andamento" e "Em revisão" (nomes configuráveis) |
+| **Slack** | `@carbon <tarefa>` no canal configurado | Atualizações na thread da menção; perguntas com um botão por opção |
+| **Telegram** | `/carbon <tarefa>` ou `@seubot <tarefa>` no chat autorizado | Respostas no chat; perguntas com botões |
+
+Como o Carbon roda só em `127.0.0.1`, os serviços chegam até ele por **webhook através de um túnel HTTPS**:
+
+```sh
+cloudflared tunnel --url http://127.0.0.1:3417   # ou ngrok http 3417
+```
+
+Cole a URL pública em *Integrações → Túnel* e escolha o projeto que recebe as tarefas. Depois:
+
+- **Jira:** informe site (`https://<empresa>.atlassian.net`), e-mail e [API token](https://id.atlassian.com/manage-profile/security/api-tokens); clique em **Gerar URL do webhook** e cadastre em *Configurações do Jira → Sistema → WebHooks* com os eventos *Issue criada*, *Issue atualizada* e *Comentário criado* (ou use Automação → "Enviar requisição web").
+- **Slack:** crie o app em *api.slack.com/apps → From a manifest* com o manifest que a tela gera (escopos `app_mentions:read`, `chat:write`; eventos e interatividade já apontando para a sua URL), instale, cole o bot token e o signing secret e o ID do canal, e convide o bot no canal.
+- **Telegram:** crie o bot no @BotFather, cole o token, clique em **Registrar webhook** e mande `/carbon oi` ao bot: ele responde com o chat id para você autorizar.
+
+Segurança das integrações:
+
+- Webhooks só são aceitos com a prova do serviço: assinatura v0 do Slack (janela de 5 min), header secreto do Telegram, HMAC ou segredo na URL do Jira. Sem isso, `401`.
+- Só o canal do Slack e o chat do Telegram configurados criam tarefas e respondem perguntas. Retentativas e menções repetidas não duplicam tarefa.
+- Tokens e segredos ficam no banco local, **nunca voltam ao navegador** e são testados antes de salvar.
+- O túnel expõe também o painel (protegido por login). Use senhas fortes e desligue o túnel quando não precisar.
 
 ## Esqueci a senha
 
@@ -124,10 +162,10 @@ Em todos os perfis `git push`, `git commit` e `rm -rf` ficam bloqueados para o a
 
 ## Segurança
 
-- O painel escuta só em `127.0.0.1`. **Não exponha a porta na internet**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório.
+- O painel escuta só em `127.0.0.1`. **Não exponha a porta na internet sem necessidade**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).
 - Senhas com scrypt, sessões em cookie `httpOnly` guardadas como hash, rate limit no login, checagem de origem em requisições que mudam estado.
-- Descrições de tarefa (Linear/GitHub) são tratadas como dados não confiáveis no prompt.
-- Dados ficam em `.carbon-data/` (SQLite com permissão `600`). A API key do Linear fica nesse banco e nunca volta ao navegador.
+- Descrições de tarefa (Linear, GitHub, Jira, Slack, Telegram) são tratadas como dados não confiáveis no prompt.
+- Dados ficam em `.carbon-data/` (SQLite com permissão `600`). Chaves e tokens de Linear, Jira, Slack e Telegram ficam nesse banco e nunca voltam ao navegador.
 - Não use em repositórios com dados pessoais ou de saúde sem antes validar com quem responde por LGPD na sua empresa.
 
 ## Desenvolvimento
@@ -143,6 +181,9 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 
 - O parser do Codex segue o formato documentado de `codex exec --json` e tem testes unitários, mas ainda **não foi exercitado contra a CLI real** neste repositório. O do Claude Code foi validado ponta a ponta.
 - Uma tarefa por vez por máquina (fila serial).
+- As integrações com Jira, Slack e Telegram têm testes unitários e de ponta a ponta com requisições assinadas, mas ainda **não foram exercitadas contra os serviços reais** neste repositório. Use **Testar** em cada canal ao configurar.
+- As threads do Slack por tarefa ficam em memória: depois de reiniciar o Carbon, a próxima atualização abre uma thread nova (tarefas criadas por menção continuam respondendo na thread de origem).
+- Retomar a sessão após uma resposta funciona no Claude Code; no Codex a tarefa recomeça no mesmo worktree com as decisões no prompt.
 - A busca da base de conhecimento é lexical (FTS5 + símbolos + grafo de imports). Ela acha pelo vocabulário do código; perguntas em português sobre código escrito em inglês acham menos. Busca semântica (embeddings) está no plano (F3).
 - O scanner usa regex (sem compilador): cobre bem TS/JS, Python, Go e docs; outras linguagens entram com símbolos, mas sem resolução de imports.
 - Com o isolamento desligado, a CLI do Claude carrega o seu `CLAUDE.md`, hooks e MCPs globais nas execuções do Carbon (mais tokens e permissões pessoais por cima do perfil escolhido).
