@@ -24,7 +24,7 @@ function dbFile(dir: string): string {
   return !existsSync(current) && existsSync(legacy) ? legacy : current;
 }
 
-const MIGRATIONS: readonly string[] = [
+export const MIGRATIONS: readonly string[] = [
   `
   CREATE TABLE users (
     id TEXT PRIMARY KEY,
@@ -153,6 +153,35 @@ const MIGRATIONS: readonly string[] = [
   CREATE VIRTUAL TABLE kb_fts USING fts5(project_id UNINDEXED, file UNINDEXED, path, symbols, body, tokenize = 'unicode61 remove_diacritics 2');
   CREATE TABLE kb_meta (project_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (project_id, key));
   `,
+  // Tasks can now come from Jira, Slack and Telegram. SQLite cannot alter a CHECK, so the table is rebuilt.
+  `
+  CREATE TABLE tasks_next (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL CHECK (source IN ('manual','linear','github','jira','slack','telegram')),
+    source_ref TEXT,
+    requester_id TEXT NOT NULL REFERENCES users(id),
+    persona TEXT NOT NULL,
+    executor TEXT NOT NULL CHECK (executor IN ('claude','codex')),
+    priority TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    snapshot TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'auto',
+    effort TEXT NOT NULL DEFAULT 'auto',
+    project_id TEXT
+  );
+  INSERT INTO tasks_next (id, key, title, description, source, source_ref, requester_id, persona, executor, priority, status, position, snapshot, created_at, updated_at, model, effort, project_id)
+    SELECT id, key, title, description, source, source_ref, requester_id, persona, executor, priority, status, position, snapshot, created_at, updated_at, model, effort, project_id FROM tasks;
+  DROP TABLE tasks;
+  ALTER TABLE tasks_next RENAME TO tasks;
+  CREATE INDEX tasks_project ON tasks(project_id, position);
+  CREATE INDEX tasks_source ON tasks(source, source_ref);
+  `,
 ];
 
 /**
@@ -187,7 +216,8 @@ function bootstrapProjects(db: DatabaseSync): void {
   }
 }
 
-function migrate(db: DatabaseSync): void {
+/** Applies pending migrations in order, each in its own transaction. Exported for tests. */
+export function migrate(db: DatabaseSync): void {
   const row = db.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
   const current = row?.user_version ?? 0;
   for (let v = current; v < MIGRATIONS.length; v += 1) {

@@ -17,7 +17,7 @@ export const STAGES = [
 
 export type StageId = (typeof STAGES)[number];
 
-export type SourceKind = "linear" | "github";
+export type SourceKind = "linear" | "github" | "jira" | "slack" | "telegram";
 
 export type TicketStatus = "queued" | "running" | "waiting" | "done" | "failed";
 

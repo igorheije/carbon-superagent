@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { ExecutionTab } from "@/components/settings/ExecutionTab";
+import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 import { PeopleTab } from "@/components/settings/PeopleTab";
 import { ProjectsTab } from "@/components/settings/ProjectsTab";
 import { ProfileTab } from "@/components/settings/ProfileTab";
 import { useSession } from "@/components/session/SessionProvider";
 
-type Tab = "profile" | "projects" | "execution" | "people";
+type Tab = "profile" | "projects" | "execution" | "integrations" | "people";
 
 export default function SettingsPage() {
   const { user, isLoading } = useSession();
@@ -16,7 +17,14 @@ export default function SettingsPage() {
   const isAdmin = user?.role === "admin";
   const tabs: readonly { id: Tab; label: string }[] = [
     { id: "profile", label: "Perfil" },
-    ...(isAdmin ? [{ id: "projects" as const, label: "Projetos" }, { id: "execution" as const, label: "Execução" }, { id: "people" as const, label: "Pessoas" }] : []),
+    ...(isAdmin
+      ? [
+          { id: "projects" as const, label: "Projetos" },
+          { id: "execution" as const, label: "Execução" },
+          { id: "integrations" as const, label: "Integrações" },
+          { id: "people" as const, label: "Pessoas" },
+        ]
+      : []),
   ];
 
   return (
@@ -33,7 +41,7 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
-      {isLoading ? null : tab === "profile" ? <ProfileTab key={user?.id} /> : tab === "projects" && isAdmin ? <ProjectsTab /> : tab === "execution" && isAdmin ? <ExecutionTab /> : isAdmin ? <PeopleTab /> : null}
+      {isLoading ? null : tab === "profile" ? <ProfileTab key={user?.id} /> : tab === "projects" && isAdmin ? <ProjectsTab /> : tab === "execution" && isAdmin ? <ExecutionTab /> : tab === "integrations" && isAdmin ? <IntegrationsTab /> : isAdmin ? <PeopleTab /> : null}
     </div>
   );
 }

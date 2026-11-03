@@ -93,9 +93,26 @@ function relativize(event: ExecutorEvent, root: string): ExecutorEvent {
   return { ...event, summary: strip(event.summary), path: event.path ? strip(event.path) : null };
 }
 
+/** Lifecycle events for integrations (Slack, Telegram, Jira). Listeners must not throw. */
+export type TaskEventType = "started" | "question" | "done" | "failed";
+export interface TaskEvent {
+  readonly type: TaskEventType;
+  readonly taskId: string;
+  readonly detail: string;
+}
+export const TASK_EVENT = "task";
+
+function emitTask(type: TaskEventType, taskId: string, detail: string) {
+  state().events.emit(TASK_EVENT, { type, taskId, detail } satisfies TaskEvent);
+}
+
+const EVENT_FOR_STATUS: Partial<Record<Ticket["status"], TaskEventType>> = { waiting: "question", failed: "failed", done: "done" };
+
 function finish(t: Tracker, status: Ticket["status"], stage: StageId, text: string, level: "ok" | "warn") {
   t.log(stage, level, text);
   t.set({ ...t.get(), status, stage }, true);
+  const event = EVENT_FOR_STATUS[status];
+  if (event) emitTask(event, t.get().id, text);
 }
 
 async function deliver(task: Task, t: Tracker, wt: Awaited<ReturnType<typeof prepareWorktree>>, ctx: RunContext) {
@@ -148,6 +165,7 @@ async function execute(task: Task): Promise<void> {
     t.set({ ...t.get(), status: "running", stage: "intake", logs: [], plan: [], hits: [], diff: [], findings: [], tests: null, pr: null, questions: decided, sessionId: null, resume: false }, true);
     t.log("intake", "info", `${task.source} ${task.key} · persona ${task.persona} · executor ${task.executor}`);
   }
+  emitTask("started", task.id, resuming ? "retomando com a resposta" : "começando");
 
   try {
     const project = task.projectId ? findProject(task.projectId) : null;

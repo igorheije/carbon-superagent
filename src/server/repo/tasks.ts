@@ -5,7 +5,7 @@ import type { Lesson, Ticket, TicketStatus } from "@/lib/domain/types";
 import { getDb, nowIso } from "../db";
 import type { ExecutorId } from "./settings";
 
-export type TaskSource = "manual" | "linear" | "github";
+export type TaskSource = "manual" | "linear" | "github" | "jira" | "slack" | "telegram";
 
 export interface Task {
   readonly id: string;
@@ -87,7 +87,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     id,
     key,
     title: task.title,
-    source: task.source === "linear" ? "linear" : "github",
+    source: task.source === "manual" ? "github" : task.source,
     repo: task.repo,
     requester: task.requesterName,
     priority: task.priority,
@@ -124,6 +124,12 @@ export function createTask(task: NewTask): Task {
 
 export function findTask(id: string): Task | null {
   const row = getDb().prepare("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | undefined;
+  return row ? toTask(row) : null;
+}
+
+/** Latest task created from this external item (e.g. a Jira issue), to avoid duplicates. */
+export function findTaskBySource(source: TaskSource, sourceRef: string): Task | null {
+  const row = getDb().prepare("SELECT * FROM tasks WHERE source = ? AND source_ref = ? ORDER BY created_at DESC LIMIT 1").get(source, sourceRef) as TaskRow | undefined;
   return row ? toTask(row) : null;
 }
 

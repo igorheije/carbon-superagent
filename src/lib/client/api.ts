@@ -53,6 +53,19 @@ export interface PublicSettings {
   readonly permissionTimeoutMinutes: number;
   readonly approvalPolicy: "ask" | "smart" | "autonomous";
   readonly linearConfigured: boolean;
+  readonly publicBaseUrl: string;
+  readonly integrationProjectId: string;
+  readonly jiraSite: string;
+  readonly jiraEmail: string;
+  readonly jiraTriggerLabel: string;
+  readonly jiraStatusStarted: string;
+  readonly jiraStatusReview: string;
+  readonly jiraConfigured: boolean;
+  readonly jiraWebhookSecretSet: boolean;
+  readonly slackChannelId: string;
+  readonly slackConfigured: boolean;
+  readonly telegramChatId: string;
+  readonly telegramConfigured: boolean;
 }
 
 export interface ExecutorAvailability {

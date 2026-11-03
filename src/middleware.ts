@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE = "carbon_session";
 const PUBLIC_PAGES = ["/login", "/setup"];
-const PUBLIC_API = ["/api/setup/", "/api/auth/login"];
+/** Webhooks have no session: each route verifies the sender's signature or shared secret. */
+const PUBLIC_API = ["/api/setup/", "/api/auth/login", "/api/webhooks/"];
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**

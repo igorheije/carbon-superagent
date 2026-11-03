@@ -4,6 +4,8 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_PHASE === "phase-production-build") return;
   const { recoverInterruptedTasks } = await import("./server/repo/tasks");
   const { kick, shutdownRunner } = await import("./server/runner/runner");
+  const { startIntegrations } = await import("./server/integrations/hub");
+  startIntegrations();
   const globalForShutdown = globalThis as unknown as { carbonShutdownHooked?: boolean };
   if (!globalForShutdown.carbonShutdownHooked) {
     globalForShutdown.carbonShutdownHooked = true;

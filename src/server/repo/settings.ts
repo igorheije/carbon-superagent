@@ -40,12 +40,70 @@ export const settingsSchema = z.object({
   approvalPolicy: z.enum(["ask", "smart", "autonomous"]).default("smart"),
   maxRunMinutes: z.number().int().min(5).max(240).default(45),
   linearApiKey: z.string().trim().max(200).default(""),
+
+  /** Public HTTPS URL of a tunnel to this machine (Cloudflare Tunnel, ngrok), used for webhooks. */
+  publicBaseUrl: z
+    .string()
+    .trim()
+    .max(300)
+    .refine((v) => v === "" || /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(v), "use uma URL https://")
+    .transform((v) => v.replace(/\/+$/, ""))
+    .default(""),
+  /** Project that receives tasks created from Jira, Slack or Telegram ("" = first project). */
+  integrationProjectId: z.string().trim().max(100).default(""),
+
+  jiraSite: z
+    .string()
+    .trim()
+    .max(200)
+    .refine((v) => v === "" || /^https:\/\/[a-z0-9-]+\.atlassian\.net$/i.test(v.replace(/\/+$/, "")), "use https://<sua-empresa>.atlassian.net")
+    .transform((v) => v.replace(/\/+$/, ""))
+    .default(""),
+  jiraEmail: z.string().trim().max(200).default(""),
+  jiraApiToken: z.string().trim().max(400).default(""),
+  jiraWebhookSecret: z.string().trim().max(200).default(""),
+  /** Issues with this label (or a "/carbon" comment) become Carbon tasks. */
+  jiraTriggerLabel: z.string().trim().max(60).default("carbon"),
+  jiraStatusStarted: z.string().trim().max(60).default("Em andamento"),
+  jiraStatusReview: z.string().trim().max(60).default("Em revisão"),
+
+  slackBotToken: z.string().trim().max(300).default(""),
+  slackSigningSecret: z.string().trim().max(200).default(""),
+  slackChannelId: z.string().trim().max(40).default(""),
+
+  telegramBotToken: z.string().trim().max(200).default(""),
+  telegramWebhookSecret: z.string().trim().max(256).default(""),
+  /** Only this chat may create tasks and answer questions. */
+  telegramChatId: z.string().trim().max(40).default(""),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
 
-/** What the browser may see: secrets reduced to a boolean. */
-export type PublicSettings = Omit<Settings, "linearApiKey"> & { readonly linearConfigured: boolean };
+/** Never sent to the browser. In PUT, "" keeps the stored value and "-" clears it. */
+export const SECRET_KEYS = [
+  "linearApiKey",
+  "jiraApiToken",
+  "jiraWebhookSecret",
+  "slackBotToken",
+  "slackSigningSecret",
+  "telegramBotToken",
+  "telegramWebhookSecret",
+] as const satisfies readonly (keyof Settings)[];
+
+type SecretKey = (typeof SECRET_KEYS)[number];
+
+/** What the browser may see: secrets reduced to booleans. */
+export type PublicSettings = Omit<Settings, SecretKey> & {
+  readonly linearConfigured: boolean;
+  readonly jiraConfigured: boolean;
+  readonly jiraWebhookSecretSet: boolean;
+  readonly slackConfigured: boolean;
+  readonly telegramConfigured: boolean;
+};
+
+export const isJiraConfigured = (s: Settings): boolean => Boolean(s.jiraSite && s.jiraEmail && s.jiraApiToken);
+export const isSlackConfigured = (s: Settings): boolean => Boolean(s.slackBotToken && s.slackSigningSecret);
+export const isTelegramConfigured = (s: Settings): boolean => Boolean(s.telegramBotToken && s.telegramChatId);
 
 const SETTINGS_KEY = "settings";
 
@@ -70,6 +128,13 @@ export function saveSettings(patch: Partial<Settings>): Settings {
 }
 
 export function toPublicSettings(settings: Settings): PublicSettings {
-  const { linearApiKey, ...rest } = settings;
-  return { ...rest, linearConfigured: linearApiKey.length > 0 };
+  const safe = Object.fromEntries(Object.entries(settings).filter(([key]) => !(SECRET_KEYS as readonly string[]).includes(key))) as Omit<Settings, SecretKey>;
+  return {
+    ...safe,
+    linearConfigured: settings.linearApiKey.length > 0,
+    jiraConfigured: isJiraConfigured(settings),
+    jiraWebhookSecretSet: settings.jiraWebhookSecret.length > 0,
+    slackConfigured: isSlackConfigured(settings),
+    telegramConfigured: isTelegramConfigured(settings),
+  };
 }
