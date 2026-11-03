@@ -1,12 +1,7 @@
-import type { PersonaId } from "@/lib/domain/personas";
-import type { SkillInput } from "./parse";
+import type { BuiltinSkill } from "./types";
 
-export interface BuiltinSkill extends SkillInput {
-  readonly personas: readonly PersonaId[];
-}
-
-/** Seeded on first boot. Names use the carbon- prefix so they never clash with repo skills. */
-export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [
+/** The original four: PR summary, test plan, product spec and design review. */
+export const CORE_SKILLS: readonly BuiltinSkill[] = [
   {
     name: "carbon-pr-description",
     description: "Use when finishing a task: writes the final summary that becomes the pull request description.",

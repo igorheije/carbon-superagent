@@ -98,6 +98,22 @@ Em cada tarefa o Carbon injeta no prompt a visão geral, a estrutura e os **arqu
 - **Personas**: Engenharia, Produto, Design, QA, Dados. A persona de quem pede a tarefa define o framing do agente, o entregável (ex.: Produto escreve specs em `docs/`) e as skills carregadas.
 - **Skills** no formato `SKILL.md` (o mesmo do Claude Code e do Codex): crie no painel, importe de um link do GitHub, envie um arquivo ou cole. Cada skill pode valer para todas as personas ou só algumas. **Skills importadas entram desligadas** até alguém revisar. Elas são instaladas em `.claude/skills/` e `.codex/skills/` de cada worktree e ficam fora dos commits.
 
+## Harness: 28 skills nativas
+
+O Carbon já vem com uma coleção de skills (`carbon-*`) que transforma boas práticas de engenharia em instruções que o agente segue em toda tarefa. Elas foram adaptadas do [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) (skills e agentes de TDD, verificação, revisão, segurança e afins) para o protocolo do Carbon: falam a língua dos marcadores `CARBON_*`, respeitam o worktree isolado e nunca mandam o agente commitar ou dar push.
+
+| Grupo | Skills | Para quê |
+| --- | --- | --- |
+| Contexto | `search-first`, `iterative-retrieval`, `context-budget` | Reaproveitar antes de escrever; buscar contexto em rodadas curtas; não desperdiçar janela |
+| Agente | `agent-self-debug`, `decision-ledger`, `docs-sync` | Sair de loops com regra de parada; registrar decisões de design; manter docs em dia |
+| Qualidade | `bugfix-regression`, `verification-loop`, `self-review`, `silent-failure-hunt`, `refactor-safely`, `performance-loop`, `test-plan` | Teste falhando antes do fix; build/tipos/lint/testes antes de entregar; revisão com severidade; erros engolidos; refactor sem mudar comportamento; otimização medida |
+| Segurança e dados | `security-review`, `lgpd-data-guard`, `dependency-hygiene` | Checklist OWASP; dados pessoais e de saúde fora de logs e fixtures; dependências com critério |
+| Backend | `api-contract`, `db-migration-safety`, `error-handling`, `observability`, `production-audit` | Contrato de API consistente; migrações reversíveis e sem downtime; erros tratados; logs úteis; "o que quebra em produção?" |
+| Interface e E2E | `frontend-quality`, `e2e-critical-flow`, `design-review` | Estados completos, acessibilidade, responsivo; fluxo crítico com teste determinístico |
+| Personas | `pr-description`, `product-spec`, `qa-acceptance`, `data-analysis` | Resumo do PR; spec de produto; critérios virando testes; análise reproduzível sem número inventado |
+
+Cada skill vale para todas as personas ou só para as relevantes (Engenharia recebe a coleção completa; Produto, Design, QA e Dados recebem as gerais mais as suas). Em *Skills*, o admin pode desligar qualquer uma ou mudar para quais personas ela vale. Skills novas desta coleção chegam sozinhas em instalações existentes, sem sobrescrever essas escolhas.
+
 ## Projetos
 
 Um Carbon atende vários repositórios. Cada **projeto** tem sua fila de tarefas, base de conhecimento, lições e regras de permissão; agente, modelos, política e pessoas são globais. Troque pelo seletor no topo (cada pessoa tem seu projeto ativo) e gerencie em *Configurações → Projetos*. A fila de execução é única: as tarefas de todos os projetos rodam em ordem, cada uma no repositório do seu projeto.

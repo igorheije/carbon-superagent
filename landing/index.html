@@ -163,6 +163,7 @@
 <link rel="stylesheet" href="assets/flows.css">
 <script src="assets/flows.js" defer></script>
 <script src="assets/chat.js" defer></script>
+<script src="assets/harness.js" defer></script>
 </head>
 <body>
 <header class="wrap">
@@ -338,6 +339,16 @@
     <p class="integ-note reveal">Webhooks por túnel HTTPS, aceitos só com a assinatura de cada serviço. Tokens ficam no banco local e nunca voltam ao navegador.</p>
   </section>
 
+  <section id="harness" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>harness</p>
+    <h2 class="reveal">28 skills de engenharia, instaladas em cada tarefa.</h2>
+    <p class="sub reveal">O agente não depende de boa vontade: em cada etapa ele segue skills que transformam boas práticas em passos verificáveis. Teste falhando antes do fix, revisão com severidade, segurança, LGPD, migrações reversíveis, verificação antes de entregar. Adaptadas do Everything Claude Code para o protocolo do Carbon.</p>
+    <div class="harness reveal" id="harness-scene" role="img" aria-label="Animação: conforme a tarefa passa por intake, plan, research, code, test, review, deliver e reflect, acendem as skills que o agente usa em cada etapa">
+      <div class="h-stages" data-h-stages aria-hidden="true"></div>
+      <div class="h-groups" data-h-groups aria-hidden="true"></div>
+    </div>
+  </section>
+
   <section id="inspiracao" class="wrap">
     <p class="eyebrow reveal"><span class="dot"></span>inspiração e créditos</p>
     <h2 class="reveal">De onde veio a ideia.</h2>
@@ -349,6 +360,7 @@
       </div>
       <ul class="credits">
         <li class="reveal"><a href="https://docs.anthropic.com/en/docs/claude-code/overview" rel="noopener noreferrer">Claude Code</a> e <a href="https://github.com/openai/codex" rel="noopener noreferrer">Codex CLI</a><span>Os executores. O Carbon orquestra; eles escrevem o código. Basta ter um dos dois.</span></li>
+        <li class="reveal"><a href="https://github.com/affaan-m/everything-claude-code" rel="noopener noreferrer">Everything Claude Code</a><span>Base das 28 skills nativas do harness: TDD, verificação, revisão, segurança e mais, adaptadas ao protocolo do Carbon.</span></li>
         <li class="reveal"><a href="https://github.com/quanhoangindex/ascii-reveal" rel="noopener noreferrer">ascii-reveal</a><span>As animações de decodificação em caracteres do painel (MIT).</span></li>
         <li class="reveal"><a href="https://vercel.com/font" rel="noopener noreferrer">Geist</a><span>Tipografia sans e mono.</span></li>
         <li class="reveal"><span style="margin:0">E o nome: carbono, o elemento que se liga a quase tudo. Como um agente que se conecta ao seu fluxo.</span></li>

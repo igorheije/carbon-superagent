@@ -200,3 +200,22 @@
   .integ { grid-template-columns: 1fr; }
   .chat { min-height: 430px; }
 }
+
+/* ── harness: skills por etapa ───────────────────────────────── */
+.harness { margin-top: 44px; padding: 20px; border: 1px solid var(--line-strong); border-radius: 18px; background: var(--bg); }
+.h-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.h-stage { padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 999px; font-family: var(--mono); font-size: 11px; color: var(--subtle); transition: color .3s, border-color .3s, background .3s; }
+.h-stage.done { color: var(--muted); border-color: var(--line-strong); }
+.h-stage.done::after { content: " ✓"; color: var(--accent); }
+.h-stage.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); animation: glow 1.4s ease-in-out infinite; }
+.h-count { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.h-groups { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px 20px; }
+.h-title { display: block; margin-bottom: 8px; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--subtle); }
+.h-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.h-chip { padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px; font-family: var(--mono); font-size: 11.5px; color: var(--subtle); transition: color .25s, border-color .25s, background .25s, transform .25s var(--ease); }
+.h-chip.used { color: var(--ink); border-color: var(--line-strong); }
+.h-chip.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); transform: translateY(-2px); box-shadow: 0 6px 18px -8px var(--accent); }
+@media (max-width: 640px) {
+  .harness { padding: 14px; }
+  .h-count { margin-left: 0; width: 100%; }
+}
