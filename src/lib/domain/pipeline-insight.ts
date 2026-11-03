@@ -25,7 +25,8 @@ function highlightsFor(ticket: Ticket, stage: StageId): readonly string[] {
       return ticket.findings.map((f) => `${f.resolved ? "✓" : "!"} ${f.severity} · ${f.text}`);
     case "deliver":
       return [
-        ...(ticket.pr ? [`PR #${ticket.pr.number}${ticket.pr.draft ? " (draft)" : ""} · ${ticket.pr.branch}`] : []),
+        ...(ticket.workspace ? [`worktree ${ticket.workspace.branch} ← ${ticket.workspace.base}${ticket.workspace.commit ? ` · ${ticket.workspace.commit}` : ""}`] : []),
+        ...(ticket.pr ? [`PR #${ticket.pr.number}${ticket.pr.draft ? " (draft)" : ""} · ${ticket.pr.branch} → ${ticket.pr.base ?? "base"}`] : []),
         ...ticket.diff.map((d) => `${d.path} +${d.additions} −${d.deletions}`),
       ];
     default:

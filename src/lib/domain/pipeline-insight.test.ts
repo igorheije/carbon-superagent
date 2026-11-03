@@ -43,7 +43,9 @@ describe("stageInsight", () => {
     expect(stageInsight(ticket, "plan").highlights).toEqual(["✓ mapear", "○ implementar"]);
     expect(stageInsight(ticket, "research").highlights).toEqual(["src/a.ts · 0.91"]);
     expect(stageInsight(ticket, "review").highlights).toEqual(["✓ HIGH · vaza pii"]);
-    expect(stageInsight(ticket, "deliver").highlights).toEqual(["PR #12 (draft) · agent/frg-9", "src/a.ts +4 −1"]);
+    expect(stageInsight(ticket, "deliver").highlights).toEqual(["PR #12 (draft) · agent/frg-9 → base", "src/a.ts +4 −1"]);
+    const withWorkspace = { ...ticket, workspace: { path: "/wt", branch: "agent/frg-9", base: "origin/main", prBase: "main", commit: "a1b2c3d" }, pr: { ...ticket.pr!, base: "develop" } };
+    expect(stageInsight(withWorkspace, "deliver").highlights.slice(0, 2)).toEqual(["worktree agent/frg-9 ← origin/main · a1b2c3d", "PR #12 (draft) · agent/frg-9 → develop"]);
   });
 
   it("is empty without a ticket", () => {

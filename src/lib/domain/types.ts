@@ -68,6 +68,21 @@ export interface PullRequest {
   readonly number: number;
   readonly branch: string;
   readonly draft: boolean;
+  /** Branch the PR targets. */
+  readonly base?: string;
+  readonly url?: string;
+}
+
+/** Where the task's changes live: an isolated git worktree on its own branch. */
+export interface TicketWorkspace {
+  readonly path: string;
+  readonly branch: string;
+  /** What the branch was created from (e.g. "main", "origin/develop", "(sem commits)"). */
+  readonly base: string;
+  /** Suggested PR target, or null when the repo has no branch to target. */
+  readonly prBase: string | null;
+  /** Short SHA of Carbon's commit, once delivered. */
+  readonly commit: string | null;
 }
 
 export type PermissionStatus = "pending" | "allowed" | "denied" | "expired";
@@ -125,6 +140,8 @@ export interface Ticket {
   readonly findings: readonly ReviewFinding[];
   readonly tests: { readonly added: number; readonly passing: number; readonly total: number } | null;
   readonly pr: PullRequest | null;
+  /** Set at intake; the commit is filled in at delivery. */
+  readonly workspace?: TicketWorkspace | null;
   readonly tokens: number;
   /** Model actually used (alias or name + effort), set when the run starts. */
   readonly model: string | null;

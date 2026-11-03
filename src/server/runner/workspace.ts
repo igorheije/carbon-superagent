@@ -67,15 +67,17 @@ export async function collectDiff(worktreePath: string): Promise<readonly DiffFi
   );
 }
 
-export async function commit(worktreePath: string, message: string): Promise<{ readonly ok: boolean; readonly detail: string }> {
+export async function commit(worktreePath: string, message: string): Promise<{ readonly ok: boolean; readonly detail: string; readonly sha: string | null }> {
   const email = await git(worktreePath, ["config", "user.email"]);
   const identity = email.ok && email.stdout.trim() ? [] : ["-c", "user.name=Carbon Agent", "-c", "user.email=carbon@localhost"];
   const result = await git(worktreePath, [...identity, "commit", "-m", message]);
-  return { ok: result.ok, detail: firstLine(result.ok ? result.stdout : result.stderr) };
+  if (!result.ok) return { ok: false, detail: firstLine(result.stderr), sha: null };
+  const head = await git(worktreePath, ["rev-parse", "--short", "HEAD"]);
+  return { ok: true, detail: firstLine(result.stdout), sha: head.ok ? firstLine(head.stdout) : null };
 }
 
 export async function pushAndOpenPr(
-  wt: Worktree,
+  wt: Pick<Worktree, "path" | "branch" | "prBase">,
   title: string,
   body: string,
   isDraft: boolean,
