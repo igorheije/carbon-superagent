@@ -7,7 +7,7 @@
 <meta name="description" content="Agentes autônomos que pegam uma tarefa do Linear ou GitHub e entregam um PR revisável, rodando no seu computador com Claude Code ou Codex. Open source, MIT.">
 <meta property="og:title" content="Carbon SuperAgent">
 <meta property="og:description" content="Da tarefa ao PR revisável, no seu computador, com Claude Code ou Codex.">
-<meta property="og:image" content="assets/mission-control.png">
+<meta property="og:image" content="https://carbon-superagent.vercel.app/assets/mission-control.png">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -92,7 +92,7 @@
 
   /* pipeline */
   .pipe { margin-top: 44px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
-  .stage { padding: 20px 16px 22px; border-right: 1px solid var(--line); position: relative; }
+  .stage { padding: 20px 16px 22px; border-right: 1px solid var(--line); position: relative; transition: background .35s; }
   .stage:last-child { border-right: 0; }
   .stage .n { font-family: var(--mono); font-size: 10px; color: var(--subtle); letter-spacing: .12em; }
   .stage .t { font-weight: 600; margin-top: 10px; font-size: 15px; }
@@ -160,6 +160,8 @@
     section { padding-top: 80px; }
   }
 </style>
+<link rel="stylesheet" href="assets/flows.css">
+<script src="assets/flows.js" defer></script>
 </head>
 <body>
 <header class="wrap">
@@ -189,9 +191,44 @@
       </div>
     </div>
 
-    <figure class="shot reveal" style="margin-left:0;margin-right:0">
-      <div class="bar" aria-hidden="true"><i></i><i></i><i></i></div>
-      <img src="assets/mission-control.png" width="1440" height="900" alt="Mission control do Carbon: pipeline de oito agentes, fila de tickets, sessão do agente ao vivo e plano com critérios de aceite" fetchpriority="high">
+    <figure class="shot reveal" style="margin-left:0;margin-right:0" role="img" aria-label="Animação do mission control do Carbon: tickets do Linear e do GitHub passam pelos oito agentes, a sessão mostra comandos e testes ao vivo, o humano aprova uma permissão e cada tarefa sai como PR draft">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span class="bar-title mono">127.0.0.1:3417 · mission control · demo</span></div>
+      <div class="mc" id="mc" aria-hidden="true">
+        <div class="mc-top">
+          <span class="pill">▣ meu-app</span>
+          <span class="crumb"><b data-crumb-id>ENG-142</b><span data-crumb-stage>intake</span></span>
+          <span class="grow"></span>
+          <span class="pill live"><i></i>ao vivo</span>
+        </div>
+        <div class="mc-stats">
+          <div><span>tickets entregues</span><b data-stat="done">0/3</b></div>
+          <div><span>PRs abertos</span><b data-stat="prs">0</b></div>
+          <div><span>tokens</span><b data-stat="tokens">0</b></div>
+          <div><span>eventos</span><b data-stat="events">0</b></div>
+          <div><span>lições promovidas</span><b data-stat="lessons">2</b></div>
+        </div>
+        <div class="mc-pipe" data-pipe></div>
+        <div class="mc-grid">
+          <div class="panel q">
+            <div class="panel-h"><span class="mlabel">fila · linear + github</span><span class="count" data-queue-count>3 na fila</span></div>
+            <div class="queue" data-queue></div>
+          </div>
+          <div class="panel s">
+            <div class="panel-h"><span class="mlabel">sessão do agente</span><span class="count">claude code</span></div>
+            <div class="log" data-log></div>
+            <div class="perm" data-perm>
+              <span class="mlabel">pedido de permissão</span>
+              <code></code>
+              <div class="perm-b"><span class="mbtn">negar</span><span class="mbtn primary" data-allow>permitir nesta tarefa</span></div>
+            </div>
+          </div>
+          <div class="panel p">
+            <div class="panel-h"><span class="mlabel">plano · critérios</span><span class="count" data-plan-count>0/0</span></div>
+            <ol class="plan" data-plan></ol>
+          </div>
+        </div>
+        <div class="toast" data-toast></div>
+      </div>
     </figure>
   </div>
 
@@ -219,28 +256,50 @@
         <span class="k">BASE DE CONHECIMENTO</span>
         <h3>O repositório é mapeado uma vez, no setup</h3>
         <p>Grafo de imports, símbolos e busca full-text por projeto. Cada tarefa recebe o mapa e os arquivos mais relevantes, então o research não começa do zero.</p>
-        <img src="assets/knowledge.png" width="1440" height="900" alt="Tela de base de conhecimento com grafo estático e resultados ranqueados" loading="lazy">
+        <div class="kg" id="kg" role="img" aria-label="Animação: uma busca na base de conhecimento acende os arquivos relevantes no grafo de imports e lista os resultados ranqueados">
+          <div class="kg-side" aria-hidden="true">
+            <span class="mlabel">busca · bm25 + vetor</span>
+            <div class="kg-q" data-kg-q></div>
+            <ol class="res" data-kg-res></ol>
+            <span class="kg-meta">grafo de imports · demo/api-gateway</span>
+          </div>
+          <svg viewBox="0 0 360 250" aria-hidden="true" preserveAspectRatio="xMidYMid meet"><g data-kg-graph></g></svg>
+        </div>
       </article>
       <article class="card c2 reveal">
         <span class="k">AUTOAPRENDIZADO</span>
         <h3>Lições que viram contexto</h3>
         <p>Ao fim de cada tarefa o agente propõe lições. Você promove as boas e elas entram nos próximos prompts daquele projeto.</p>
+        <div class="mini" id="mini-lesson" aria-hidden="true"></div>
       </article>
       <article class="card c2 reveal">
         <span class="k">MODELO E ESFORÇO</span>
         <h3>Manual ou automático</h3>
         <p>Escolha modelo e esforço por tarefa, ou deixe o roteador decidir pelo texto. O painel sempre mostra o que está rodando.</p>
+        <div class="mini" id="mini-router" aria-hidden="true"></div>
       </article>
       <article class="card c4 reveal">
         <span class="k">TAREFA EM 30 SEGUNDOS</span>
         <h3>Escreva o que fazer. A IA rascunha contexto e critérios.</h3>
         <p>Usa o que você digitou, a base de conhecimento e as lições promovidas. Ou importe direto de uma issue do Linear ou do GitHub.</p>
-        <img src="assets/new-task.png" width="1440" height="900" alt="Diálogo de nova tarefa com seleção de modelo e esforço" loading="lazy">
+        <div class="nt" id="nt" role="img" aria-label="Animação: o usuário escreve a tarefa, a IA rascunha contexto e critérios de aceite, modelo e esforço são escolhidos e a tarefa entra na fila">
+          <div class="nt-tabs" aria-hidden="true"><span class="on">[ Escrever ]</span><span>[ Linear ]</span><span>[ GitHub ]</span></div>
+          <span class="mlabel" aria-hidden="true">o que fazer</span>
+          <div class="nt-in" data-nt-title aria-hidden="true"></div>
+          <div class="nt-row" aria-hidden="true"><span class="mlabel">contexto e critérios de aceite</span><span class="ai" data-nt-ai>✦ refinar com IA</span></div>
+          <div class="nt-in nt-ta" data-nt-ctx aria-hidden="true"></div>
+          <span class="mlabel" aria-hidden="true">modelo e esforço</span>
+          <div class="chips2" data-model aria-hidden="true"><span class="chip2">Automático</span><span class="chip2">Haiku</span><span class="chip2">Sonnet</span><span class="chip2">Opus</span></div>
+          <div class="chips2" data-effort aria-hidden="true"><span class="chip2">Automático</span><span class="chip2">low</span><span class="chip2">medium</span><span class="chip2">high</span><span class="chip2">xhigh</span></div>
+          <div class="nt-hint" data-nt-hint aria-hidden="true"></div>
+          <div class="nt-foot" aria-hidden="true"><span>executa com Claude Code</span><span class="go" data-nt-go>Enfileirar</span></div>
+        </div>
       </article>
       <article class="card c2 reveal">
         <span class="k">PERMISSÕES</span>
         <h3>Sem pop-up a cada comando</h3>
         <p>Política inteligente, regras por repositório e “permitir nesta tarefa”. Pedidos aparecem no painel; ações perigosas ficam bloqueadas.</p>
+        <div class="mini" id="mini-perm" aria-hidden="true"></div>
       </article>
       <article class="card c2 reveal">
         <span class="k">TIMES</span>
@@ -340,15 +399,19 @@
   }, { threshold: 0.15 });
   document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
 
-  // light up the eight stages one after another
+  // fill the eight stages once, then keep a "current stage" highlight walking the pipeline
   const STAGE_MS = 260;
+  const WALK_MS = 900;
   const runPipe = (pipe) => {
     pipe.classList.add("run");
-    [...pipe.querySelectorAll(".stage")].forEach((stage, i) => {
-      const delay = reduce ? 0 : i * STAGE_MS;
-      stage.style.setProperty("--d", delay + "ms");
-      setTimeout(() => stage.classList.add("on"), delay);
-    });
+    const stages = [...pipe.querySelectorAll(".stage")];
+    stages.forEach((stage, i) => stage.style.setProperty("--d", (reduce ? 0 : i * STAGE_MS) + "ms"));
+    if (reduce) { stages.forEach((s) => s.classList.add("on")); return; }
+    let current = 0;
+    setInterval(() => {
+      stages.forEach((s, j) => s.classList.toggle("on", j === current));
+      current = (current + 1) % stages.length;
+    }, WALK_MS);
   };
 
   const copy = document.getElementById("copy");
