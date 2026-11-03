@@ -2,6 +2,7 @@ import { MissionHeader } from "@/components/mission/MissionHeader";
 import { PermissionPanel } from "@/components/mission/PermissionPanel";
 import { ArtifactTabs } from "@/components/mission/ArtifactTabs";
 import { DeliveryCard } from "@/components/mission/DeliveryCard";
+import { EfficiencyBar } from "@/components/mission/EfficiencyBar";
 import { KpiStrip } from "@/components/mission/KpiStrip";
 import { LiveTerminal } from "@/components/mission/LiveTerminal";
 import { PipelineSection } from "@/components/mission/PipelineSection";
@@ -19,6 +20,8 @@ export default function MissionControlPage() {
       <PermissionPanel />
 
       <KpiStrip />
+
+      <EfficiencyBar />
 
       <PipelineSection />
 

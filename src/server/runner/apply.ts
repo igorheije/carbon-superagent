@@ -104,7 +104,10 @@ export function applyExecutorEvent(ticket: Ticket, ctx: RunContext, event: Execu
       if (ctx.hasMarkerPlan) return { ticket, ctx };
       return { ticket: { ...ticket, plan: event.items.map((item, i) => ({ id: `${ticket.id}-t${i}`, text: item.text, done: item.done })) }, ctx };
     case "usage":
-      return { ticket: { ...ticket, tokens: ticket.tokens + event.tokens }, ctx: { ...ctx, costUsd: ctx.costUsd + (event.costUsd ?? 0) } };
+      return {
+        ticket: { ...ticket, tokens: ticket.tokens + event.tokens, costUsd: (ticket.costUsd ?? 0) + (event.costUsd ?? 0) },
+        ctx: { ...ctx, costUsd: ctx.costUsd + (event.costUsd ?? 0) },
+      };
     case "result":
       return {
         ticket: event.isError ? appendLog(ticket, currentStage(ticket), "warn", `agente terminou com erro: ${clipSummary(event.text)}`) : ticket,

@@ -38,6 +38,8 @@ interface RunnerState {
   executor: RunningExecutor | null;
   tracker: Tracker | null;
   cancelled: boolean;
+  /** When the current run started (ms), to add its duration to the ticket on finish. */
+  runStartedAt: number | null;
   readonly pending: Map<string, PendingPermission>;
   /** Tasks where a human chose "allow everything for the rest of this task". */
   readonly allowAll: Set<string>;
@@ -50,7 +52,7 @@ function state(): RunnerState {
   if (!globalForRunner.carbonRunner) {
     const events = new EventEmitter();
     events.setMaxListeners(100);
-    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, pending: new Map(), allowAll: new Set(), events };
+    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, runStartedAt: null, pending: new Map(), allowAll: new Set(), events };
   }
   return globalForRunner.carbonRunner;
 }
@@ -109,8 +111,12 @@ function emitTask(type: TaskEventType, taskId: string, detail: string) {
 const EVENT_FOR_STATUS: Partial<Record<Ticket["status"], TaskEventType>> = { waiting: "question", failed: "failed", done: "done" };
 
 function finish(t: Tracker, status: Ticket["status"], stage: StageId, text: string, level: "ok" | "warn") {
+  const s = state();
+  const elapsed = s.runStartedAt ? Math.round((Date.now() - s.runStartedAt) / 1000) : 0;
+  s.runStartedAt = null;
   t.log(stage, level, text);
-  t.set({ ...t.get(), status, stage }, true);
+  const current = t.get();
+  t.set({ ...current, status, stage, runSeconds: (current.runSeconds ?? 0) + elapsed }, true);
   const event = EVENT_FOR_STATUS[status];
   if (event) emitTask(event, t.get().id, text);
 }
@@ -156,6 +162,7 @@ async function execute(task: Task): Promise<void> {
   const t = tracker(task);
   s.activeTaskId = task.id;
   s.cancelled = false;
+  s.runStartedAt = Date.now();
   // Resuming after an answer keeps logs, plan and stage; a fresh run keeps only the decisions already made.
   const resuming = task.snapshot.resume === true;
   const resumeStage: StageId = task.snapshot.stage ?? "plan";

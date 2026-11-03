@@ -143,6 +143,10 @@ export interface Ticket {
   /** Set at intake; the commit is filled in at delivery. */
   readonly workspace?: TicketWorkspace | null;
   readonly tokens: number;
+  /** Cost reported by the executor (Claude Code), summed over every run of the task. */
+  readonly costUsd?: number;
+  /** Wall-clock seconds the agent ran, summed over every run (resumes included). */
+  readonly runSeconds?: number;
   /** Model actually used (alias or name + effort), set when the run starts. */
   readonly model: string | null;
   /** Permission prompts raised during the run (pending first in the panel). */
