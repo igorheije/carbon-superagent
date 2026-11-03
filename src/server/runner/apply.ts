@@ -1,8 +1,10 @@
-import { STAGES, type LogLevel, type StageId, type Ticket } from "@/lib/domain/types";
+import { STAGES, type StageId, type Ticket } from "@/lib/domain/types";
 import { clipSummary, type ExecutorEvent } from "../executors/events";
 import { parseMarkers, stripMarkers, type Marker } from "../executors/protocol";
+import { addQuestion } from "./questions";
+import { appendLog } from "./ticket-log";
 
-export const MAX_LOGS = 400;
+export { appendLog, MAX_LOGS } from "./ticket-log";
 const MAX_HITS = 12;
 const MAX_NARRATION_LINES = 3;
 const RESEARCH_TOOLS = new Set(["Read", "Grep", "Glob"]);
@@ -18,12 +20,6 @@ export interface RunContext {
 }
 
 export const emptyContext: RunContext = { lessons: [], question: null, hasMarkerPlan: false, isError: false, costUsd: 0, sessionId: null };
-
-export function appendLog(ticket: Ticket, stage: StageId, level: LogLevel, text: string): Ticket {
-  const lastId = ticket.logs.at(-1)?.id ?? 0;
-  const line = { id: lastId + 1, stage, level, text };
-  return { ...ticket, logs: [...ticket.logs, line].slice(-MAX_LOGS) };
-}
 
 const currentStage = (ticket: Ticket): StageId => ticket.stage ?? "intake";
 
@@ -61,7 +57,7 @@ function applyMarker(state: { ticket: Ticket; ctx: RunContext }, marker: Marker)
     case "lesson":
       return { ticket, ctx: { ...ctx, lessons: [...ctx.lessons, { rule: marker.rule, evidence: marker.evidence }] } };
     case "question":
-      return { ticket: appendLog(ticket, currentStage(ticket), "warn", `pergunta: ${marker.text}`), ctx: { ...ctx, question: marker.text } };
+      return { ticket: addQuestion(ticket, currentStage(ticket), marker.text, new Date().toISOString()), ctx: { ...ctx, question: marker.text } };
   }
 }
 
@@ -89,7 +85,10 @@ function addHit(ticket: Ticket, path: string): Ticket {
 export function applyExecutorEvent(ticket: Ticket, ctx: RunContext, event: ExecutorEvent): { ticket: Ticket; ctx: RunContext } {
   switch (event.type) {
     case "session":
-      return { ticket: appendLog(ticket, currentStage(ticket), "info", `sessão ${event.sessionId.slice(0, 8)}${event.model ? ` · ${event.model}` : ""}`), ctx: { ...ctx, sessionId: event.sessionId } };
+      return {
+        ticket: { ...appendLog(ticket, currentStage(ticket), "info", `sessão ${event.sessionId.slice(0, 8)}${event.model ? ` · ${event.model}` : ""}`), sessionId: event.sessionId },
+        ctx: { ...ctx, sessionId: event.sessionId },
+      };
     case "text":
       return applyText(ticket, ctx, event.text);
     case "thinking":

@@ -16,10 +16,12 @@ export type Marker =
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 const MAX_TEXT = 500;
+/** Questions carry the options the human must choose from, so they get more room. */
+const MAX_QUESTION = 2_000;
 // Tolerates markdown the model often adds: list bullets, quotes, bold and inline code.
 const MARKER_RE = /^\s*(?:[-*+>]\s+|\d+[.)]\s+)?[`*_]*CARBON_([A-Z]+)[`*_]*:[`*_]*\s*(.*?)[`*_]*\s*$/;
 
-const clip = (text: string): string => text.trim().slice(0, MAX_TEXT);
+const clip = (text: string, max = MAX_TEXT): string => text.trim().slice(0, max);
 
 function parseLine(line: string): Marker | null {
   const match = MARKER_RE.exec(line);
@@ -66,7 +68,7 @@ function parseLine(line: string): Marker | null {
       return ruleText ? { kind: "lesson", rule: clip(ruleText), evidence: clip(evidence.join("|") || "execução do agente") } : null;
     }
     case "QUESTION":
-      return value ? { kind: "question", text: clip(value) } : null;
+      return value ? { kind: "question", text: clip(value, MAX_QUESTION) } : null;
     default:
       return null;
   }
@@ -99,7 +101,7 @@ Print these markers on their own lines as plain text (no bullets, bold or backti
 - CARBON_TESTS: <passing>/<total>                         — after each test run
 - CARBON_FINDING: <CRITICAL|HIGH|MEDIUM|LOW> | <text>     — self-review findings; append [resolved] once fixed
 - CARBON_LESSON: <when X, do Y> | <evidence>              — at the end, 0-2 reusable lessons for this repo
-- CARBON_QUESTION: <one concrete question>                — only if a design decision blocks you; then stop
+- CARBON_QUESTION: <one concrete question, with the options> — only if a decision blocks you; print it as your last line, then stop. The human's answer resumes this same session.
 
 Before your final summary, every plan step must have exactly one CARBON_DONE or CARBON_SKIPPED line. Review the list and close the ones you have not marked yet.
 `.trim();

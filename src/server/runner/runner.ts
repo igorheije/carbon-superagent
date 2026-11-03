@@ -9,7 +9,7 @@ import { getSettings, type Settings } from "../repo/settings";
 import { classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
-import { addLesson, findTask, nextQueuedTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
+import { addLesson, findTask, moveToFront, nextQueuedTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
 import { buildKnowledgeContext } from "../knowledge/context";
 import { ensureFreshIndex } from "../knowledge/indexer";
@@ -17,6 +17,7 @@ import { checkRepo } from "../system/detect";
 import { findProject } from "../repo/projects";
 import { appendLog, applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
 import { buildPrompt } from "./prompt";
+import { answeredQuestions, answerQuestion as applyAnswer, decisionsSection, resumeMessage } from "./questions";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeProjectMap } from "./workspace";
 
 const SAVE_THROTTLE_MS = 400;
@@ -136,8 +137,17 @@ async function execute(task: Task): Promise<void> {
   const t = tracker(task);
   s.activeTaskId = task.id;
   s.cancelled = false;
-  t.set({ ...t.get(), status: "running", stage: "intake", logs: [], plan: [], hits: [], diff: [], findings: [], tests: null, pr: null }, true);
-  t.log("intake", "info", `${task.source} ${task.key} · persona ${task.persona} · executor ${task.executor}`);
+  // Resuming after an answer keeps logs, plan and stage; a fresh run keeps only the decisions already made.
+  const resuming = task.snapshot.resume === true;
+  const resumeStage: StageId = task.snapshot.stage ?? "plan";
+  if (resuming) {
+    t.set({ ...t.get(), status: "running", resume: false }, true);
+    t.log(resumeStage, "info", "retomando com a sua resposta");
+  } else {
+    const decided = answeredQuestions(t.get());
+    t.set({ ...t.get(), status: "running", stage: "intake", logs: [], plan: [], hits: [], diff: [], findings: [], tests: null, pr: null, questions: decided, sessionId: null, resume: false }, true);
+    t.log("intake", "info", `${task.source} ${task.key} · persona ${task.persona} · executor ${task.executor}`);
+  }
 
   try {
     const project = task.projectId ? findProject(task.projectId) : null;
@@ -164,37 +174,52 @@ async function execute(task: Task): Promise<void> {
     const choice = resolveModel(task.executor, task.model, task.title, task.description, task.effort);
     t.set({ ...t.get(), model: executionLabel(task.executor, choice) });
     t.log("intake", "info", `modelo ${choice.label} — ${choice.reason}`);
-    t.set({ ...t.get(), stage: "plan", repo: project.name }, true);
+    t.set({ ...t.get(), stage: resuming ? resumeStage : "plan", repo: project.name }, true);
 
-    const prompt = buildPrompt({
-      key: task.key,
-      title: task.title,
-      description: task.description,
-      persona: task.persona,
-      requester: task.snapshot.requester,
-      skills,
-      lessons: promotedLessons(project.id),
-      executor: task.executor,
-      knowledge: knowledge?.prompt ?? null,
-    });
-    let ctx = emptyContext;
-    const command = buildCommand(task.executor, prompt, wt.path, settings, choice);
-    s.tracker = t;
-    s.executor = startExecutor(command, wt.path, settings.maxRunMinutes * 60_000, (event) => {
-      // Most permission prompts are answered here, without a human: policy, repo rules, task-wide allow.
-      if (event.type === "permission_request" && autoAnswer(task.id, event, wt.path, project.repoPath, settings, t)) return;
-      const next = applyExecutorEvent(t.get(), ctx, relativize(event, wt.path));
-      ctx = next.ctx;
-      t.set(next.ticket, event.type === "permission_request");
-      if (event.type === "permission_request") registerPending(task.id, event.tool, project.repoPath, event.requestId, event.input, event.suggestions, settings.permissionTimeoutMinutes);
-    });
-    const exit = await s.executor.done;
-    expirePending(task.id);
-    s.executor = null;
+    const decisions = answeredQuestions(t.get());
+    const fullPrompt = () =>
+      buildPrompt({
+        key: task.key,
+        title: task.title,
+        description: task.description,
+        persona: task.persona,
+        requester: task.snapshot.requester,
+        skills,
+        lessons: promotedLessons(project.id),
+        executor: task.executor,
+        knowledge: knowledge?.prompt ?? null,
+        decisions: decisionsSection(decisions),
+      });
+    const runAgent = async (prompt: string, resumeSessionId: string | null) => {
+      let ctx = emptyContext;
+      const command = buildCommand(task.executor, prompt, wt.path, settings, choice, resumeSessionId);
+      s.tracker = t;
+      s.executor = startExecutor(command, wt.path, settings.maxRunMinutes * 60_000, (event) => {
+        // Most permission prompts are answered here, without a human: policy, repo rules, task-wide allow.
+        if (event.type === "permission_request" && autoAnswer(task.id, event, wt.path, project.repoPath, settings, t)) return;
+        const next = applyExecutorEvent(t.get(), ctx, relativize(event, wt.path));
+        ctx = next.ctx;
+        t.set(next.ticket, event.type === "permission_request");
+        if (event.type === "permission_request") registerPending(task.id, event.tool, project.repoPath, event.requestId, event.input, event.suggestions, settings.permissionTimeoutMinutes);
+      });
+      const exit = await s.executor.done;
+      expirePending(task.id);
+      s.executor = null;
+      return { exit, ctx };
+    };
+
+    // Claude Code continues the same session (keeps everything it read and decided); Codex starts
+    // fresh with the decisions in the prompt. A resume that cannot find its session falls back to fresh.
+    const resumeId = resuming && task.executor === "claude" ? (task.snapshot.sessionId ?? null) : null;
+    let { exit, ctx } = await runAgent(resumeId ? resumeMessage(decisions) : fullPrompt(), resumeId);
+    if (resumeId && !s.cancelled && !exit.timedOut && exit.code !== 0 && ctx.sessionId === null) {
+      t.log(t.get().stage ?? resumeStage, "warn", "sessão anterior indisponível: recomeçando o agente com as suas decisões no contexto", true);
+      ({ exit, ctx } = await runAgent(fullPrompt(), null));
+    }
 
     if (s.cancelled) return finish(t, "failed", t.get().stage ?? "code", "cancelado por você", "warn");
     if (exit.timedOut) return finish(t, "failed", t.get().stage ?? "code", `tempo limite (${settings.maxRunMinutes} min) atingido`, "warn");
-    if (ctx.question) return finish(t, "waiting", t.get().stage ?? "plan", "aguardando sua decisão (veja a pergunta no log)", "warn");
+    if (ctx.question) return finish(t, "waiting", t.get().stage ?? "plan", "aguardando sua resposta no card de pergunta (acima do pipeline) para continuar", "warn");
     if (exit.code !== 0 || ctx.isError) {
       return finish(t, "failed", t.get().stage ?? "code", `agente saiu com código ${exit.code}: ${exit.stderrTail.split("\n").filter(Boolean).at(-1) ?? ""}`, "warn");
     }
@@ -360,10 +385,25 @@ export function cancelActive(): boolean {
 export function retryTask(id: string): boolean {
   const task = findTask(id);
   if (!task || task.status === "running" || task.status === "queued") return false;
-  saveSnapshot(id, { ...task.snapshot, status: "queued", stage: null });
+  // A retry starts over, but answers already given stay as decisions in the new prompt.
+  saveSnapshot(id, { ...task.snapshot, status: "queued", stage: null, resume: false });
   notify();
   kick();
   return true;
+}
+
+/** Human answer to a CARBON_QUESTION. When nothing else is pending, the task resumes first in line. */
+export function answerTaskQuestion(taskId: string, questionId: string, answer: string, userName: string): { ok: boolean; error?: string } {
+  const task = findTask(taskId);
+  if (!task) return { ok: false, error: "tarefa não encontrada" };
+  if (state().activeTaskId === taskId) return { ok: false, error: "esta tarefa já está executando" };
+  const result = applyAnswer(task.snapshot, questionId, answer, userName, new Date().toISOString());
+  if (!result.ok) return { ok: false, error: result.error };
+  saveSnapshot(taskId, result.ticket);
+  if (result.resumes) moveToFront(taskId);
+  notify();
+  if (result.resumes) kick();
+  return { ok: true };
 }
 
 export const notifyChange = notify;

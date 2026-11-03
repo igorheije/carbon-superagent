@@ -86,6 +86,17 @@ export interface PermissionPrompt {
   readonly auto?: boolean;
 }
 
+/** A blocking question the agent asked (CARBON_QUESTION). Answering it resumes the run. */
+export interface AgentQuestion {
+  readonly id: string;
+  readonly stage: StageId;
+  readonly text: string;
+  readonly askedAt: string;
+  readonly answer: string | null;
+  readonly answeredBy: string | null;
+  readonly answeredAt: string | null;
+}
+
 export interface Ticket {
   readonly id: string;
   readonly key: string;
@@ -110,6 +121,12 @@ export interface Ticket {
   readonly model: string | null;
   /** Permission prompts raised during the run (pending first in the panel). */
   readonly permissions?: readonly PermissionPrompt[];
+  /** Questions the agent asked, answered or not. Answered ones are fed back as decisions. */
+  readonly questions?: readonly AgentQuestion[];
+  /** Agent session of the last run, used to resume after a question is answered. */
+  readonly sessionId?: string | null;
+  /** Set when a human answered the pending questions: the next run continues instead of starting over. */
+  readonly resume?: boolean;
   readonly startedAtTick: number | null;
   readonly endedAtTick: number | null;
 }

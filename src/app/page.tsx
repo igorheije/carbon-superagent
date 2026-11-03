@@ -6,12 +6,15 @@ import { KpiStrip } from "@/components/mission/KpiStrip";
 import { LiveTerminal } from "@/components/mission/LiveTerminal";
 import { PipelineGraph } from "@/components/mission/PipelineGraph";
 import { PlanPanel } from "@/components/mission/PlanPanel";
+import { QuestionPanel } from "@/components/mission/QuestionPanel";
 import { TicketQueue } from "@/components/mission/TicketQueue";
 
 export default function MissionControlPage() {
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
       <MissionHeader />
+
+      <QuestionPanel />
 
       <PermissionPanel />
 

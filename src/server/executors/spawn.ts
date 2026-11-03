@@ -32,12 +32,24 @@ export interface ExecutorCommand {
  */
 const CLAUDE_ISOLATION = ["--setting-sources", "project,local", "--strict-mcp-config"];
 
-export function buildCommand(executor: ExecutorId, prompt: string, cwd: string, settings: Settings, choice: ModelChoice): ExecutorCommand {
+/**
+ * `resumeSessionId` continues an earlier Claude Code session (same cwd) instead of starting a new one.
+ * Codex is always a fresh run: the caller puts earlier decisions in the prompt instead.
+ */
+export function buildCommand(
+  executor: ExecutorId,
+  prompt: string,
+  cwd: string,
+  settings: Settings,
+  choice: ModelChoice,
+  resumeSessionId: string | null = null,
+): ExecutorCommand {
   if (executor === "claude") {
     const mode = settings.permissionProfile === "guarded" ? "acceptEdits" : settings.permissionProfile === "auto" ? "auto" : "bypassPermissions";
     const asksHost = settings.permissionProfile !== "unrestricted";
     const args = [
       "-p",
+      ...(resumeSessionId ? ["--resume", resumeSessionId] : []),
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--verbose",
