@@ -1,7 +1,7 @@
 import { STAGES, type StageId, type Ticket } from "@/lib/domain/types";
 import { clipSummary, type ExecutorEvent } from "../executors/events";
 import { parseMarkers, stripMarkers, type Marker } from "../executors/protocol";
-import { addQuestion } from "./questions";
+import { addOption, addQuestion } from "./questions";
 import { appendLog } from "./ticket-log";
 
 export { appendLog, MAX_LOGS } from "./ticket-log";
@@ -58,6 +58,8 @@ function applyMarker(state: { ticket: Ticket; ctx: RunContext }, marker: Marker)
       return { ticket, ctx: { ...ctx, lessons: [...ctx.lessons, { rule: marker.rule, evidence: marker.evidence }] } };
     case "question":
       return { ticket: addQuestion(ticket, currentStage(ticket), marker.text, new Date().toISOString()), ctx: { ...ctx, question: marker.text } };
+    case "option":
+      return { ticket: addOption(ticket, marker.option), ctx };
   }
 }
 

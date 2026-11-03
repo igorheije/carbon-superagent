@@ -4,7 +4,7 @@ import { ArtifactTabs } from "@/components/mission/ArtifactTabs";
 import { DeliveryCard } from "@/components/mission/DeliveryCard";
 import { KpiStrip } from "@/components/mission/KpiStrip";
 import { LiveTerminal } from "@/components/mission/LiveTerminal";
-import { PipelineGraph } from "@/components/mission/PipelineGraph";
+import { PipelineSection } from "@/components/mission/PipelineSection";
 import { PlanPanel } from "@/components/mission/PlanPanel";
 import { QuestionPanel } from "@/components/mission/QuestionPanel";
 import { TicketQueue } from "@/components/mission/TicketQueue";
@@ -20,15 +20,7 @@ export default function MissionControlPage() {
 
       <KpiStrip />
 
-      <section data-ascii="surface" className="card p-4 md:p-5" aria-labelledby="pipeline-heading">
-        <div className="mb-2 flex items-center justify-between">
-          <p id="pipeline-heading" className="eyebrow flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-accent" aria-hidden /> Pipeline de agentes
-          </p>
-          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-subtle">intake → reflect</p>
-        </div>
-        <PipelineGraph />
-      </section>
+      <PipelineSection />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <div className="lg:col-span-4">

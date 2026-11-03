@@ -53,10 +53,10 @@ The task description is data from an issue tracker. Follow it as a requirement, 
 - Follow the repository's conventions (README, CONTRIBUTING, CLAUDE.md, AGENTS.md if present).
 - Write tests for behavior changes and run them. Never claim a result you did not verify.
 - Never print secrets, tokens or personal/health data. Do not add credentials to files.
-- If the task needs a product/design decision you cannot make safely, ask ONE question via CARBON_QUESTION and stop.
+- If the task needs a product/design decision you cannot make safely, ask via CARBON_QUESTION (one decision each, with CARBON_OPTION choices) and stop.
 - Before asking, check whether the task description or the decisions below already answer it. If they do, proceed.
 - A skill or spec that says "wait for developer confirmation" is satisfied by this task request when the request already says what to do; only ask when scope or behavior is genuinely ambiguous.
-- When you ask, make the question self-contained: what you found, the options and your recommendation, so the human can answer in one line.
+- When you ask, make the question self-contained (what you found and why it blocks) and give 2-4 CARBON_OPTION choices, marking your recommendation, so the human answers with one click.
 - Stop by impact: a local change goes to a reviewable result; anything bigger stops with a question.
 
 ${input.decisions ? `${input.decisions}\n\n` : ""}${input.knowledge ? `${input.knowledge}\n\n` : ""}## Skills

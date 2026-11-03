@@ -45,6 +45,33 @@ describe("CARBON_QUESTION marker", () => {
     expect(ctx.question).toBe(long);
   });
 
+  it("attaches CARBON_OPTION lines to the question right above them", () => {
+    const text = [
+      "CARBON_QUESTION: Em qual repositório subir?",
+      "CARBON_OPTION: leolegends/instagram (recomendado) | novo, privado",
+      "- **CARBON_OPTION:** leolegends/ig-carrosseis | novo, privado",
+      "CARBON_QUESTION: O que fazer com os vídeos?",
+      "CARBON_OPTION: Tirar do repo | continuam no disco [recommended]",
+      "CARBON_OPTION: Subir como está",
+    ].join("\n");
+    const { ticket } = applyExecutorEvent(base, emptyContext, { type: "text", text });
+    expect(ticket.questions?.map((q) => q.options)).toEqual([
+      [
+        { label: "leolegends/instagram", detail: "novo, privado", recommended: true },
+        { label: "leolegends/ig-carrosseis", detail: "novo, privado", recommended: false },
+      ],
+      [
+        { label: "Tirar do repo", detail: "continuam no disco", recommended: true },
+        { label: "Subir como está", detail: null, recommended: false },
+      ],
+    ]);
+  });
+
+  it("ignores an option with no question before it", () => {
+    const { ticket } = applyExecutorEvent(base, emptyContext, { type: "text", text: "CARBON_OPTION: solta" });
+    expect(ticket.questions ?? []).toEqual([]);
+  });
+
   it("keeps the session id on the ticket so a later run can resume it", () => {
     const { ticket } = applyExecutorEvent(base, emptyContext, { type: "session", sessionId: "ab7181dd-1111", model: "opus" });
     expect(ticket.sessionId).toBe("ab7181dd-1111");

@@ -159,6 +159,7 @@ async function execute(task: Task): Promise<void> {
 
     const wt = await prepareWorktree(project.repoPath, project.baseBranch, task.key, task.id);
     t.log("intake", "tool", `worktree ${wt.branch} ← ${wt.base}`);
+    for (const note of wt.notes) t.log("intake", "warn", note);
     const skills = materializeSkills(wt.path, skillsForPersona(task.persona));
     t.log("intake", "ok", `${skills.length} skills instaladas · permissão ${settings.permissionProfile}`);
     const freshness = await ensureFreshIndex({ id: project.id, repoPath: project.repoPath });

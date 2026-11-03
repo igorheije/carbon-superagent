@@ -1,59 +1,24 @@
 import "server-only";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { DiffFile } from "@/lib/domain/types";
 import { dataDir } from "../db";
 import { firstLine, run } from "../proc";
 import type { Skill } from "../repo/skills";
 import { toSkillMarkdown } from "../skills/parse";
+import { prepareWorktree as prepareIsolatedWorktree, type Worktree } from "./worktree";
 
-const EXCLUDES = [".claude/skills/carbon-*/", ".codex/skills/carbon-*/", ".carbon/"];
 const MAX_DIFF_FILES = 12;
 const MAX_SNIPPET_LINES = 8;
 
-export interface Worktree {
-  readonly path: string;
-  readonly branch: string;
-  readonly base: string;
-}
-
-function slug(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "task";
-}
+export type { Worktree } from "./worktree";
 
 async function git(cwd: string, args: readonly string[], timeoutMs = 60_000) {
   return run("git", args, { cwd, timeoutMs });
 }
 
-async function resolveBase(repoPath: string, configured: string): Promise<string> {
-  if (configured) return configured;
-  const head = await git(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  return head.ok ? firstLine(head.stdout) : "main";
-}
-
-/** Keeps materialized skills out of commits without touching the repo's .gitignore. */
-async function ensureExcludes(worktreePath: string): Promise<void> {
-  const common = await git(worktreePath, ["rev-parse", "--git-common-dir"]);
-  if (!common.ok) return;
-  const infoDir = path.resolve(worktreePath, firstLine(common.stdout), "info");
-  const file = path.join(infoDir, "exclude");
-  mkdirSync(infoDir, { recursive: true });
-  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
-  const missing = EXCLUDES.filter((line) => !current.includes(line));
-  if (missing.length) appendFileSync(file, `\n# carbon: materialized agent skills\n${missing.join("\n")}\n`);
-}
-
-export async function prepareWorktree(repoPath: string, baseBranch: string, key: string, taskId: string): Promise<Worktree> {
-  const base = await resolveBase(repoPath, baseBranch);
-  const branch = `agent/${slug(key)}-${taskId.slice(0, 6)}`;
-  const target = path.join(dataDir(), "worktrees", `${slug(key)}-${taskId.slice(0, 6)}`);
-  mkdirSync(path.dirname(target), { recursive: true });
-  if (!existsSync(target)) {
-    const added = await git(repoPath, ["worktree", "add", "-b", branch, target, base]);
-    if (!added.ok) throw new Error(`git worktree add falhou: ${firstLine(added.stderr)}`);
-  }
-  await ensureExcludes(target);
-  return { path: target, branch, base };
+export function prepareWorktree(repoPath: string, baseBranch: string, key: string, taskId: string): Promise<Worktree> {
+  return prepareIsolatedWorktree(repoPath, baseBranch, key, taskId, path.join(dataDir(), "worktrees"));
 }
 
 const materializedName = (name: string): string => (name.startsWith("carbon-") ? name : `carbon-${name}`);
@@ -115,9 +80,10 @@ export async function pushAndOpenPr(
   body: string,
   isDraft: boolean,
 ): Promise<{ readonly ok: boolean; readonly url: string | null; readonly detail: string }> {
+  if (!wt.prBase) return { ok: false, url: null, detail: `sem branch base para abrir PR (repositório sem commits). Revise o branch ${wt.branch} localmente` };
   const push = await git(wt.path, ["push", "-u", "origin", wt.branch], 120_000);
   if (!push.ok) return { ok: false, url: null, detail: `push falhou: ${firstLine(push.stderr)}` };
-  const args = ["pr", "create", "--title", title, "--body", body, "--head", wt.branch, "--base", wt.base, ...(isDraft ? ["--draft"] : [])];
+  const args = ["pr", "create", "--title", title, "--body", body, "--head", wt.branch, "--base", wt.prBase, ...(isDraft ? ["--draft"] : [])];
   const pr = await run("gh", args, { cwd: wt.path, timeoutMs: 60_000 });
   const url = /https:\/\/\S+\/pull\/\d+/.exec(pr.stdout)?.[0] ?? null;
   return { ok: pr.ok && url !== null, url, detail: firstLine(pr.ok ? pr.stdout : pr.stderr) };

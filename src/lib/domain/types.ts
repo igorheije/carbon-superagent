@@ -86,11 +86,20 @@ export interface PermissionPrompt {
   readonly auto?: boolean;
 }
 
+/** One clickable answer the agent offered for a question (CARBON_OPTION). */
+export interface QuestionOption {
+  readonly label: string;
+  readonly detail: string | null;
+  readonly recommended: boolean;
+}
+
 /** A blocking question the agent asked (CARBON_QUESTION). Answering it resumes the run. */
 export interface AgentQuestion {
   readonly id: string;
   readonly stage: StageId;
   readonly text: string;
+  /** Choices offered by the agent; empty when it asked an open question. */
+  readonly options?: readonly QuestionOption[];
   readonly askedAt: string;
   readonly answer: string | null;
   readonly answeredBy: string | null;

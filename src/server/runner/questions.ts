@@ -1,5 +1,5 @@
 import { pendingQuestionsOf, questionsOf } from "@/lib/domain/questions";
-import type { AgentQuestion, StageId, Ticket } from "@/lib/domain/types";
+import type { AgentQuestion, QuestionOption, StageId, Ticket } from "@/lib/domain/types";
 import { appendLog } from "./ticket-log";
 
 export const MAX_ANSWER = 4_000;
@@ -26,6 +26,17 @@ export function addQuestion(ticket: Ticket, stage: StageId, text: string, askedA
   };
   const logged = appendLog(ticket, stage, "warn", `pergunta: ${preview(text)}`);
   return { ...logged, questions: [...questions, question] };
+}
+
+const MAX_OPTIONS = 6;
+
+/** Attaches a CARBON_OPTION to the most recent pending question. Ignored when there is none. */
+export function addOption(ticket: Ticket, option: QuestionOption): Ticket {
+  const questions = ticket.questions ?? [];
+  const last = questions.at(-1);
+  if (!last || last.answer !== null || (last.options?.length ?? 0) >= MAX_OPTIONS) return ticket;
+  const updated = { ...last, options: [...(last.options ?? []), option] };
+  return { ...ticket, questions: [...questions.slice(0, -1), updated] };
 }
 
 export type AnswerResult = { readonly ok: true; readonly ticket: Ticket; readonly resumes: boolean } | { readonly ok: false; readonly error: string };

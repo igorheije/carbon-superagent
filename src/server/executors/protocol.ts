@@ -1,4 +1,4 @@
-import { STAGES, type ReviewFinding, type StageId } from "@/lib/domain/types";
+import { STAGES, type QuestionOption, type ReviewFinding, type StageId } from "@/lib/domain/types";
 
 /**
  * Line protocol the agent prints so the panel can follow its progress.
@@ -12,7 +12,8 @@ export type Marker =
   | { readonly kind: "tests"; readonly passing: number; readonly total: number }
   | { readonly kind: "finding"; readonly finding: ReviewFinding }
   | { readonly kind: "lesson"; readonly rule: string; readonly evidence: string }
-  | { readonly kind: "question"; readonly text: string };
+  | { readonly kind: "question"; readonly text: string }
+  | { readonly kind: "option"; readonly option: QuestionOption };
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 const MAX_TEXT = 500;
@@ -22,6 +23,19 @@ const MAX_QUESTION = 2_000;
 const MARKER_RE = /^\s*(?:[-*+>]\s+|\d+[.)]\s+)?[`*_]*CARBON_([A-Z]+)[`*_]*:[`*_]*\s*(.*?)[`*_]*\s*$/;
 
 const clip = (text: string, max = MAX_TEXT): string => text.trim().slice(0, max);
+
+const MAX_OPTION_LABEL = 120;
+const RECOMMENDED_RE = /\s*[([]?\s*(recomendad[oa]|recommended)\s*[)\]]?\s*/i;
+
+/** "label | what it implies", with "(recomendado)" anywhere marking the suggested choice. */
+function parseOption(value: string): Marker | null {
+  const [rawLabel = "", ...rest] = value.split("|");
+  const rawDetail = rest.join("|");
+  const recommended = RECOMMENDED_RE.test(rawLabel) || RECOMMENDED_RE.test(rawDetail);
+  const label = clip(rawLabel.replace(RECOMMENDED_RE, " ").replace(/\s+/g, " "), MAX_OPTION_LABEL);
+  const detail = clip(rawDetail.replace(RECOMMENDED_RE, " ").replace(/\s+/g, " "));
+  return label ? { kind: "option", option: { label, detail: detail || null, recommended } } : null;
+}
 
 function parseLine(line: string): Marker | null {
   const match = MARKER_RE.exec(line);
@@ -69,6 +83,8 @@ function parseLine(line: string): Marker | null {
     }
     case "QUESTION":
       return value ? { kind: "question", text: clip(value, MAX_QUESTION) } : null;
+    case "OPTION":
+      return parseOption(value);
     default:
       return null;
   }
@@ -101,7 +117,9 @@ Print these markers on their own lines as plain text (no bullets, bold or backti
 - CARBON_TESTS: <passing>/<total>                         — after each test run
 - CARBON_FINDING: <CRITICAL|HIGH|MEDIUM|LOW> | <text>     — self-review findings; append [resolved] once fixed
 - CARBON_LESSON: <when X, do Y> | <evidence>              — at the end, 0-2 reusable lessons for this repo
-- CARBON_QUESTION: <one concrete question, with the options> — only if a decision blocks you; print it as your last line, then stop. The human's answer resumes this same session.
+- CARBON_QUESTION: <one decision, self-contained>          — only if a decision blocks you. The human's answer resumes this same session.
+- CARBON_OPTION: <short choice> | <what it implies>        — 2-4 lines right after each CARBON_QUESTION; the human clicks one. Add "(recomendado)" to the one you recommend.
+  One decision per CARBON_QUESTION (up to 3 in a row if several block you). For names or values (repo, branch, path) offer concrete candidates you found (git remote, gh, package.json), never ask the human to type them. Print the questions last, then stop.
 
 Before your final summary, every plan step must have exactly one CARBON_DONE or CARBON_SKIPPED line. Review the list and close the ones you have not marked yet.
 `.trim();
