@@ -52,11 +52,40 @@ npm run doctor   # diagnóstico do ambiente
 | Peça | O que faz |
 | --- | --- |
 | **Executores** | `claude -p … --output-format stream-json` ou `codex exec --json`. Cada CLI usa o login que já existe no seu computador; o Carbon nunca lê esses tokens. |
-| **Worktree por tarefa** | Cada tarefa roda em `.carbon-data/worktrees/<tarefa>` no branch `agent/<tarefa>`. Seu branch atual nunca é tocado. Se a base configurada não existe, usa `origin/<base>`, o branch atual ou `main`/`master`/`develop`/`staging` e avisa no log; em repositório **sem nenhum commit**, cria um branch órfão com uma cópia dos arquivos como base (respeita `.gitignore`, ignora `node_modules`/`.venv`/builds e arquivos acima de 10 MB). |
+| **Branch por tarefa** | Cada tarefa ganha o branch `agent/<tarefa>` no seu repositório e roda num **worktree temporário** em `.carbon-data/worktrees/<tarefa>`: ele existe só enquanto o agente trabalha ou espera sua resposta. Ao terminar com tudo commitado, a pasta é removida e o branch fica; com mudança não commitada, o worktree é mantido. Seu branch atual nunca é tocado. Se a base configurada não existe, usa `origin/<base>`, o branch atual ou `main`/`master`/`develop`/`staging` e avisa no log; em repositório **sem nenhum commit**, cria um branch órfão com uma cópia dos arquivos como base (respeita `.gitignore`, ignora `node_modules`/`.venv`/builds e arquivos acima de 10 MB). |
 | **Protocolo de progresso** | O agente imprime `CARBON_STAGE`, `CARBON_PLAN`, `CARBON_TESTS`, `CARBON_FINDING`, `CARBON_LESSON`, `CARBON_QUESTION` e `CARBON_OPTION`; o painel transforma isso em pipeline, plano, testes, review e perguntas ao vivo. |
-| **Entrega** | O Carbon (não o agente) faz o commit. Com push ligado e `gh` autenticado, abre PR — **draft** no modo `observe`. Tarefas do Linear recebem comentário com o link; as do Jira, comentário e mudança de status. |
+| **Entrega** | O Carbon (não o agente) faz o commit no branch da tarefa. Depois, no card **Branch e entrega**, você leva as mudanças do jeito que o repositório permite: **PR** para um branch escolhido, **merge local** ou **aplicar na pasta** (ver abaixo). Com push automático ligado, o PR abre sozinho — **draft** no modo `observe`. Tarefas do Linear recebem comentário com o link; as do Jira, comentário e mudança de status. |
 | **Pipeline** | Grafo ao vivo com o agente ativo animado. **Expandir** abre uma visão interativa: clique em cada etapa para ver o que o agente fez nela (métricas, plano, arquivos lidos, testes, achados, PR e o log só daquela etapa). |
 | **Aprendizado** | O agente propõe lições; você promove ou descarta. Lições promovidas entram no prompt das próximas tarefas. Nada se autopromove. |
+
+## Entrega: branch, aplicar, merge ou PR
+
+Quando a tarefa termina com commit, o card **Branch e entrega** mostra o branch (`agent/<tarefa> ← base`), o commit, o tamanho do diff e se o worktree ainda existe. Para levar as mudanças, ele oferece só o que funciona no seu repositório:
+
+| Opção | Quando aparece | O que faz |
+| --- | --- | --- |
+| **Abrir PR** | o repositório tem remoto | Lista os branches do remoto (com `git fetch`), sugere o destino (a base da tarefa ou o padrão do remoto) em opções rápidas e num select com todos; faz push e `gh pr create --base <destino>`, com opção de draft. |
+| **Merge local** | o repositório tem commits | Merge `--no-ff` do branch da tarefa num branch local escolhido. Se for o branch aberto na sua pasta, ela precisa estar limpa; qualquer outro é mesclado num worktree temporário, sem mexer na sua pasta. Com conflito, o merge é abortado e nada muda. |
+| **Aplicar na pasta** | sempre (inclusive repositório sem commits) | Aplica o diff da tarefa na pasta do projeto como mudanças não commitadas, para você revisar com `git status` e commitar. Só aplica se encaixar limpo; senão, nada é escrito. |
+
+O branch da tarefa nunca é apagado pelo Carbon. Para ver o que mudou a qualquer momento: `git log --stat agent/<tarefa>`. No boot, worktrees de tarefas terminadas ou apagadas que estejam limpos são removidos; os que têm mudanças não commitadas ficam.
+
+## Eficácia do agente
+
+No Mission Control, a barra **Eficácia do agente** mostra se o Carbon está ajudando, calculada só com o que ele registra em cada tarefa do projeto carregada no painel:
+
+| Métrica | Cálculo |
+| --- | --- |
+| **Sucesso** | concluídas ÷ terminadas (concluídas + falhas) |
+| **Entrega** | concluídas que deixaram commit ou PR ÷ concluídas |
+| **Autonomia** | terminadas sem nenhuma intervenção humana (pergunta respondida ou permissão decidida por uma pessoa) |
+| **Plano cumprido** | passos confirmados pelo agente ÷ passos planejados |
+| **Testes verdes** | testes passando ÷ executados, no último resultado de cada tarefa |
+| **Revisão limpa** | achados CRITICAL/HIGH resolvidos ÷ todos os CRITICAL/HIGH |
+| **Índice de utilidade** | média simples das métricas acima que já têm dados |
+| **Eficiência** | tempo médio, custo médio, tokens médios e intervenções por tarefa |
+
+Cada métrica mostra a base (ex.: "12 de 12 testes"); sem dados, aparece "sem dados", nunca um palpite. Tempo e custo são gravados por tarefa a partir da versão que trouxe a barra; o custo vem do Claude Code (no Codex fica vazio). O botão **como calculamos** abre as fórmulas no próprio painel.
 
 ## Quando o agente pergunta
 
@@ -197,6 +226,8 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 
 - O parser do Codex segue o formato documentado de `codex exec --json` e tem testes unitários, mas ainda **não foi exercitado contra a CLI real** neste repositório. O do Claude Code foi validado ponta a ponta.
 - Uma tarefa por vez por máquina (fila serial).
+- A limpeza de worktrees no boot considera as últimas 500 tarefas; pastas de tarefas mais antigas são tratadas como órfãs (removidas só se estiverem limpas).
+- O `gh pr create` pelo card exige um remoto do GitHub com `gh` autenticado; em outros remotos (GitLab, Bitbucket), use merge local ou aplicar na pasta.
 - As integrações com Jira, Slack e Telegram têm testes unitários e de ponta a ponta com requisições assinadas, mas ainda **não foram exercitadas contra os serviços reais** neste repositório. Use **Testar** em cada canal ao configurar.
 - As threads do Slack por tarefa ficam em memória: depois de reiniciar o Carbon, a próxima atualização abre uma thread nova (tarefas criadas por menção continuam respondendo na thread de origem).
 - Retomar a sessão após uma resposta funciona no Claude Code; no Codex a tarefa recomeça no mesmo worktree com as decisões no prompt.
