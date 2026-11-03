@@ -164,6 +164,7 @@
 <script src="assets/flows.js" defer></script>
 <script src="assets/chat.js" defer></script>
 <script src="assets/harness.js" defer></script>
+<script src="assets/metrics.js" defer></script>
 </head>
 <body>
 <header class="wrap">
@@ -347,6 +348,21 @@
       <div class="h-stages" data-h-stages aria-hidden="true"></div>
       <div class="h-groups" data-h-groups aria-hidden="true"></div>
     </div>
+  </section>
+
+  <section id="eficacia" class="wrap">
+    <p class="eyebrow reveal"><span class="dot"></span>eficácia</p>
+    <h2 class="reveal">Quanto o agente está ajudando, medido.</h2>
+    <p class="sub reveal">O Mission Control mostra se vale a pena: quantas tarefas terminam bem, quantas viram PR, quantas rodam sem precisar de você, plano cumprido, testes verdes, achados críticos resolvidos, tempo e custo médios. Tudo calculado do que o Carbon registra, com as fórmulas à vista. Sem dado, aparece “sem dados”, nunca um palpite.</p>
+    <div class="metrics reveal" id="metrics-scene" role="img" aria-label="Animação de demonstração: o índice de utilidade e as métricas de sucesso, entrega, autonomia, plano, testes e revisão se atualizam a cada tarefa terminada">
+      <div class="m-ring" aria-hidden="true">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="m-track"/><circle cx="50" cy="50" r="42" class="m-arc" data-m-arc/></svg>
+        <div><span class="m-eyebrow">índice de utilidade</span><b data-m-index>0%</b><span class="m-meta" data-m-meta>demo</span></div>
+      </div>
+      <dl class="m-tiles" data-m-tiles aria-hidden="true"></dl>
+      <dl class="m-eff" data-m-eff aria-hidden="true"></dl>
+    </div>
+    <p class="integ-note reveal">Números de demonstração. No seu Carbon, a barra usa as suas tarefas; com poucas tarefas, ela mostra a base de cada número (ex.: “3 de 4 concluídas”).</p>
   </section>
 
   <section id="inspiracao" class="wrap">
