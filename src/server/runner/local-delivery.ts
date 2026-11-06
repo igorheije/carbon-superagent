@@ -89,7 +89,16 @@ export async function applyToWorkingDir(taskId: string, userName: string): Promi
     writeFileSync(patchFile, diff.stdout, "utf8");
     const check = await git(repoPath, ["apply", "--check", patchFile]);
     if (!check.ok) {
-      return { ok: false, error: `as mudanças não se aplicam limpas na sua pasta (alguém já mexeu nesses arquivos?): ${firstLine(check.stderr)}` };
+      // Already in the folder (applied before, or by hand): the patch reverses cleanly. Nothing to do.
+      const present = await git(repoPath, ["apply", "--reverse", "--check", patchFile]);
+      if (present.ok) {
+        if (!workspace.appliedAt) record(task, ticket, { appliedAt: new Date().toISOString() }, `${userName} conferiu: as mudanças da tarefa já estavam na pasta do projeto`);
+        return { ok: true, detail: `As mudanças desta tarefa já estão em ${repoPath}. Nada foi alterado; revise com git status e faça o commit.` };
+      }
+      const hint = workspace.appliedAt
+        ? "a tarefa já foi aplicada antes e esses arquivos mudaram desde então"
+        : "alguém já mexeu nesses arquivos?";
+      return { ok: false, error: `as mudanças não se aplicam limpas na sua pasta (${hint}). Nada foi alterado: ${firstLine(check.stderr)}` };
     }
     const applied = await git(repoPath, ["apply", patchFile]);
     if (!applied.ok) return { ok: false, error: `git apply falhou: ${firstLine(applied.stderr)}` };

@@ -206,6 +206,28 @@ function ApplyForm({ ticket }: { ticket: Ticket }) {
 
 const ACTION_LABEL: Readonly<Record<Action, string>> = { pr: "Abrir PR", merge: "Merge local", apply: "Aplicar na pasta" };
 
+/** What is still possible: an applied task is not applied again, a merged one is not merged again. */
+function deliveryActions(targets: Targets, workspace: TicketWorkspace | null | undefined): readonly Action[] {
+  const isApplied = Boolean(workspace?.appliedAt);
+  const isMerged = Boolean(workspace?.mergedInto);
+  return [
+    ...(targets.remote.hasRemote ? (["pr"] as const) : []),
+    ...(!isMerged && targets.local.hasCommits && targets.local.branches.length ? (["merge"] as const) : []),
+    ...(!isApplied && !isMerged ? (["apply"] as const) : []),
+  ];
+}
+
+function DeliveredNote({ workspace }: { workspace: TicketWorkspace | null | undefined }) {
+  return (
+    <p role="status" className="flex items-start gap-1.5 rounded-xl border border-line p-3 text-[12px] leading-snug text-muted">
+      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-ok" />
+      {workspace?.mergedInto
+        ? `Entregue: merge feito em ${workspace.mergedInto}.`
+        : "Entregue: as mudanças já estão na pasta do projeto, sem commit. Revise com git status e faça o commit."}
+    </p>
+  );
+}
+
 function Deliver({ ticket }: { ticket: Ticket }) {
   const [targets, setTargets] = useState<Targets | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -217,34 +239,33 @@ function Deliver({ ticket }: { ticket: Ticket }) {
       .then((data) => {
         if (!active) return;
         setTargets(data);
-        setAction(data.remote.hasRemote ? "pr" : data.local.hasCommits && data.local.branches.length ? "merge" : "apply");
+        setAction(deliveryActions(data, ticket.workspace)[0] ?? "apply");
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : "falha ao listar branches"));
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- targets are listed once per task; availability is recomputed on render
   }, [ticket.id]);
 
   if (error) return <p className="font-mono text-[12px] text-danger">{error}</p>;
   if (!targets) return <p className="font-mono text-[12px] text-subtle">verificando branches…</p>;
-  const available: readonly Action[] = [
-    ...(targets.remote.hasRemote ? (["pr"] as const) : []),
-    ...(targets.local.hasCommits && targets.local.branches.length ? (["merge"] as const) : []),
-    "apply",
-  ];
+  const available = deliveryActions(targets, ticket.workspace);
+  if (available.length === 0) return <DeliveredNote workspace={ticket.workspace} />;
+  const shown: Action = available.includes(action) ? action : available[0];
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-accent/50 bg-accent-weak/40 p-3">
       <p className="eyebrow">levar as mudanças</p>
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Como levar as mudanças">
         {available.map((a) => (
-          <button key={a} type="button" role="tab" aria-selected={action === a} onClick={() => setAction(a)} className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${action === a ? "border-accent bg-accent text-accent-ink" : "border-line text-muted hover:text-ink"}`}>
+          <button key={a} type="button" role="tab" aria-selected={shown === a} onClick={() => setAction(a)} className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${shown === a ? "border-accent bg-accent text-accent-ink" : "border-line text-muted hover:text-ink"}`}>
             {ACTION_LABEL[a]}
           </button>
         ))}
       </div>
-      {action === "pr" && <PrForm ticket={ticket} remote={targets.remote} />}
-      {action === "merge" && <MergeForm ticket={ticket} local={targets.local} />}
-      {action === "apply" && <ApplyForm ticket={ticket} />}
+      {shown === "pr" && <PrForm ticket={ticket} remote={targets.remote} />}
+      {shown === "merge" && <MergeForm ticket={ticket} local={targets.local} />}
+      {shown === "apply" && <ApplyForm ticket={ticket} />}
       {!targets.remote.hasRemote && <p className="font-mono text-[10.5px] text-subtle">sem remoto: PR indisponível{targets.local.hasCommits ? "" : " · repositório sem commits: merge indisponível"}</p>}
     </div>
   );
