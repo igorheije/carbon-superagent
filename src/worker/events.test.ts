@@ -47,17 +47,22 @@ describe("answerPermission", () => {
     type: "permission_request", requestId: "r1", tool: "Bash", summary: command, detail: command, input: { command }, suggestions: [],
   });
 
-  it("allows what a repo rule covers, denies what needs a human", () => {
+  it("allows what a repo rule covers; what needs a human is forwarded (null)", () => {
     const allowed = answerPermission(request("make lint"), "/w/c", settings("ask"), [{ tool: "Bash", pattern: "make lint" }]);
-    expect(allowed.decision.behavior).toBe("allow");
-    const denied = answerPermission(request("make lint"), "/w/c", settings("ask"), []);
-    expect(denied.decision.behavior).toBe("deny");
-    expect(denied.report.type).toBe("permission_denied");
+    expect(allowed?.decision.behavior).toBe("allow");
+    expect(answerPermission(request("make lint"), "/w/c", settings("ask"), [])).toBeNull();
   });
 
-  it("autonomous policy allows, blocks always win", () => {
-    expect(answerPermission(request("make lint"), "/w/c", settings("autonomous"), []).decision.behavior).toBe("allow");
-    const blocked = answerPermission(request("rm -rf /"), "/w/c", settings("autonomous"), [{ tool: "Bash", pattern: "" }]);
-    expect(blocked.decision.behavior).toBe("deny");
+  it("'allow all' for the task allows without a rule", () => {
+    const allowed = answerPermission(request("make lint"), "/w/c", settings("ask"), [], true);
+    expect(allowed?.decision.behavior).toBe("allow");
+    expect(allowed?.report).toMatchObject({ type: "tool", summary: expect.stringContaining("tudo liberado") });
+  });
+
+  it("autonomous policy allows, blocks always win (even with allow all)", () => {
+    expect(answerPermission(request("make lint"), "/w/c", settings("autonomous"), [])?.decision.behavior).toBe("allow");
+    const blocked = answerPermission(request("rm -rf /"), "/w/c", settings("autonomous"), [{ tool: "Bash", pattern: "" }], true);
+    expect(blocked?.decision.behavior).toBe("deny");
+    expect(blocked?.report.type).toBe("permission_denied");
   });
 });
