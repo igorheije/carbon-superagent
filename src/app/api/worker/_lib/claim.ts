@@ -1,6 +1,6 @@
 import "server-only";
 import type { ExecutorId } from "@/server/repo/settings";
-import type { Worker } from "@/server/repo/workers";
+import { availabilityOf, type Worker } from "@/server/repo/workers";
 import { prepareClaim } from "@/server/runner/prepare-claim";
 import { claimNext } from "@/server/runner/scheduler";
 import type { ClaimedTask } from "@/shared/worker-protocol";
@@ -28,14 +28,15 @@ const pause = (ms: number, signal?: AbortSignal) =>
   });
 
 /**
- * Long-poll: tries to claim a pool task every `intervalMs` until one is won or `waitMs` passes
+ * Long-poll: tries to claim (only while the node is "active") a pool task every `intervalMs` until one is won or `waitMs` passes
  * (or the worker hangs up). A task that cannot be prepared is failed and the poll goes on.
  */
 export async function pollClaim(worker: Pick<Worker, "id" | "name">, executors: readonly ExecutorId[], options: PollOptions): Promise<ClaimedTask | null> {
   const deadline = Date.now() + options.waitMs;
   for (;;) {
     if (options.signal?.aborted) return null;
-    const lease = claimNext(worker.id, executors, options.leaseMs);
+    // Re-read every round: a node paused (drain) or awaiting approval mid-poll takes nothing new.
+    const lease = availabilityOf(worker.id) === "active" ? claimNext(worker.id, executors, options.leaseMs) : null;
     if (lease) {
       const claimed = await prepareClaim(lease, worker, options.leaseMs);
       if (claimed) return claimed;

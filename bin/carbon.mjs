@@ -332,6 +332,51 @@ const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
 async function worker() {
   const args = process.argv.slice(3);
   if (args[0] === "init") return workerInit(args.slice(1));
+  return runWorkerBundle(args);
+}
+
+/** `carbon join <url> --token cjt_… [--name n]`: enters the cluster (Docker Swarm style) and starts working. */
+async function join() {
+  return runWorkerBundle(["join", ...process.argv.slice(3)]);
+}
+
+/** `carbon leave`: removes this server from the cluster and forgets its saved credential. */
+async function leave() {
+  return runWorkerBundle(["leave", ...process.argv.slice(3)]);
+}
+
+/** `carbon join-token [--rotate|--disable] [--ttl 24h] [--max-uses N]`: on the panel host. */
+async function joinToken() {
+  const { JOIN_TOKEN_USAGE, JoinTokenError, parseJoinTokenArgs, runJoinToken } = await import("./join-token.mjs");
+  let opts;
+  try {
+    opts = parseJoinTokenArgs(process.argv.slice(3));
+  } catch (error) {
+    if (!(error instanceof JoinTokenError)) throw error;
+    console.error(`${pc.red(error.message)}\n\n${JOIN_TOKEN_USAGE}`);
+    process.exit(1);
+  }
+  const file = databaseFile();
+  if (!existsSync(file)) {
+    console.error(pc.red(`banco não encontrado em ${file}: rode o setup e inicie o painel primeiro`));
+    process.exit(1);
+  }
+  const { DatabaseSync } = await import("node:sqlite");
+  const { version } = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const db = new DatabaseSync(file);
+  try {
+    const { lines } = runJoinToken(db, opts, { version });
+    console.log(lines.join("\n"));
+  } catch (error) {
+    if (!(error instanceof JoinTokenError)) throw error;
+    console.error(pc.red(error.message));
+    process.exit(1);
+  } finally {
+    db.close();
+  }
+}
+
+async function runWorkerBundle(args) {
   if (!existsSync(WORKER_BUNDLE)) {
     console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
     const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
@@ -393,7 +438,7 @@ async function workerInit(argv) {
   }
 }
 
-const commands = { setup, doctor, start, "reset-password": resetPassword, worker };
+const commands = { setup, doctor, start, "reset-password": resetPassword, worker, join, leave, "join-token": joinToken };
 const name = process.argv[2] ?? "setup";
 if (!commands[name]) {
   console.log(`uso: carbon <${Object.keys(commands).join("|")}>`);

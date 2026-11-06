@@ -1,6 +1,7 @@
 /** Client-side model of Configurações → Máquinas (mirrors src/app/api/admin/workers/_lib/fleet.ts). */
 
-export type MachineStatus = "busy" | "idle" | "offline" | "revoked";
+export type MachineStatus = "busy" | "idle" | "paused" | "pending" | "offline" | "revoked";
+export type MachineAvailability = "active" | "paused" | "pending";
 export type MachineTarget = "compose" | "k8s";
 export type MachineExecutor = "claude" | "codex";
 
@@ -12,6 +13,10 @@ export interface Machine {
   readonly revokedAt: number | null;
   readonly lastSeenAt: number | null;
   readonly version: string | null;
+  readonly capabilities: { readonly maxParallel?: number; readonly executors?: readonly string[] };
+  readonly availability: MachineAvailability;
+  readonly joinedVia: "manual" | "join";
+  readonly hostname: string | null;
   readonly status: MachineStatus;
   readonly currentTasks: readonly { readonly id: string; readonly key: string }[];
 }
@@ -28,13 +33,17 @@ export interface CreatedMachine {
 export const STATUS_LABEL: Readonly<Record<MachineStatus, string>> = {
   busy: "ocupada",
   idle: "ociosa",
+  paused: "pausada",
+  pending: "aguardando aprovação",
   offline: "offline",
-  revoked: "revogada",
+  revoked: "removida",
 };
 
 export const STATUS_DOT: Readonly<Record<MachineStatus, string>> = {
   busy: "bg-warn animate-pulse",
   idle: "bg-ok",
+  paused: "bg-subtle ring-2 ring-warn/50",
+  pending: "bg-accent animate-pulse",
   offline: "bg-subtle",
   revoked: "bg-danger",
 };
@@ -74,4 +83,46 @@ export function downloadBase64(base64: string, filename: string, type = "applica
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+/** "1/2" slots in use, or just the task count when the node never reported its parallelism. */
+export function slotsLabel(machine: Pick<Machine, "currentTasks" | "capabilities">): string {
+  const max = machine.capabilities.maxParallel;
+  return max ? `${machine.currentTasks.length}/${max}` : String(machine.currentTasks.length);
+}
+
+export interface JoinTokenInfo {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly expiresAt: number | null;
+  readonly maxUses: number | null;
+  readonly uses: number;
+}
+
+export interface JoinStatus {
+  readonly token: JoinTokenInfo | null;
+  readonly panelUrl: string;
+  readonly requireApproval: boolean;
+}
+
+export interface GeneratedJoinToken {
+  readonly token: string;
+  readonly info: JoinTokenInfo;
+  readonly panelUrl: string;
+  readonly commands: { readonly cli: string; readonly docker: string };
+}
+
+/** Validity choices offered in the UI (hours; null = no expiry, the Docker Swarm default). */
+export const JOIN_TTL_OPTIONS: readonly { readonly label: string; readonly hours: number | null }[] = [
+  { label: "sem validade", hours: null },
+  { label: "1 hora", hours: 1 },
+  { label: "24 horas", hours: 24 },
+  { label: "7 dias", hours: 24 * 7 },
+];
+
+/** "3 de 5 usos · expira em 06/11 18:00" style summary of the active join token. */
+export function joinTokenSummary(info: JoinTokenInfo): string {
+  const uses = info.maxUses ? `${info.uses} de ${info.maxUses} usos` : `${info.uses} ${info.uses === 1 ? "servidor entrou" : "servidores entraram"}`;
+  const expiry = info.expiresAt ? `expira ${new Date(info.expiresAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "sem validade";
+  return `${uses} · ${expiry}`;
 }

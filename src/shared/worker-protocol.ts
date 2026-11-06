@@ -34,6 +34,8 @@ export const helloResponseSchema = z.object({
   protocol: z.number().int(),
   leaseMs: z.number().int().positive(),
   pollMs: z.number().int().positive(),
+  /** Optional for older panels: "active" when absent. paused/pending → claims return 204. */
+  availability: z.enum(["active", "paused", "pending"]).optional(),
 });
 export type HelloResponse = z.infer<typeof helloResponseSchema>;
 
@@ -219,3 +221,32 @@ export const AGENTCORE_CLAIM_PATH = "/api/worker/agentcore/claim";
 
 export const agentcoreClaimRequestSchema = z.object({ taskId: z.string().min(1).max(200) });
 export type AgentCoreClaimRequest = z.infer<typeof agentcoreClaimRequestSchema>;
+
+// ---------------------------------------------------------------- cluster join
+
+/**
+ * POST, Authorization: Bearer <cluster join token cjt_…>, body JoinRequest → 201 JoinResponse.
+ * Trades the shared join token for this node's own worker credential (cwk_…), returned once.
+ */
+export const JOIN_PATH = "/api/worker/join";
+/** POST with the node credential: the node removes itself from the cluster (revokes its credential). */
+export const LEAVE_PATH = "/api/worker/leave";
+
+export const joinRequestSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  hostname: z.string().trim().max(253).optional(),
+  version: z.number().int().min(0),
+  executors: z.array(executorId).max(2).default([]),
+  git: z.boolean().default(false),
+  maxParallel: z.number().int().min(1).max(64).default(1),
+  workerVersion: shortText.optional(),
+});
+export type JoinRequest = z.infer<typeof joinRequestSchema>;
+
+export const joinResponseSchema = z.object({
+  nodeId: z.string().min(1),
+  token: z.string().min(1),
+  name: z.string(),
+  availability: z.enum(["active", "paused", "pending"]),
+});
+export type JoinResponse = z.infer<typeof joinResponseSchema>;
