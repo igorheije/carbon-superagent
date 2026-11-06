@@ -151,6 +151,19 @@ describe("hello", () => {
 });
 
 describe("claim", () => {
+  it("429 above max(parallel,1)+1 concurrent long-polls of one worker (M5), and the slots free up", async () => {
+    // maxParallel unknown (no hello yet) → 1 slot → 2 polls at once.
+    const fresh = m.auth.createWorker("m5-a", "pool", ownerId).token;
+    const responses = await Promise.all([claim(fresh), claim(fresh), claim(fresh)]);
+    expect(responses.map((r) => r.status).sort()).toEqual([204, 204, 429]);
+    expect((await claim(fresh)).status).toBe(204);
+    // A worker that declared 3 slots may hold 4 polls.
+    const wideToken = m.auth.createWorker("m5-b", "pool", ownerId).token;
+    await m.hello.POST(post("/api/worker/hello", wideToken, { version: 1, executors: ["claude"], git: false, maxParallel: 3 }));
+    const wide = await Promise.all(Array.from({ length: 5 }, () => claim(wideToken)));
+    expect(wide.filter((r) => r.status === 429)).toHaveLength(1);
+  });
+
   it("204 when the queue is empty", async () => {
     const started = Date.now();
     const response = await claim();
