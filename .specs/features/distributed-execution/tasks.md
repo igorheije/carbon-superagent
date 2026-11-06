@@ -269,3 +269,26 @@ Nota: no diagrama da fase 1, T5 sai de T2 por legibilidade; a dependência real 
 | T11–T15 | worker Orca sequencial; T13/T14 em paralelo | `security-reviewer` em T5/T14 |
 | T16–T20 | workers Orca em paralelo | — |
 | T21–T24 | sequencial | `security-reviewer`, `e2e-runner` em T24 |
+
+---
+
+## Adendo (2026-11-06): documentação completa — pedido do usuário
+
+### T25: Documentação detalhada (docs + site + README)
+**What:** Documentação de verdade, em pt-BR, escrita a partir do comportamento final (depois de T24), cobrindo uso e integração:
+1. `docs/distributed/` — guia completo:
+   - `README.md` (índice e visão geral: local × pool × AgentCore, diagrama de arquitetura)
+   - `quickstart.md` (do zero a 2 workers rodando em 10 min, na mesma máquina e em outra)
+   - `docker-compose.md` e `kubernetes.md` (kit gerado, variáveis, escala, atualização, logs, revogar)
+   - `agentcore.md` (experimental, não validado em AWS real: pré-requisitos, kit, deploy.sh, IAM, configuração no painel, custos, limites 8h/60 min, riscos abertos)
+   - `exposing-the-panel.md` (proxy `CARBON_WORKER_LISTEN`, Cloudflare Tunnel, Tailscale, TLS, `panelPublicUrl`)
+   - `protocol.md` (referência da API `/api/worker/*`: cada rota, request/response, códigos 401/409/413/426, lease, seq, bundle, fluxo em sequência — para quem quiser escrever um worker próprio)
+   - `security.md` (modelo de ameaça, tokens, onde ficam credenciais, o que nunca sai do painel, revogação, rate limit)
+   - `operations.md` (frota, lease expirado, reinício do painel, cancelamento, permissões e perguntas remotas, limites)
+   - `troubleshooting.md` (erros comuns com sintoma → causa → correção) e `faq.md`
+2. Site (`landing/`): nova section `#workers` na home ("Escale para outras máquinas e AWS") com link, e nova página `landing/docs.html` — documentação navegável (sidebar, âncoras, busca simples client-side, blocos de código copiáveis, mesmo visual/tema claro-escuro da landing, responsiva), cobrindo: começar, conceitos, uso local, workers (Compose/K8s), AgentCore, expor o painel, protocolo, segurança, operações, troubleshooting, FAQ. Link "Docs" no nav.
+3. `README.md`: atualizar visão geral, recursos, "Segurança" e "Limites" (não é mais só localhost/fila serial quando workers estão ativos), seção curta de workers/AgentCore apontando para `docs/distributed/` e para o site.
+**Depends on:** T24 · **Requirement:** todos (documentação)
+**Done when:** [ ] todo comando/variável/rota citado existe no código (checado por grep) · [ ] nenhum segredo/exemplo real · [ ] links internos válidos · [ ] `landing/docs.html` validado no navegador em desktop e 375px, tema claro e escuro (screenshots) · [ ] `npm run check` verde
+**Tests:** none (verificação de links/consistência + visual) · **Gate:** build
+**Publicação:** deploy da landing no Vercel só com confirmação explícita do usuário.
