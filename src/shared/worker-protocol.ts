@@ -175,3 +175,10 @@ export const bundlePath = (taskId: string) => `${taskPath(taskId)}/bundle`;
 
 /** POST: the task's final ResultRequest. */
 export const resultPath = (taskId: string) => `${taskPath(taskId)}/result`;
+
+/**
+ * POST (AgentCore container only): claims one specific task. Auth is `Bearer <taskToken>` (the
+ * single-use token from the Invoke payload), body `{taskId}`, answer the same ClaimedTask
+ * envelope as /api/worker/claim. The panel side lands in T14.
+ */
+export const AGENTCORE_CLAIM_PATH = "/api/worker/agentcore/claim";
