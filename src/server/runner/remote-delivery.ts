@@ -30,6 +30,14 @@ import { releaseWorktree } from "./worktree";
 
 const LESSON_CONFIDENCE = 0.6;
 const BUNDLE_TIMEOUT_MS = 300_000;
+/** Importing a worker's result: shorter than bundle creation, the result is incremental. */
+const IMPORT_TIMEOUT_MS = 120_000;
+/**
+ * Objects from a worker are untrusted: fsck every object received (rejects malformed objects and
+ * trees with `.git` / `..` entries, which could become hooks or config on checkout) and never run
+ * hooks or fsmonitor commands of the panel repo during the import.
+ */
+const IMPORT_CONFIG = ["-c", "transfer.fsckObjects=true", "-c", "fetch.fsckObjects=true", "-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never"];
 /** Bundle ref used when the base label is not a valid branch name ("(sem commits)", "HEAD"). */
 export const FALLBACK_BASE_BRANCH = "carbon-base";
 const MB = 1024 * 1024;
@@ -213,12 +221,12 @@ async function fetchIncoming(repoPath: string, taskId: string, req: ResultReques
   if (req.transport === "bundle") {
     const file = incomingBundlePath(taskId);
     if (!existsSync(file) || statSync(file).size === 0) throw new ImportError("o worker não enviou o bundle do resultado (PUT bundle antes do result)");
-    const verify = await git(repoPath, ["bundle", "verify", file], BUNDLE_TIMEOUT_MS);
+    const verify = await git(repoPath, ["bundle", "verify", file], IMPORT_TIMEOUT_MS);
     if (!verify.ok) throw new ImportError(`bundle inválido: ${firstLine(verify.stderr)}`);
-    const fetched = await git(repoPath, ["fetch", "--no-tags", "--quiet", file, `+refs/heads/${req.branch}:${temp}`], BUNDLE_TIMEOUT_MS);
+    const fetched = await git(repoPath, [...IMPORT_CONFIG, "fetch", "--no-tags", "--quiet", file, `+refs/heads/${req.branch}:${temp}`], IMPORT_TIMEOUT_MS);
     if (!fetched.ok) throw new ImportError(`não consegui importar o branch do bundle: ${firstLine(fetched.stderr)}`);
   } else {
-    const fetched = await git(repoPath, ["fetch", "--no-tags", "--quiet", "origin", `+refs/heads/${req.branch}:${temp}`], BUNDLE_TIMEOUT_MS);
+    const fetched = await git(repoPath, [...IMPORT_CONFIG, "fetch", "--no-tags", "--quiet", "origin", `+refs/heads/${req.branch}:${temp}`], IMPORT_TIMEOUT_MS);
     if (!fetched.ok) throw new ImportError(`git fetch origin ${req.branch} falhou: ${firstLine(fetched.stderr)}`);
   }
   const sha = await revParse(repoPath, temp);
