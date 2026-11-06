@@ -149,6 +149,38 @@ describe("POST /api/admin/workers", () => {
   });
 });
 
+describe("POST /api/admin/workers (target direct: carbon join)", () => {
+  const JOIN_ENV = ["CARBON_WORKER_JOIN_PORT", "CARBON_WORKER_JOIN_HOST", "CARBON_WORKER_JOIN_TLS", "CARBON_WORKER_JOIN_FINGERPRINT"] as const;
+  const FP = "ab".repeat(32);
+  const setJoinEnv = (values: Partial<Record<(typeof JOIN_ENV)[number], string>>) => {
+    for (const name of JOIN_ENV) delete process.env[name];
+    Object.assign(process.env, values);
+  };
+  afterAll(() => setJoinEnv({}));
+
+  it("creates the worker without a public URL and returns port, fingerprint and addresses", async () => {
+    m.settings.saveSettings({ panelPublicUrl: "" });
+    setJoinEnv({ CARBON_WORKER_JOIN_PORT: "3418", CARBON_WORKER_JOIN_HOST: "192.168.0.12", CARBON_WORKER_JOIN_TLS: "self-signed", CARBON_WORKER_JOIN_FINGERPRINT: FP });
+    const response = await m.list.POST(postMachine({ name: "Notebook da Ana", target: "direct", executors: ["claude"] }));
+    expect(response.status).toBe(201);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const { data } = await body<{ token: string; worker: { id: string }; direct: { port: number; fingerprint: string; addresses: string[] } }>(response);
+    expect(data.token).toMatch(/^cwk_/);
+    expect(data.direct).toEqual({ available: true, port: 3418, fingerprint: FP, addresses: ["192.168.0.12"] });
+    expect(m.auth.requireWorker(new Request("http://127.0.0.1/api/worker/hello", { headers: { authorization: `Bearer ${data.token}` } })).id).toBe(data.worker.id);
+  });
+
+  it("returns 400 and creates nothing when the listener is off or only on loopback", async () => {
+    setJoinEnv({});
+    const off = await m.list.POST(postMachine({ name: "x", target: "direct" }));
+    expect(off.status).toBe(400);
+    expect((await body(off)).error).toMatch(/CARBON_WORKER_LISTEN/);
+    setJoinEnv({ CARBON_WORKER_JOIN_PORT: "3418", CARBON_WORKER_JOIN_HOST: "127.0.0.1", CARBON_WORKER_JOIN_TLS: "off" });
+    expect((await m.list.POST(postMachine({ name: "x", target: "direct" }))).status).toBe(400);
+    expect(m.workers.listWorkers()).toHaveLength(0);
+  });
+});
+
 describe("GET /api/admin/workers", () => {
   it("lists status from last_seen_at and leased tasks, with the current task key", async () => {
     const now = Date.now();

@@ -390,7 +390,7 @@
   <section id="workers" class="wrap">
     <p class="eyebrow reveal"><span class="dot"></span>execução distribuída</p>
     <h2 class="reveal">Escale para outras máquinas e para a AWS.</h2>
-    <p class="sub reveal">Por padrão, uma tarefa por vez no seu computador. Com workers, várias tarefas rodam ao mesmo tempo em servidores com Docker Compose ou Kubernetes, e o painel continua sendo o centro: fila, log ao vivo, perguntas, permissões e entrega aparecem nele como numa tarefa local.</p>
+    <p class="sub reveal">Por padrão, uma tarefa por vez no seu computador. Com workers, várias tarefas rodam ao mesmo tempo em outro computador (direto pelo IP, sem servidor), em Docker Compose ou em Kubernetes, e o painel continua sendo o centro: fila, log ao vivo, perguntas, permissões e entrega aparecem nele como numa tarefa local.</p>
     <div class="bento">
       <div class="card c2 reveal">
         <span class="k">LOCAL</span>
@@ -400,7 +400,7 @@
       <div class="card c2 reveal">
         <span class="k">POOL</span>
         <h3>Pool de workers</h3>
-        <p>O painel gera o kit (Compose ou Kubernetes) com o token da máquina. O worker só faz conexões de saída e devolve o branch por push ou bundle.</p>
+        <p>Outro computador entra com <code>carbon join &lt;ip&gt;:3418</code>, pela rede local ou pelo IP público, ou com o kit Compose/Kubernetes que o painel gera. O worker só faz conexões de saída e devolve o branch por push ou bundle.</p>
       </div>
       <div class="card c2 reveal">
         <span class="k">AGENTCORE · EXPERIMENTAL</span>
@@ -408,13 +408,17 @@
         <p>Uma sessão do Bedrock AgentCore Runtime por tarefa, na sua conta. Kit de deploy pronto. Experimental.</p>
       </div>
     </div>
-<pre class="term reveal"><span class="c"># no painel: expõe só /api/worker/* (UI segue em 127.0.0.1)</span>
-<span class="p">$ </span><b>CARBON_WORKER_LISTEN=127.0.0.1:3418 npm start</b>
+<pre class="term reveal"><span class="c"># no painel: expõe só /api/worker/* com certificado próprio (UI segue em 127.0.0.1)</span>
+<span class="p">$ </span><b>CARBON_WORKER_LISTEN=0.0.0.0:3418 npm start</b>
 
-<span class="c"># na outra máquina, com o kit gerado em Configurações → Máquinas</span>
+<span class="c"># no outro computador: pelo IP da rede ou o IP público, sem servidor</span>
+<span class="p">$ </span><b>carbon join 192.168.0.12:3418 --fingerprint 5c18…2a01</b>
+
+<span class="c"># ou em escala, com o kit gerado em Configurações → Máquinas</span>
 <span class="p">$ </span><b>docker compose up -d --scale worker=3</b></pre>
     <div class="reqs reveal">
       <a class="chip" href="docs.html#conceitos">Conceitos</a>
+      <a class="chip" href="docs.html#join">carbon join</a>
       <a class="chip" href="docs.html#compose">Docker Compose</a>
       <a class="chip" href="docs.html#kubernetes">Kubernetes</a>
       <a class="chip" href="docs.html#agentcore">AgentCore</a>

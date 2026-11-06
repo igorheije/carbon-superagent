@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExecutorId } from "../shared/executors";
+import { normalizeFingerprint } from "../shared/fingerprint";
 
 /**
  * Worker configuration from the environment (`carbon worker`, Docker, Kubernetes):
@@ -16,12 +17,14 @@ import type { ExecutorId } from "../shared/executors";
  * | CARBON_GIT_TOKEN              | no       | —  (push/clone over https)       |
  * | CARBON_GIT_HOSTS              | no       | —  (hosts that may get the git token; empty = token never sent) |
  * | CARBON_WORKER_GRACE_SECONDS   | no       | 120 (0..3600, wait on SIGTERM)   |
+ * | CARBON_PANEL_FINGERPRINT      | no       | —  (SHA-256 of the panel's self-signed certificate: `carbon join`) |
  *
  * Tokens are validated but never echoed back in errors or logs. After reading, main.ts removes
  * them from process.env (scrubSecretEnv) so nothing spawned later inherits them.
  *
  * The panel URL must be https unless it points to this machine (loopback): the worker token
- * travels in every request.
+ * travels in every request. With CARBON_PANEL_FINGERPRINT the certificate is pinned instead of
+ * checked against a CA/hostname, so `https://<ip>:<porta>` with a self-signed certificate works.
  */
 
 export interface WorkerConfig {
@@ -34,6 +37,8 @@ export interface WorkerConfig {
   /** Hostnames (lowercase, optional :port) the git token may be sent to. */
   readonly gitHosts: readonly string[];
   readonly graceSeconds: number;
+  /** Pinned SHA-256 of the panel certificate (canonical hex), or undefined to use the CA store. */
+  readonly panelFingerprint: string | undefined;
 }
 
 /** Environment variables holding secrets the worker reads once and then removes. */
@@ -176,6 +181,17 @@ function panelUrlOf(raw: string | undefined, errors: string[]): string {
   return "";
 }
 
+function fingerprintOf(raw: string | undefined, panelUrl: string, errors: string[]): string | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const fingerprint = normalizeFingerprint(raw);
+  if (!fingerprint) {
+    errors.push("CARBON_PANEL_FINGERPRINT precisa ser um SHA-256 (64 hex, com ou sem ':')");
+    return undefined;
+  }
+  if (panelUrl.startsWith("http:")) errors.push("CARBON_PANEL_FINGERPRINT exige CARBON_PANEL_URL com https://");
+  return fingerprint;
+}
+
 function executorsOf(raw: string | undefined, detect: () => readonly ExecutorId[], errors: string[]): readonly ExecutorId[] {
   if (raw === undefined || raw.trim() === "") {
     const found = detect();
@@ -204,6 +220,7 @@ export function readWorkerConfig(env: Readonly<Record<string, string | undefined
   const workDir = path.resolve(env.CARBON_WORKER_DIR?.trim() || path.join(tmpdir(), "carbon-worker"));
   const gitToken = env.CARBON_GIT_TOKEN?.trim() || undefined;
   const gitHosts = parseGitHosts(env.CARBON_GIT_HOSTS, errors);
+  const panelFingerprint = fingerprintOf(env.CARBON_PANEL_FINGERPRINT, panelUrl, errors);
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, config: { panelUrl, token, parallel, executors, workDir, gitToken, gitHosts, graceSeconds } };
+  return { ok: true, config: { panelUrl, token, parallel, executors, workDir, gitToken, gitHosts, graceSeconds, panelFingerprint } };
 }

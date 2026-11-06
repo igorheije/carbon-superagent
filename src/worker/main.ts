@@ -2,6 +2,7 @@ import { version } from "../../package.json";
 import { PROTOCOL_VERSION } from "../shared/worker-protocol";
 import { readWorkerConfig, scrubSecretEnv } from "./config";
 import { EXIT_FATAL, runWorkerLoop } from "./loop";
+import { createPinnedFetch } from "./pinned-fetch";
 
 /**
  * Entry point of dist/worker.mjs (`carbon worker`). Configuration comes from the environment
@@ -42,7 +43,8 @@ async function main(argv: readonly string[]): Promise<number> {
   process.on("SIGINT", onSignal);
 
   if (config.gitToken && config.gitHosts.length === 0) log("CARBON_GIT_TOKEN definido sem CARBON_GIT_HOSTS: o token não será enviado a nenhum remoto");
-  log(`carbon-worker ${WORKER_VERSION} · painel ${config.panelUrl} · pasta ${config.workDir}`);
+  const pinned = config.panelFingerprint ? ` · certificado fixado ${config.panelFingerprint.slice(0, 16)}…` : "";
+  log(`carbon-worker ${WORKER_VERSION} · painel ${config.panelUrl}${pinned} · pasta ${config.workDir}`);
   return runWorkerLoop({
     panelUrl: config.panelUrl,
     token: config.token,
@@ -52,6 +54,7 @@ async function main(argv: readonly string[]): Promise<number> {
     gitToken: config.gitToken,
     gitHosts: config.gitHosts,
     graceSeconds: config.graceSeconds,
+    fetchImpl: config.panelFingerprint ? createPinnedFetch(config.panelFingerprint) : undefined,
     signal: controller.signal,
     workerVersion: WORKER_VERSION,
     log,

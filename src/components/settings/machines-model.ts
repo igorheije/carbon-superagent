@@ -1,7 +1,8 @@
 /** Client-side model of Configurações → Máquinas (mirrors src/app/api/admin/workers/_lib/fleet.ts). */
 
 export type MachineStatus = "busy" | "idle" | "offline" | "revoked";
-export type MachineTarget = "compose" | "k8s";
+export type MachineTarget = "compose" | "k8s" | "direct";
+export type KitMachineTarget = Exclude<MachineTarget, "direct">;
 export type MachineExecutor = "claude" | "codex";
 
 export interface Machine {
@@ -16,14 +17,30 @@ export interface Machine {
   readonly currentTasks: readonly { readonly id: string; readonly key: string }[];
 }
 
-export interface CreatedMachine {
+export interface CreatedKitMachine {
   readonly worker: Machine;
   readonly token: string;
   readonly kitBase64: string;
   readonly filename: string;
   readonly folder: string;
-  readonly target: MachineTarget;
+  readonly target: KitMachineTarget;
 }
+
+/** Mirrors src/server/direct-join.ts (available case). */
+export interface DirectJoin {
+  readonly port: number;
+  readonly fingerprint: string | null;
+  readonly addresses: readonly string[];
+}
+
+export interface CreatedDirectMachine {
+  readonly worker: Machine;
+  readonly token: string;
+  readonly direct: DirectJoin;
+  readonly target: "direct";
+}
+
+export type CreatedMachine = CreatedKitMachine | CreatedDirectMachine;
 
 export const STATUS_LABEL: Readonly<Record<MachineStatus, string>> = {
   busy: "ocupada",
@@ -42,6 +59,7 @@ export const STATUS_DOT: Readonly<Record<MachineStatus, string>> = {
 export const TARGET_LABEL: Readonly<Record<MachineTarget, string>> = {
   compose: "Docker Compose",
   k8s: "Kubernetes",
+  direct: "Direto (IP:porta)",
 };
 
 const MINUTE = 60_000;
@@ -59,8 +77,27 @@ export function relativeTime(at: number | null, now: number): string {
   return `há ${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
+/** Optional flags shared by every `carbon join` line. */
+function joinFlags(fingerprint: string | null, parallel: number, executors: readonly MachineExecutor[]): string {
+  const flags = fingerprint ? [`--fingerprint ${fingerprint}`] : [];
+  if (parallel > 1) flags.push(`--parallel ${parallel}`);
+  if (executors.length > 0) flags.push(`--executors ${executors.join(",")}`);
+  return flags.length > 0 ? ` ${flags.join(" ")}` : "";
+}
+
+/**
+ * `carbon join` lines for the "Direto" target: one per address of the panel on the local network,
+ * plus the public-IP form (port forwarding on the router). The token is asked by the command, so it
+ * never lands in shell history or `ps`.
+ */
+export function joinCommands(direct: DirectJoin, parallel: number, executors: readonly MachineExecutor[]): { readonly lan: readonly string[]; readonly internet: string } {
+  const flags = joinFlags(direct.fingerprint, parallel, executors);
+  const lan = (direct.addresses.length > 0 ? direct.addresses : ["<ip-deste-computador>"]).map((ip) => `carbon join ${ip}:${direct.port}${flags}`);
+  return { lan, internet: `carbon join <ip-público>:${direct.port}${flags}` };
+}
+
 /** Exact commands shown after the kit is generated. */
-export function nextCommands(created: Pick<CreatedMachine, "filename" | "folder" | "target">): readonly string[] {
+export function nextCommands(created: Pick<CreatedKitMachine, "filename" | "folder" | "target">): readonly string[] {
   const start = created.target === "compose" ? "docker compose up -d" : "kubectl apply -k .";
   return [`tar xzf ${created.filename}`, `cd ${created.folder}`, start];
 }

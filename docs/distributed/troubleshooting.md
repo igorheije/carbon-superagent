@@ -21,7 +21,9 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 
 | Sintoma | Causa | Correção |
 | --- | --- | --- |
-| `painel indisponível (<erro>); tentando de novo` em loop | Painel/listener/túnel fora do ar, DNS, firewall, certificado não confiável | `curl -I <CARBON_PANEL_URL>/` deve responder `404` (listener). Certificado próprio: `NODE_EXTRA_CA_CERTS` |
+| `painel indisponível (<erro>); tentando de novo` em loop | Painel/listener/túnel fora do ar, DNS, firewall, certificado não confiável | `curl -I <CARBON_PANEL_URL>/` deve responder `404` (listener). Certificado próprio: `NODE_EXTRA_CA_CERTS`; autoassinado do listener: `CARBON_PANEL_FINGERPRINT` (`carbon join`) |
+| `… o certificado do painel não confere com CARBON_PANEL_FINGERPRINT …` em loop | Fingerprint errado, `worker-tls/` apagado no painel (certificado novo) ou outro servidor nesse endereço | Copie o fingerprint de *Configurações → Máquinas → Direto* ou do terminal do `carbon start`. Se nada mudou no painel, não conecte |
+| `carbon join`: `sem resposta de <ip>:<porta>` / `conexão recusada` | Firewall do sistema, porta não encaminhada no roteador, painel sem `CARBON_WORKER_LISTEN=0.0.0.0:3418` ou iniciado com `npm run dev` | Ver [direct-join.md](direct-join.md#problemas-comuns) |
 | `o painel recusou o token do worker (revogado ou inválido)`, saída com código 1 | Token revogado, de outro painel, ou banco do painel trocado | Gere um kit novo |
 | `o painel exige um worker mais novo: protocolo N desatualizado…`, código 2 | Worker de versão anterior ao painel | Reconstrua a imagem na versão do painel |
 | `429 muitas tentativas; aguarde 15 minutos` | Muitas falhas de autenticação com o mesmo token | Corrija o token; espere 15 min ou reinicie o painel |

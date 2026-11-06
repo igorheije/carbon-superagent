@@ -215,6 +215,32 @@ async function doctor() {
   p.outro(pc.green("Pronto para rodar."));
 }
 
+/** Panel data folder, same lookup as the server (CARBON_DATA_DIR, legacy .leonidas-data). */
+function dataDirectory() {
+  return path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
+}
+
+/** Prints where other computers connect and the exact `carbon join` command. */
+async function printJoinHints(proxy) {
+  const { formatFingerprint, lanAddresses } = await import("./worker-tls.mjs");
+  const anyHost = proxy.host === "0.0.0.0" || proxy.host === "::";
+  const hosts = anyHost ? lanAddresses() : [proxy.host];
+  const fp = proxy.fingerprint;
+  for (const host of hosts) p.log.info(`Workers: ${pc.cyan(`https://${host}:${proxy.port}`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
+  p.log.info(`Certificado do listener (autoassinado${proxy.certCreated ? ", gerado agora" : ""}): ${pc.bold(formatFingerprint(fp))}`);
+  const example = hosts[0] ?? "<ip-deste-computador>";
+  p.note(
+    [
+      "Em Configurações → Máquinas → Adicionar máquina → Direto você gera o token.",
+      "Na outra máquina (rede local):",
+      `  ${pc.cyan(`carbon join ${example}:${proxy.port} --fingerprint ${fp}`)}`,
+      "Pela internet: libere a porta " + proxy.port + " no roteador (port forwarding) e use",
+      `  ${pc.cyan(`carbon join <ip-público>:${proxy.port} --fingerprint ${fp}`)}`,
+    ].join("\n"),
+    "Conectar outro computador",
+  );
+}
+
 /** Starts the public worker listener when CARBON_WORKER_LISTEN is set (process env wins over .env.local). */
 async function startWorkerListener(port) {
   const fileEnv = readEnv();
@@ -223,17 +249,31 @@ async function startWorkerListener(port) {
   if (!listen) return;
   const { startWorkerProxy } = await import("./worker-proxy.mjs");
   try {
-    const proxy = await startWorkerProxy({
-      CARBON_WORKER_LISTEN: listen,
-      CARBON_PORT: String(port),
-      CARBON_WORKER_TLS_CERT: pick("CARBON_WORKER_TLS_CERT"),
-      CARBON_WORKER_TLS_KEY: pick("CARBON_WORKER_TLS_KEY"),
-      CARBON_WORKER_MAX_CONNECTIONS: pick("CARBON_WORKER_MAX_CONNECTIONS"),
-      CARBON_WORKER_MAX_CONNECTIONS_PER_IP: pick("CARBON_WORKER_MAX_CONNECTIONS_PER_IP"),
-    });
-    p.log.info(`Workers remotos: ${pc.cyan(`${proxy.url}/api/worker/`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
-    p.log.info(`Configure ${pc.cyan("panelPublicUrl")} nas configurações com a URL pública (túnel/VPN) que aponta para essa porta.`);
-    if (!proxy.tls) p.log.warn("Listener sem TLS: use só em LAN/VPN ou atrás de um túnel HTTPS (Cloudflare Tunnel, Tailscale).");
+    const proxy = await startWorkerProxy(
+      {
+        CARBON_WORKER_LISTEN: listen,
+        CARBON_PORT: String(port),
+        CARBON_WORKER_TLS: pick("CARBON_WORKER_TLS"),
+        CARBON_WORKER_TLS_CERT: pick("CARBON_WORKER_TLS_CERT"),
+        CARBON_WORKER_TLS_KEY: pick("CARBON_WORKER_TLS_KEY"),
+        CARBON_WORKER_MAX_CONNECTIONS: pick("CARBON_WORKER_MAX_CONNECTIONS"),
+        CARBON_WORKER_MAX_CONNECTIONS_PER_IP: pick("CARBON_WORKER_MAX_CONNECTIONS_PER_IP"),
+      },
+      { tlsDir: path.join(dataDirectory(), "worker-tls") },
+    );
+    // The panel (next start, spawned next) shows the same data in Configurações → Máquinas → Direto.
+    process.env.CARBON_WORKER_JOIN_PORT = String(proxy.port);
+    process.env.CARBON_WORKER_JOIN_HOST = proxy.host;
+    process.env.CARBON_WORKER_JOIN_TLS = proxy.tlsMode;
+    if (proxy.fingerprint) process.env.CARBON_WORKER_JOIN_FINGERPRINT = proxy.fingerprint;
+    else delete process.env.CARBON_WORKER_JOIN_FINGERPRINT;
+    if (proxy.tlsMode === "self-signed") {
+      await printJoinHints(proxy);
+    } else {
+      p.log.info(`Workers remotos: ${pc.cyan(`${proxy.url}/api/worker/`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
+      p.log.info(`Configure ${pc.cyan("panelPublicUrl")} nas configurações com a URL pública (túnel/VPN) que aponta para essa porta.`);
+    }
+    if (!proxy.tls) p.log.warn("Listener sem TLS: use só atrás de um túnel HTTPS (Cloudflare Tunnel, Tailscale) apontando para essa porta.");
     for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void proxy.close());
   } catch (err) {
     p.cancel(`Não consegui abrir o listener de workers: ${err.message}`);
@@ -270,7 +310,7 @@ function flag(name) {
  */
 /** Panel database file, same lookup as the server (CARBON_DATA_DIR, legacy .leonidas-data). */
 function databaseFile() {
-  const dataDir = path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
+  const dataDir = dataDirectory();
   return [path.join(dataDir, "carbon.db"), path.join(dataDir, "leonidas.db")].find((f) => existsSync(f)) ?? path.join(dataDir, "carbon.db");
 }
 
@@ -332,28 +372,85 @@ const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
 async function worker() {
   const args = process.argv.slice(3);
   if (args[0] === "init") return workerInit(args.slice(1));
+  process.exit(await runWorkerBundle(args, process.env));
+}
+
+/** Runs dist/worker.mjs (building it first if missing) with `env`; resolves with its exit code. */
+async function runWorkerBundle(args, env) {
   if (!existsSync(WORKER_BUNDLE)) {
     console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
     const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
     if (built.status !== 0 || !existsSync(WORKER_BUNDLE)) {
       console.error(pc.red("não consegui gerar dist/worker.mjs. Rode `npm install` e `npm run build:worker` e tente de novo."));
-      process.exit(1);
+      return 1;
     }
   }
-  const child = spawn(process.execPath, [WORKER_BUNDLE, ...args], { stdio: "inherit", env: process.env });
+  const child = spawn(process.execPath, [WORKER_BUNDLE, ...args], { stdio: "inherit", env });
   // Ctrl+C from a terminal already reaches the child (same process group); forwarding it again
   // would count as a second signal and skip the graceful shutdown.
   const forwarded = process.stdin.isTTY ? ["SIGTERM", "SIGHUP"] : ["SIGTERM", "SIGHUP", "SIGINT"];
   for (const signal of forwarded) process.on(signal, () => child.kill(signal));
   if (process.stdin.isTTY) process.on("SIGINT", () => undefined);
-  const code = await new Promise((resolve) => {
+  return new Promise((resolve) => {
     child.on("error", (error) => {
       console.error(pc.red(`não consegui iniciar o worker: ${error.message}`));
       resolve(1);
     });
     child.on("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
   });
-  process.exit(code);
+}
+
+/**
+ * `carbon join <ip>:<porta>`: this computer becomes a worker of the panel at that address
+ * (LAN or public IP, no domain). Pins the listener's self-signed certificate, then runs the worker.
+ */
+async function join() {
+  const { JOIN_USAGE, JoinError, parseJoinArgs, probeCertificate, resolvePin, workerEnv } = await import("./worker-join.mjs");
+  const { formatFingerprint } = await import("./worker-tls.mjs");
+  const argv = process.argv.slice(3);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(JOIN_USAGE);
+    return;
+  }
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  try {
+    const opts = parseJoinArgs(argv);
+    p.intro(pc.inverse(" join "));
+    const s = p.spinner();
+    s.start(`Conectando em ${opts.target.host}:${opts.target.port}`);
+    let probe;
+    try {
+      probe = await probeCertificate(opts.target.host, opts.target.port);
+      s.stop("Certificado recebido");
+    } catch (error) {
+      s.stop("Sem conexão");
+      throw error;
+    }
+    const confirm = interactive
+      ? async (fp) => {
+          p.note(`${pc.bold(formatFingerprint(fp))}\n\nCompare com o fingerprint mostrado no painel (Configurações → Máquinas → Direto,\nou no terminal do \`carbon start\`). Só aceite se forem iguais.`, "Primeiro contato com este painel");
+          const answer = await p.confirm({ message: "O fingerprint confere?", initialValue: false });
+          return !p.isCancel(answer) && answer === true;
+        }
+      : null;
+    const pin = await resolvePin(opts, probe, confirm);
+    p.log.info(pin ? `Certificado fixado: ${pc.dim(formatFingerprint(pin))}` : "Certificado válido por uma CA pública: sem fixar.");
+
+    let token = opts.token ?? process.env.CARBON_WORKER_TOKEN?.trim() ?? null;
+    if (!token) {
+      if (!interactive) throw new JoinError("token ausente: defina CARBON_WORKER_TOKEN (gerado em Configurações → Máquinas)");
+      const typed = await p.password({ message: "Token da máquina (cwk_…)", validate: (v) => (/^cwk_[A-Za-z0-9_-]{20,200}$/.test(String(v ?? "").trim()) ? undefined : "deve começar com cwk_") });
+      if (p.isCancel(typed)) return p.cancel("Cancelado.");
+      token = typed.trim();
+    }
+    p.outro(`${pc.green("●")} Worker ligado em ${pc.bold(opts.target.url)} ${pc.dim("(Ctrl+C para parar)")}`);
+    process.exit(await runWorkerBundle([], workerEnv(process.env, opts, token, pin)));
+  } catch (error) {
+    if (!(error instanceof JoinError)) throw error;
+    console.error(`${pc.red(error.message)}`);
+    if (/endereço|opção|argumento|precisa/.test(error.message)) console.error(`\n${JOIN_USAGE}`);
+    process.exit(1);
+  }
 }
 
 /**
@@ -393,7 +490,7 @@ async function workerInit(argv) {
   }
 }
 
-const commands = { setup, doctor, start, "reset-password": resetPassword, worker };
+const commands = { setup, doctor, start, "reset-password": resetPassword, worker, join };
 const name = process.argv[2] ?? "setup";
 if (!commands[name]) {
   console.log(`uso: carbon <${Object.keys(commands).join("|")}>`);

@@ -9,10 +9,11 @@ Por padrão o Carbon roda **uma tarefa por vez, na máquina do painel**. A execu
 | Documento | Para quê |
 | --- | --- |
 | [quickstart.md](quickstart.md) | Do zero a 2 workers rodando: na mesma máquina e em outra |
+| [direct-join.md](direct-join.md) | `carbon join <ip>:<porta>`: outro computador entra como worker pela rede local ou IP público, sem servidor nem domínio |
 | [docker-compose.md](docker-compose.md) | Kit Compose: arquivos, variáveis, escala, atualização, logs, revogação |
 | [kubernetes.md](kubernetes.md) | Kit Kubernetes: manifests, Secret, escala, rollout, revogação |
 | [agentcore.md](agentcore.md) | AgentCore Runtime (experimental): kit, `deploy.sh`, IAM, configuração, custos, limites |
-| [exposing-the-panel.md](exposing-the-panel.md) | `CARBON_WORKER_LISTEN`, TLS, Tailscale, Cloudflare Tunnel, `panelPublicUrl` |
+| [exposing-the-panel.md](exposing-the-panel.md) | `CARBON_WORKER_LISTEN`, TLS (autoassinado ou seu), Tailscale, Cloudflare Tunnel, `panelPublicUrl` |
 | [protocol.md](protocol.md) | Referência da API `/api/worker/*` para escrever um worker próprio |
 | [security.md](security.md) | Modelo de ameaça, tokens, isolamento de ambiente, `CARBON_GIT_HOSTS`, revogação |
 | [operations.md](operations.md) | Frota, status, lease, reinício do painel, cancelamento, permissões e perguntas remotas |
@@ -29,7 +30,7 @@ Cada tarefa tem um **runtime** (onde roda), escolhido no seletor **Onde rodar** 
 | Runtime | Rótulo na UI | Quem executa | Quando fica disponível |
 | --- | --- | --- | --- |
 | `local` (padrão) | Esta máquina | O próprio processo do painel, uma tarefa por vez (fila serial) | Sempre |
-| `pool` | Pool de workers | Qualquer processo `carbon worker` cadastrado que pegar a tarefa | Existe ao menos uma máquina não revogada em *Configurações → Máquinas* |
+| `pool` | Pool de workers | Qualquer processo `carbon worker` (ou `carbon join`) cadastrado que pegar a tarefa | Existe ao menos uma máquina não revogada em *Configurações → Máquinas* |
 | `agentcore` | AgentCore (experimental) | Um container do AgentCore Runtime invocado pelo painel, uma sessão por tarefa | AgentCore ativado, ARN do runtime, URL pública do painel e credenciais AWS na máquina do painel |
 
 Quando um runtime não está disponível, a opção aparece desabilitada no seletor com o motivo (ex.: "nenhuma máquina worker cadastrada (Configurações → Máquinas)").

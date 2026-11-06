@@ -215,18 +215,36 @@ Rode várias tarefas ao mesmo tempo em outras máquinas. O painel continua dono 
 | Onde rodar | Quem executa | Paralelismo |
 | --- | --- | --- |
 | **Esta máquina** (padrão) | O processo do painel | 1 tarefa por vez |
-| **Pool de workers** | `carbon worker` em Docker Compose, Kubernetes ou direto no Node | réplicas × `CARBON_WORKER_PARALLEL` por máquina |
+| **Pool de workers** | `carbon join <ip>:<porta>` em outro computador, ou `carbon worker` em Docker Compose / Kubernetes | réplicas × `CARBON_WORKER_PARALLEL` por máquina |
 | **AgentCore** — *experimental* | Uma sessão do AWS Bedrock AgentCore Runtime por tarefa, na sua conta | até `agentcore.maxConcurrent` (padrão 3) |
 
 O código vai para o worker por **git** (clone do `origin` e push do branch `agent/*`) ou, sem remoto/commits, por **bundle** servido pelo painel; o branch volta para o repositório do painel e **Aplicar na pasta**, **Merge local** e **Abrir PR** funcionam como numa tarefa local. Permissões aparecem no painel como sempre; uma **pergunta** do agente encerra a execução remota e, ao responder, a tarefa volta à fila e recomeça da base com as suas decisões no prompt.
 
-Em resumo:
+### Outro computador, sem servidor: `carbon join`
+
+Painel no seu computador, worker em outro, pela **rede local** ou pelo **IP público**. Sem domínio, túnel nem Docker:
+
+```bash
+# no computador do painel (.env.local) e depois npm start
+CARBON_WORKER_LISTEN=0.0.0.0:3418
+```
+
+`npm start` gera um certificado TLS próprio para o listener (em `<pasta de dados>/worker-tls/`, reaproveitado nos próximos starts) e mostra os IPs, o **fingerprint** e o comando pronto. Em *Configurações → Máquinas → Adicionar máquina → **Direto (IP:porta)*** você gera o token. No outro computador (Carbon instalado, Claude Code ou Codex logado):
+
+```bash
+carbon join 192.168.0.12:3418 --fingerprint 5c187335…2a01     # rede local
+carbon join 203.0.113.7:3418  --fingerprint 5c187335…2a01     # IP público (port forwarding TCP 3418 no roteador)
+```
+
+O comando pede o token (não fica no histórico nem no `ps`) e sobe o worker. O worker **fixa o fingerprint** do certificado do painel, como o SSH faz: um certificado diferente derruba a conexão antes de o token ser enviado. Sem `--fingerprint`, ele mostra o fingerprint e pergunta se confere. `http://` é recusado. Guia completo: [docs/distributed/direct-join.md](docs/distributed/direct-join.md).
+
+### Em escala: kits Compose e Kubernetes
 
 1. Exponha só `/api/worker/*` (abaixo) e defina a **URL pública do painel** (`https://`) em *Configurações → Execução*.
 2. *Configurações → Máquinas → Adicionar máquina* gera o kit (Compose ou Kubernetes) com o token da máquina — ou `node bin/carbon.mjs worker init --target compose|k8s|agentcore --out <pasta> …` no host do painel.
 3. Na máquina worker: gere a imagem com `deploy/worker/Dockerfile` (mesma versão do painel), preencha as credenciais do modelo no `.env` e `docker compose up -d`.
 
-Documentação completa em [`docs/distributed/`](docs/distributed/README.md) — [quickstart](docs/distributed/quickstart.md), [Compose](docs/distributed/docker-compose.md), [Kubernetes](docs/distributed/kubernetes.md), [AgentCore](docs/distributed/agentcore.md), [protocolo](docs/distributed/protocol.md), [segurança](docs/distributed/security.md), [operação](docs/distributed/operations.md), [variáveis](docs/distributed/environment.md), [troubleshooting](docs/distributed/troubleshooting.md), [FAQ](docs/distributed/faq.md) — e no site: [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html).
+Documentação completa em [`docs/distributed/`](docs/distributed/README.md) — [quickstart](docs/distributed/quickstart.md), [`carbon join`](docs/distributed/direct-join.md), [Compose](docs/distributed/docker-compose.md), [Kubernetes](docs/distributed/kubernetes.md), [AgentCore](docs/distributed/agentcore.md), [protocolo](docs/distributed/protocol.md), [segurança](docs/distributed/security.md), [operação](docs/distributed/operations.md), [variáveis](docs/distributed/environment.md), [troubleshooting](docs/distributed/troubleshooting.md), [FAQ](docs/distributed/faq.md) — e no site: [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html).
 
 ### Expor o painel para workers
 
@@ -234,8 +252,10 @@ Workers só precisam alcançar `/api/worker/*`. Um listener separado encaminha a
 
 ```bash
 # .env.local (ou variável de ambiente)
-CARBON_WORKER_LISTEN=127.0.0.1:3418
-# opcional: TLS direto no listener
+CARBON_WORKER_LISTEN=127.0.0.1:3418     # atrás de túnel/VPN; 0.0.0.0:3418 = direto por IP (carbon join)
+# TLS: auto (padrão) = certificado próprio fora de loopback · on = sempre · off = nunca
+CARBON_WORKER_TLS=auto
+# opcional: certificado seu (tem prioridade sobre o autoassinado)
 CARBON_WORKER_TLS_CERT=/caminho/cert.pem
 CARBON_WORKER_TLS_KEY=/caminho/key.pem
 ```
@@ -244,6 +264,7 @@ CARBON_WORKER_TLS_KEY=/caminho/key.pem
 
 Como expor, em ordem de preferência — sempre com **HTTPS** (o worker recusa `http://` fora de loopback):
 
+0. **Direto por IP** (sem servidor): `CARBON_WORKER_LISTEN=0.0.0.0:3418` + `carbon join <ip>:3418 --fingerprint …` (acima).
 1. **Tailscale**: `tailscale serve --https=443 http://127.0.0.1:3418` e `https://<host>.<tailnet>.ts.net` nos workers.
 2. **Cloudflare Tunnel** apontando **só para a porta do listener**, nunca para a do painel (3417): `cloudflared tunnel --url http://127.0.0.1:3418`. Num túnel nomeado, o `ingress` deve ter um único serviço `http://127.0.0.1:3418` e terminar em `http_status:404`.
 3. Reverse proxy próprio com TLS (Caddy, nginx) para `127.0.0.1:3418`.
@@ -253,7 +274,7 @@ Detalhes em [docs/distributed/exposing-the-panel.md](docs/distributed/exposing-t
 ## Segurança
 
 - A UI e a API do painel escutam só em `127.0.0.1`. **Não exponha a porta do painel (3417) na internet**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).
-- **Com workers ativos o modelo muda:** o listener `CARBON_WORKER_LISTEN` expõe `/api/worker/*` para outras máquinas (só essas rotas, com token `Bearer`, rate limit por token, corpo JSON ≤ 1 MB, HTTPS obrigatório fora de loopback), e o **código do repositório sai da máquina do painel** para os workers que você cadastrou ou para a sua conta AWS. Tokens de máquina são mostrados uma vez, guardados como sha256 e revogáveis; o worker remove `CARBON_WORKER_TOKEN` e `CARBON_GIT_TOKEN` do ambiente e o agente recebe só variáveis permitidas; o token git só é enviado aos hosts `https://` de `CARBON_GIT_HOSTS` (vazio = nunca). Tarefas no mesmo processo worker compartilham `HOME`: para isolar uma da outra, use `CARBON_WORKER_PARALLEL=1` (padrão) e escale por réplicas. Nunca exponha a porta 3417 diretamente: os limites por IP confiam no `X-Forwarded-For` definido pelo listener. Credenciais de modelo e de git ficam na máquina worker; o painel nunca as envia. Modelo de ameaça em [docs/distributed/security.md](docs/distributed/security.md).
+- **Com workers ativos o modelo muda:** o listener `CARBON_WORKER_LISTEN` expõe `/api/worker/*` para outras máquinas (só essas rotas, com token `Bearer`, rate limit por token, corpo JSON ≤ 1 MB, HTTPS obrigatório fora de loopback — com `carbon join`, certificado próprio do painel fixado pelo fingerprint no worker), e o **código do repositório sai da máquina do painel** para os workers que você cadastrou ou para a sua conta AWS. Tokens de máquina são mostrados uma vez, guardados como sha256 e revogáveis; o worker remove `CARBON_WORKER_TOKEN` e `CARBON_GIT_TOKEN` do ambiente e o agente recebe só variáveis permitidas; o token git só é enviado aos hosts `https://` de `CARBON_GIT_HOSTS` (vazio = nunca). Tarefas no mesmo processo worker compartilham `HOME`: para isolar uma da outra, use `CARBON_WORKER_PARALLEL=1` (padrão) e escale por réplicas. Nunca exponha a porta 3417 diretamente: os limites por IP confiam no `X-Forwarded-For` definido pelo listener. Credenciais de modelo e de git ficam na máquina worker; o painel nunca as envia. Modelo de ameaça em [docs/distributed/security.md](docs/distributed/security.md).
 - Senhas com scrypt, sessões em cookie `httpOnly` guardadas como hash, rate limit no login, checagem de origem em requisições que mudam estado.
 - Descrições de tarefa (Linear, GitHub, Jira, Slack, Telegram) são tratadas como dados não confiáveis no prompt.
 - Dados ficam em `.carbon-data/` (SQLite com permissão `600`). Chaves e tokens de Linear, Jira, Slack e Telegram ficam nesse banco e nunca voltam ao navegador.
@@ -265,7 +286,7 @@ Detalhes em [docs/distributed/exposing-the-panel.md](docs/distributed/exposing-t
 npm run dev      # Next.js com Turbopack em 127.0.0.1:3417
 npm run check    # tsc + eslint + vitest
 npm run build:worker      # dist/worker.mjs e dist/agentcore.mjs (workers remotos)
-npm run e2e:distributed   # painel + 2 workers + AgentCore local, sem AWS (depois de build e build:worker)
+npm run e2e:distributed   # painel + worker por kit + worker por carbon join + AgentCore local, sem AWS (depois de build e build:worker)
 ```
 
 Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, runner) · `src/app/api` (rotas) · `src/components` (painel) · `src/lib/sim` (modo demo) · `src/worker` (worker remoto e entrypoint AgentCore) · `src/shared` (protocolo de worker e executores) · `deploy/worker` (imagem do worker). Plano e fases em [`docs/PLAN.md`](docs/PLAN.md).
@@ -276,6 +297,7 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 - No modo local, uma tarefa por vez (fila serial). Com workers, as tarefas do pool rodam em paralelo (réplicas × `CARBON_WORKER_PARALLEL`) além da fila local; não há afinidade de máquina nem autoscaling por fila (escala manual).
 - Execução remota não retoma a sessão do agente: depois de uma pergunta, a tarefa recomeça da base com as decisões no prompt. Lease vencido (worker some) falha a tarefa por padrão.
 - O runtime **AgentCore é experimental**. Veja os [pontos de atenção](docs/distributed/agentcore.md#pontos-de-atenção) (egress, login do Claude Code no container, parâmetros da CLI `bedrock-agentcore-control`).
+- `carbon join`: o certificado autoassinado do listener é gerado com o `openssl` do computador do painel (macOS e Linux já trazem; sem ele, use `CARBON_WORKER_TLS_CERT`/`_KEY`). O comando roda o worker em primeiro plano; para deixar ligado, use um serviço (`systemd`/`launchd`). O container AgentCore não usa fingerprint: precisa de certificado de CA pública.
 - A imagem do worker não é publicada em registry: é construída a partir deste repositório (`deploy/worker/Dockerfile`).
 - A limpeza de worktrees no boot considera as últimas 500 tarefas; pastas de tarefas mais antigas são tratadas como órfãs (removidas só se estiverem limpas).
 - O `gh pr create` pelo card exige um remoto do GitHub com `gh` autenticado; em outros remotos (GitLab, Bitbucket), use merge local ou aplicar na pasta.
