@@ -5,7 +5,7 @@ import { LEASE_LOST, type ClaimedTask, type ResultRequest } from "../shared/work
 import { backoffMs, BundleTooLarge, WorkerClientError, type SleepFn, type WorkerClient } from "./client";
 import { cleanup, commitAll, deliverCode, prepareCode, type GitIdentity, type PreparedCode } from "./code";
 import { clipEvent, relativize } from "./events";
-import { answerPermission } from "./permissions";
+import { answerPermission, createPermissionRelay, type PermissionRelay } from "./permissions";
 
 /**
  * Runs one claimed task on the worker (WRK-03, WRK-05, CODE-01..03): get the code, run the
@@ -15,7 +15,8 @@ import { answerPermission } from "./permissions";
  * The git token only travels to code.ts (GIT_ASKPASS); nothing here logs it.
  */
 
-export type RunOutcome = "done" | "failed" | "canceled" | "lease_lost";
+/** "waiting": the agent asked a question; the panel parks the task until a human answers (RMT-02). */
+export type RunOutcome = "done" | "failed" | "canceled" | "lease_lost" | "waiting";
 
 export interface RunTaskDeps {
   readonly client: WorkerClient;
@@ -54,6 +55,7 @@ const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolv
 interface RunState {
   stop: Stop | null;
   executor: RunningExecutor | null;
+  relay: PermissionRelay | null;
   asked: boolean;
   agentError: boolean;
 }
@@ -63,12 +65,13 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
   const log = deps.log ?? (() => undefined);
   const sleep = deps.sleep ?? defaultSleep;
   const id = task.taskId;
-  const state: RunState = { stop: null, executor: null, asked: false, agentError: false };
+  const state: RunState = { stop: null, executor: null, relay: null, asked: false, agentError: false };
 
   const halt = (stop: Stop): void => {
     if (state.stop) return;
     state.stop = stop;
     log(`[${task.key}] ${stop.kind === "canceled" ? "cancelando" : "lease perdido"}: ${stop.reason}`);
+    state.relay?.stop();
     state.executor?.cancel();
   };
 
@@ -197,11 +200,27 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
     const clone = prepared.path;
     const built = buildCommand(task.executor, task.prompt, clone, task.settings, task.model, null);
     const command = deps.executorOverride ? deps.executorOverride(built) : built;
+    const relay = createPermissionRelay({
+      client,
+      taskId: id,
+      respond: (requestId, decision) => void state.executor?.respond(requestId, decision),
+      onLeaseLost: () => halt({ kind: "lease_lost", reason: "o painel recusou a consulta de permissões" }),
+      initialRules: task.permissionRules,
+      log: (line) => log(`[${task.key}] ${line}`),
+      sleep,
+    });
+    state.relay = relay;
     const running = startExecutor(command, clone, task.limits.maxRunMinutes * 60_000, (event) => {
       if (event.type === "permission_request") {
-        const outcome = answerPermission(event, clone, task.settings, task.permissionRules);
-        running.respond(event.requestId, outcome.decision);
-        emit([outcome.report]);
+        const outcome = answerPermission(event, clone, task.settings, relay.rules(), relay.allowAll());
+        if (outcome) {
+          running.respond(event.requestId, outcome.decision);
+          emit([outcome.report]);
+          return;
+        }
+        // Needs a human: the panel shows it like a local prompt and the relay waits for the answer.
+        emit([event]);
+        relay.ask(event);
         return;
       }
       if (event.type === "error" || (event.type === "result" && event.isError)) state.agentError = true;
@@ -212,19 +231,24 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
     if (state.stop) running.cancel();
     const exit = await running.done;
     state.executor = null;
+    relay.stop();
 
     const afterRun = stopped();
     if (afterRun) return await afterRun;
     if (exit.timedOut) return await fail(`tempo limite (${task.limits.maxRunMinutes} min) atingido`);
-    if (exit.code !== 0 || state.agentError) return await fail(`agente saiu com código ${exit.code}: ${lastLine(exit.stderrTail)}`);
+    // Same order as the local runner: a question wins over the exit code. Nothing is delivered:
+    // the answer requeues the task and the next run gets the decisions in its prompt.
     if (state.asked) {
-      return await fail("o agente fez uma pergunta; responder perguntas de tarefas remotas ainda não é suportado — responda no card e rode de novo");
+      log(`[${task.key}] o agente fez uma pergunta; aguardando resposta no painel`);
+      return await report("waiting");
     }
+    if (exit.code !== 0 || state.agentError) return await fail(`agente saiu com código ${exit.code}: ${lastLine(exit.stderrTail)}`);
     return await deliver(clone);
   } catch (error) {
     return (await stopped()) ?? (await fail(`falha inesperada no worker: ${message(error)}`));
   } finally {
     clearInterval(heartbeat);
+    state.relay?.stop();
     deps.signal?.removeEventListener("abort", onShutdown);
     state.executor?.cancel();
     if (prepared) cleanup(prepared.path);

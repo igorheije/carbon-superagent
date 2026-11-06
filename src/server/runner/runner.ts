@@ -20,6 +20,8 @@ import { applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from
 import { createLiveTicket, liveEvents, notifyLive, type LiveTicket } from "./live";
 import { taskPrompt } from "./prepare-claim";
 import { answeredQuestions, answerQuestion as applyAnswer, resumeMessage } from "./questions";
+import { answerRemotePermission, type PermissionChoice } from "./remote-permissions";
+import { leaseHolder } from "./scheduler";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
 
@@ -278,8 +280,6 @@ async function releaseFinishedWorktree(task: Task, t: Tracker): Promise<void> {
   }
 }
 
-type PermissionChoice = "allow" | "allow_always" | "allow_task" | "deny";
-
 type PermissionRequestEvent = Extract<ExecutorEvent, { type: "permission_request" }>;
 
 /** Adds an already-decided prompt to the ticket history (no card, no waiting). */
@@ -352,8 +352,18 @@ function expirePending(taskId: string) {
   }
 }
 
-/** Human decision from the panel for a pending Claude Code permission prompt. */
+/**
+ * Human decision from the panel for a pending Claude Code permission prompt. Prompts of remote
+ * tasks (pool workers, AgentCore) go through the same call: the answer is stored for the worker's
+ * long-poll instead of being written to a local process.
+ */
 export function answerPermission(taskId: string, requestId: string, choice: PermissionChoice, userName: string): { ok: boolean; error?: string } {
+  const remote = findTask(taskId);
+  if (remote && remote.runtime !== "local") {
+    const result = answerRemotePermission(taskId, requestId, choice, userName, getSettings().permissionTimeoutMinutes);
+    if (result.ok) notify();
+    return result;
+  }
   const s = state();
   const pending = s.pending.get(requestId);
   if (!pending || pending.taskId !== taskId || s.activeTaskId !== taskId || !s.executor || !s.tracker) {
@@ -426,6 +436,8 @@ export function answerTaskQuestion(taskId: string, questionId: string, answer: s
   const task = findTask(taskId);
   if (!task) return { ok: false, error: "tarefa não encontrada" };
   if (state().activeTaskId === taskId) return { ok: false, error: "esta tarefa já está executando" };
+  // A remote task still leased is running on a worker (e.g. waiting for a permission), not parked on the question.
+  if (task.runtime !== "local" && leaseHolder(taskId) !== null) return { ok: false, error: "esta tarefa já está executando" };
   const result = applyAnswer(task.snapshot, questionId, answer, userName, new Date().toISOString());
   if (!result.ok) return { ok: false, error: result.error };
   saveSnapshot(taskId, result.ticket);

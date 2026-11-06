@@ -15,6 +15,8 @@ import { reconcilePlan } from "./apply";
 import { createLiveTicket, liveEvents, remoteRunContext, resetRemoteContext, type LiveTicket } from "./live";
 import { baseCommitOf } from "./local-delivery";
 import { taskBranch } from "./prepare-claim";
+import { pendingQuestions } from "./questions";
+import { closeRemotePrompts } from "./remote-permissions";
 import { TASK_EVENT, type TaskEvent } from "./runner";
 import { releaseLease } from "./scheduler";
 import { diffBetween, prepareWorktree, pushAndOpenPr } from "./workspace";
@@ -321,6 +323,25 @@ async function importDone(loaded: Loaded, t: LiveTicket, req: ResultRequest): Pr
 }
 
 /**
+ * RMT-02: the agent asked a CARBON_QUESTION. The task waits for a human (lease already released);
+ * answering requeues it on the same runtime with resume=true, and the next claim carries the
+ * decisions in the prompt. A remote run has no session to resume and its clone is gone, so the
+ * next run starts again from the task base with the decisions as context.
+ */
+function parkOnQuestion(t: LiveTicket, stage: StageId): ImportOutcome {
+  if (pendingQuestions(t.get()).length === 0) {
+    const text = "o worker informou uma pergunta do agente, mas ela não chegou ao painel — use “rodar de novo”";
+    finish(t, "failed", stage, text);
+    return { status: "failed", error: text };
+  }
+  t.log(stage, "info", "execução remota: ao responder, a tarefa volta para a fila do mesmo runtime e o agente recomeça com as suas decisões no contexto");
+  t.log(stage, "warn", "aguardando sua resposta no card de pergunta (acima do pipeline) para continuar");
+  t.set({ ...t.get(), status: "waiting", stage }, true);
+  emitTask("question", t.get().id, "aguardando sua resposta");
+  return { status: "waiting", error: null };
+}
+
+/**
  * Applies a worker's final result. The lease is released first (atomically: a concurrent or
  * repeated result gets "lease_lost"), so a slow push/PR is never swept as a vanished worker.
  * The incoming bundle is always deleted.
@@ -334,8 +355,10 @@ export async function importRemoteResult(taskId: string, workerId: string, req: 
       if (task) finish(createLiveTicket(taskId, task.snapshot), "failed", task.snapshot.stage ?? "deliver", loaded.error);
       return { status: "failed", error: loaded.error };
     }
-    const t = createLiveTicket(taskId, loaded.task.snapshot);
+    // The run is over: prompts it forwarded can no longer be answered.
+    const t = createLiveTicket(taskId, closeRemotePrompts(loaded.task.snapshot));
     const stage = t.get().stage ?? "code";
+    if (req.status === "waiting") return parkOnQuestion(t, stage);
     if (req.status !== "done") {
       const text = req.status === "canceled" ? `cancelado${req.error ? `: ${req.error}` : ""}` : (req.error ?? "o worker reportou falha");
       finish(t, "failed", stage, text);

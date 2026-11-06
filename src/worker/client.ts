@@ -15,6 +15,8 @@ import {
   LEASE_LOST,
   MAX_EVENTS_PER_BATCH,
   MAX_JSON_BODY_BYTES,
+  permissionsPath,
+  permissionsResponseSchema,
   PROTOCOL_VERSION,
   resultPath,
   resultRequestSchema,
@@ -22,6 +24,7 @@ import {
   type HeartbeatResponse,
   type HelloRequest,
   type HelloResponse,
+  type PermissionsResponse,
   type ResultRequest,
 } from "../shared/worker-protocol";
 
@@ -117,6 +120,8 @@ export interface WorkerClient {
   downloadBundle(taskId: string, destFile: string): Promise<Delivery>;
   uploadBundle(taskId: string, file: string): Promise<Delivery>;
   result(taskId: string, req: ResultRequest): Promise<Delivery>;
+  /** Long-poll (RMT-01): answers to forwarded permission prompts with seq > after. */
+  permissions(taskId: string, after: number, signal?: AbortSignal): Promise<PermissionsResponse | LeaseLost>;
 }
 
 // ---------------------------------------------------------------- pure helpers
@@ -456,6 +461,16 @@ export function createWorkerClient(options: WorkerClientOptions): WorkerClient {
       const path = resultPath(taskId);
       const outcome = await callJson("POST", path, resultRequestSchema.parse(req));
       return okOrLeaseLost(outcome);
+    },
+
+    async permissions(taskId, after, signal) {
+      const path = permissionsPath(taskId, after);
+      const res = await send("GET", path, { signal });
+      if (!res.ok) {
+        const outcome = await classify(res, path);
+        if (outcome.kind === "lease_lost") return LEASE_LOST;
+      }
+      return validate(permissionsResponseSchema, await readEnvelope(res, path), path);
     },
   };
 }
