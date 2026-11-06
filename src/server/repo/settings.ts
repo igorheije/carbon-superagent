@@ -19,6 +19,19 @@ export const modelSchema = z
   .max(80)
   .refine((v) => v === "" || v === AUTO_MODEL || v === "default" || isValidModelName(v), "nome de modelo inválido");
 
+/** Remote workers (pool machines / AgentCore). */
+export const workersSettingsSchema = z.object({
+  /** How long a claim lasts without a heartbeat. */
+  leaseMs: z.number().int().min(10_000).max(600_000).default(60_000),
+  /** Long-poll wait the worker uses between claims. */
+  pollMs: z.number().int().min(1_000).max(60_000).default(25_000),
+  /** true → a task whose worker vanished goes back to the queue; false → it fails. */
+  requeueOnLeaseLoss: z.boolean().default(false),
+  maxBundleMb: z.number().int().min(1).max(2_000).default(200),
+});
+export type WorkersSettings = z.infer<typeof workersSettingsSchema>;
+const WORKERS_DEFAULTS: WorkersSettings = { leaseMs: 60_000, pollMs: 25_000, requeueOnLeaseLoss: false, maxBundleMb: 200 };
+
 export const settingsSchema = z.object({
   repoPath: z.string().trim().max(1024).default(""),
   baseBranch: z.string().trim().max(200).default(""),
@@ -80,6 +93,8 @@ export const settingsSchema = z.object({
   telegramWebhookSecret: z.string().trim().max(256).default(""),
   /** Only this chat may create tasks and answer questions. */
   telegramChatId: z.string().trim().max(40).default(""),
+
+  workers: workersSettingsSchema.default(WORKERS_DEFAULTS),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

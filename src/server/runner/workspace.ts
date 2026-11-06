@@ -24,32 +24,60 @@ export function prepareWorktree(repoPath: string, baseBranch: string, key: strin
 
 const materializedName = (name: string): string => (name.startsWith("carbon-") ? name : `carbon-${name}`);
 
-/** Writes skills where each CLI discovers them; returns paths for the prompt. */
-export function materializeSkills(worktreePath: string, skills: readonly Skill[]) {
-  return skills.map((skill) => {
+/** A file written into the worktree for the agent (never committed: see EXCLUDES in worktree.ts). */
+export interface ContextFile {
+  readonly path: string;
+  readonly content: string;
+}
+
+export interface SkillRef {
+  readonly name: string;
+  readonly description: string;
+  readonly path: string;
+}
+
+/** Skill files for both CLIs plus the references the prompt lists. Pure: nothing is written. */
+export function skillFiles(skills: readonly Skill[]): { readonly files: readonly ContextFile[]; readonly refs: readonly SkillRef[] } {
+  const entries = skills.map((skill) => {
     const name = materializedName(skill.name);
-    const markdown = toSkillMarkdown({ name, description: skill.description, body: skill.body });
-    for (const root of [".claude/skills", ".codex/skills"]) {
-      const dir = path.join(worktreePath, root, name);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), markdown, "utf8");
-    }
-    return { name, description: skill.description, path: `.claude/skills/${name}/SKILL.md` };
+    const content = toSkillMarkdown({ name, description: skill.description, body: skill.body });
+    const files = [".claude/skills", ".codex/skills"].map((root) => ({ path: `${root}/${name}/SKILL.md`, content }));
+    return { files, ref: { name, description: skill.description, path: `.claude/skills/${name}/SKILL.md` } };
   });
+  return { files: entries.flatMap((e) => e.files), refs: entries.map((e) => e.ref) };
+}
+
+/** Copy of the repo's Claude Code memory for the agent to open on demand. Pure. */
+export function claudeMemoryFiles(memory: RepoMemory): readonly ContextFile[] {
+  return memory.files.map((file) => ({ path: `${MEMORY_WORKTREE_DIR}/${path.basename(file.name)}`, content: `${file.content}\n` }));
+}
+
+/** Full project map for the agent. Pure. */
+export const projectMapFile = (markdown: string): ContextFile => ({ path: ".carbon/PROJECT_MAP.md", content: markdown });
+
+function writeContextFiles(worktreePath: string, files: readonly ContextFile[]): void {
+  for (const file of files) {
+    const to = path.join(worktreePath, file.path);
+    mkdirSync(path.dirname(to), { recursive: true });
+    writeFileSync(to, file.content, "utf8");
+  }
+}
+
+/** Writes skills where each CLI discovers them; returns paths for the prompt. */
+export function materializeSkills(worktreePath: string, skills: readonly Skill[]): readonly SkillRef[] {
+  const { files, refs } = skillFiles(skills);
+  writeContextFiles(worktreePath, files);
+  return refs;
 }
 
 /** Copy of the repo's Claude Code memory for the agent to open on demand; excluded from commits. */
 export function writeClaudeMemory(worktreePath: string, memory: RepoMemory): void {
-  const dir = path.join(worktreePath, MEMORY_WORKTREE_DIR);
-  mkdirSync(dir, { recursive: true });
-  for (const file of memory.files) writeFileSync(path.join(dir, path.basename(file.name)), `${file.content}\n`, "utf8");
+  writeContextFiles(worktreePath, claudeMemoryFiles(memory));
 }
 
 /** Full project map for the agent; excluded from commits like the skills. */
 export function writeProjectMap(worktreePath: string, markdown: string): void {
-  const dir = path.join(worktreePath, ".carbon");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "PROJECT_MAP.md"), markdown, "utf8");
+  writeContextFiles(worktreePath, [projectMapFile(markdown)]);
 }
 
 function snippetFor(patch: string): readonly string[] {

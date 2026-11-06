@@ -1,5 +1,5 @@
 import "server-only";
-import { EventEmitter } from "node:events";
+import type { EventEmitter } from "node:events";
 import type { StageId, Ticket } from "@/lib/domain/types";
 import type { ExecutorEvent } from "../executors/events";
 import { buildCommand, startExecutor, type PermissionDecision, type RunningExecutor } from "../executors/spawn";
@@ -9,20 +9,20 @@ import { getSettings, type Settings } from "../repo/settings";
 import { classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
-import { addLesson, findTask, moveToFront, nextQueuedLocalTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
+import { addLesson, findTask, moveToFront, nextQueuedLocalTask, saveSnapshot, type Task } from "../repo/tasks";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
-import { memoryPromptSection, readRepoMemory } from "../knowledge/claude-memory";
+import { readRepoMemory } from "../knowledge/claude-memory";
 import { buildKnowledgeContext } from "../knowledge/context";
 import { ensureFreshIndex } from "../knowledge/indexer";
 import { checkRepo } from "../system/detect";
 import { findProject } from "../repo/projects";
-import { appendLog, applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
-import { buildPrompt } from "./prompt";
-import { answeredQuestions, answerQuestion as applyAnswer, decisionsSection, resumeMessage } from "./questions";
+import { applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
+import { createLiveTicket, liveEvents, notifyLive, type LiveTicket } from "./live";
+import { taskPrompt } from "./prepare-claim";
+import { answeredQuestions, answerQuestion as applyAnswer, resumeMessage } from "./questions";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
 
-const SAVE_THROTTLE_MS = 400;
 const LESSON_CONFIDENCE = 0.6;
 
 interface PendingPermission {
@@ -52,9 +52,7 @@ const globalForRunner = globalThis as unknown as { carbonRunner?: RunnerState };
 
 function state(): RunnerState {
   if (!globalForRunner.carbonRunner) {
-    const events = new EventEmitter();
-    events.setMaxListeners(100);
-    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, runStartedAt: null, pending: new Map(), allowAll: new Set(), events };
+    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, runStartedAt: null, pending: new Map(), allowAll: new Set(), events: liveEvents() };
   }
   return globalForRunner.carbonRunner;
 }
@@ -62,33 +60,11 @@ function state(): RunnerState {
 export const runnerEvents = (): EventEmitter => state().events;
 export const runnerStatus = () => ({ enabled: state().enabled, activeTaskId: state().activeTaskId });
 
-const notify = () => state().events.emit("change");
+const notify = notifyLive;
 
-/** Holds the live ticket in memory and persists it at most every SAVE_THROTTLE_MS. */
-function tracker(task: Task) {
-  let ticket: Ticket = task.snapshot;
-  let lastSave = 0;
-  const persist = (force = false) => {
-    const now = Date.now();
-    if (!force && now - lastSave < SAVE_THROTTLE_MS) return;
-    lastSave = now;
-    saveSnapshot(task.id, ticket);
-    notify();
-  };
-  return {
-    get: () => ticket,
-    set: (next: Ticket, force = false) => {
-      ticket = next;
-      persist(force);
-    },
-    log: (stage: StageId, level: Parameters<typeof appendLog>[2], text: string, force = false) => {
-      ticket = appendLog({ ...ticket, stage }, stage, level, text);
-      persist(force);
-    },
-  };
-}
+const tracker = (task: Task): LiveTicket => createLiveTicket(task.id, task.snapshot);
 
-type Tracker = ReturnType<typeof tracker>;
+type Tracker = LiveTicket;
 
 /** Shows worktree paths as repo-relative paths in logs and research hits. */
 function relativize(event: ExecutorEvent, root: string): ExecutorEvent {
@@ -218,19 +194,7 @@ async function execute(task: Task): Promise<void> {
 
     const decisions = answeredQuestions(t.get());
     const fullPrompt = () =>
-      buildPrompt({
-        key: task.key,
-        title: task.title,
-        description: task.description,
-        persona: task.persona,
-        requester: task.snapshot.requester,
-        skills,
-        lessons: promotedLessons(project.id),
-        executor: task.executor,
-        knowledge: knowledge?.prompt ?? null,
-        claudeMemory: memory ? memoryPromptSection(memory) : null,
-        decisions: decisionsSection(decisions),
-      });
+      taskPrompt(task, project.id, { skills, knowledge: knowledge?.prompt ?? null, memory, decisions });
     const runAgent = async (prompt: string, resumeSessionId: string | null) => {
       let ctx = emptyContext;
       const command = buildCommand(task.executor, prompt, wt.path, settings, choice, resumeSessionId);
