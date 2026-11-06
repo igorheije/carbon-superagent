@@ -138,6 +138,23 @@ function renderKustomization(opts: WorkerKitOptions): string {
   });
 }
 
+/**
+ * The worker image is not published anywhere: it is built from the Carbon repo (same version as
+ * the panel) and pushed to a registry the cluster can pull from.
+ */
+export function k8sImageStep(image: string): string {
+  const buildx = (tag: string) => `docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t ${tag} --push .`;
+  if (image.includes("/")) {
+    return `Publique a imagem \`${image}\` (ela não vem pronta). No repositório do Carbon, na mesma versão do painel:
+   \`${buildx(image)}\``;
+  }
+  return `A imagem \`${image}\` não é publicada em nenhum registry, e o cluster precisa baixá-la. No repositório
+   do Carbon, na mesma versão do painel, publique num registry seu:
+   \`${buildx(`<registry>/${image}`)}\`
+   e troque \`image:\` no \`deployment.yaml\` (ou gere o kit já com a imagem: campo "Imagem" em Admin → Máquinas
+   ou \`carbon worker init --image <registry>/${image}\`).`;
+}
+
 function renderReadme(opts: WorkerKitOptions): string {
   const ns = namespaceOf(opts);
   return `# Carbon worker — ${opts.workerName} (Kubernetes)
@@ -149,9 +166,7 @@ tempo com: ${opts.executors.join(", ")}. Recursos por réplica: ${opts.cpu} CPU,
 ## Antes de aplicar
 
 1. Abra o \`secret.yaml\` e preencha as credenciais do modelo e o \`CARBON_GIT_TOKEN\` (descomente as linhas).
-2. Garanta que o cluster consegue baixar a imagem \`${opts.image}\`.
-   Para gerar a imagem multi-arch a partir do repositório do Carbon:
-   \`docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t ${opts.image} --push .\`
+2. ${k8sImageStep(opts.image)}
 3. O \`secret.yaml\` contém o token da máquina: não versione. Em produção, prefira Sealed Secrets ou External Secrets.
 
 ## Aplicar

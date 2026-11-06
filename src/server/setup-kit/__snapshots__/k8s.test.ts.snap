@@ -11,8 +11,7 @@ tempo com: claude, codex. Recursos por réplica: 1500m CPU, 4Gi de memória.
 ## Antes de aplicar
 
 1. Abra o \`secret.yaml\` e preencha as credenciais do modelo e o \`CARBON_GIT_TOKEN\` (descomente as linhas).
-2. Garanta que o cluster consegue baixar a imagem \`ghcr.io/acme/carbon-worker:0.2.0\`.
-   Para gerar a imagem multi-arch a partir do repositório do Carbon:
+2. Publique a imagem \`ghcr.io/acme/carbon-worker:0.2.0\` (ela não vem pronta). No repositório do Carbon, na mesma versão do painel:
    \`docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t ghcr.io/acme/carbon-worker:0.2.0 --push .\`
 3. O \`secret.yaml\` contém o token da máquina: não versione. Em produção, prefira Sealed Secrets ou External Secrets.
 

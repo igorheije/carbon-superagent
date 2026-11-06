@@ -84,4 +84,12 @@ describe("renderK8s", () => {
     expect(files["README.md"]).toContain("kubectl apply -k .");
     expect(files["README.md"]).toContain("kubectl -n carbon-maquina-sp-01 scale deployment/carbon-worker --replicas=N");
   });
+
+  it("README gives the exact image build step: build+push for a registry image, build + registry hint for the default", () => {
+    expect(files["README.md"]).toContain(`docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t ${KIT_OPTIONS.image} --push .`);
+    const bare = renderK8s({ ...KIT_OPTIONS, image: "carbon-worker:0.2.0" })["README.md"];
+    expect(bare).toContain("docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t <registry>/carbon-worker:0.2.0 --push .");
+    expect(bare).toContain("carbon worker init --image <registry>/carbon-worker:0.2.0");
+    expect(bare).toContain("não é publicada em nenhum registry");
+  });
 });
