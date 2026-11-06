@@ -322,7 +322,9 @@ async function importDone(loaded: Loaded, t: LiveTicket, req: ResultRequest): Pr
   if (reconciled.unconfirmed > 0) t.log("deliver", "warn", `${reconciled.unconfirmed} passo(s) do plano sem confirmação do agente — revise antes de aprovar`, true);
 
   const ctx = remoteRunContext(task.id, t.get());
-  await deliver(task, project, t, workspace, ctx.costUsd);
+  // A part of a distributed task stays on its branch: the parent integrates it and opens the PR.
+  if (task.snapshot.parent) t.log("deliver", "info", `parte de ${task.snapshot.parent.key}: fica no branch ${workspace.branch}; a tarefa principal integra e abre o PR`, true);
+  else await deliver(task, project, t, workspace, ctx.costUsd);
   t.set({ ...t.get(), stage: "reflect" }, true);
   for (const lesson of ctx.lessons) {
     addLesson(project.id, { ticketKey: task.key, rule: lesson.rule, evidence: lesson.evidence, scope: project.name, confidence: LESSON_CONFIDENCE });

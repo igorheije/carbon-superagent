@@ -87,6 +87,8 @@ export interface NewTask {
   readonly runtime?: TaskRuntime;
   /** Allow the agent to split the task across parallel sub-agents (Claude Code only). */
   readonly multiAgent?: boolean;
+  /** Allow splitting the task into parts that run on other machines of the cluster. */
+  readonly distributed?: boolean;
 }
 
 export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
@@ -113,6 +115,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     tokens: 0,
     model: task.modelLabel,
     ...(task.multiAgent && task.executor === "claude" ? { multiAgent: true, subagents: [] } : {}),
+    ...(task.distributed ? { distributed: true } : {}),
     startedAtTick: null,
     endedAtTick: null,
   };
@@ -146,6 +149,12 @@ export function listTasks(projectId: string | null, limit = 50): readonly Task[]
   const rows = (projectId
     ? getDb().prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY position LIMIT ?").all(projectId, limit)
     : getDb().prepare("SELECT * FROM tasks ORDER BY position LIMIT ?").all(limit)) as unknown as TaskRow[];
+  return rows.map(toTask);
+}
+
+/** Tasks in one status, oldest position first (the split reconciler looks for waiting parents). */
+export function listTasksByStatus(status: TicketStatus): readonly Task[] {
+  const rows = getDb().prepare("SELECT * FROM tasks WHERE status = ? ORDER BY position").all(status) as unknown as TaskRow[];
   return rows.map(toTask);
 }
 

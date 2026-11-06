@@ -1,4 +1,4 @@
-import { STAGES, type StageId, type SubagentRun, type Ticket } from "@/lib/domain/types";
+import { STAGES, type StageId, type SubagentRun, type SubtaskSpec, type Ticket } from "@/lib/domain/types";
 import { clipSummary, type ExecutorEvent } from "../executors/events";
 import { parseMarkers, stripMarkers, type Marker } from "../executors/protocol";
 import { addOption, addQuestion } from "./questions";
@@ -18,9 +18,16 @@ export interface RunContext {
   readonly isError: boolean;
   readonly costUsd: number;
   readonly sessionId: string | null;
+  /** Parts declared with CARBON_SUBTASK (distributed parent tasks only). */
+  readonly subtasks: readonly SubtaskSpec[];
 }
 
-export const emptyContext: RunContext = { lessons: [], question: null, hasMarkerPlan: false, isError: false, costUsd: 0, sessionId: null };
+export const emptyContext: RunContext = { lessons: [], question: null, hasMarkerPlan: false, isError: false, costUsd: 0, sessionId: null, subtasks: [] };
+
+export const MAX_SUBTASKS = 4;
+
+/** Only a distributed task that has not split yet may split; subtasks never do (depth 1). */
+export const canSplit = (ticket: Ticket): boolean => ticket.distributed === true && !ticket.parent && !ticket.split;
 
 const currentStage = (ticket: Ticket): StageId => ticket.stage ?? "intake";
 
@@ -61,6 +68,12 @@ function applyMarker(state: { ticket: Ticket; ctx: RunContext }, marker: Marker)
       return { ticket: addQuestion(ticket, currentStage(ticket), marker.text, new Date().toISOString()), ctx: { ...ctx, question: marker.text } };
     case "option":
       return { ticket: addOption(ticket, marker.option), ctx };
+    case "subtask": {
+      if (!canSplit(ticket) || ctx.subtasks.length >= MAX_SUBTASKS || ctx.subtasks.some((s) => s.title === marker.title)) return { ticket, ctx };
+      const spec = { title: marker.title, files: marker.files, brief: marker.brief };
+      const logged = appendLog(ticket, currentStage(ticket), "info", `⇉ parte ${ctx.subtasks.length + 1}: ${marker.title} · ${marker.files.length} arquivo(s)`);
+      return { ticket: logged, ctx: { ...ctx, subtasks: [...ctx.subtasks, spec] } };
+    }
   }
 }
 

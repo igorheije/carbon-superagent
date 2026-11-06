@@ -16,6 +16,7 @@ import { agentcoreSessionId } from "../runtimes/session";
 import { appendLog } from "./apply";
 import { notifyLive, resetRemoteContext } from "./live";
 import { buildPrompt } from "./prompt";
+import { distributedPhase, integrateSection, SPLIT_SECTION, subtaskSection, type MergeReportEntry } from "./split-prompt";
 import { answeredQuestions, decisionsSection } from "./questions";
 import { releaseLease, type Lease } from "./scheduler";
 import { claudeMemoryFiles, projectMapFile, skillFiles, type ContextFile, type SkillRef } from "./workspace";
@@ -32,6 +33,19 @@ export interface PromptParts {
   readonly knowledge: string | null;
   readonly memory: RepoMemory | null;
   readonly decisions: readonly AgentQuestion[];
+  /** Integration run of a distributed task: what happened to each part (filled by the local runner). */
+  readonly mergeReport?: readonly MergeReportEntry[];
+}
+
+/** The distributed-task section for this run, or null for an ordinary task. */
+export function distributedSectionFor(ticket: Ticket, mergeReport: readonly MergeReportEntry[] = []): string | null {
+  const phase = distributedPhase(ticket);
+  if (phase === "split") return SPLIT_SECTION;
+  if (phase === "subtask" && ticket.parent && ticket.subtask) {
+    return subtaskSection({ parentKey: ticket.parent.key, parentTitle: ticket.parent.title, brief: ticket.subtask.brief, files: ticket.subtask.files });
+  }
+  if (phase === "integrate") return integrateSection(mergeReport);
+  return null;
 }
 
 /** The full task prompt. Shared by the local runner and remote claims so both stay identical. */
@@ -48,6 +62,7 @@ export function taskPrompt(task: Task, projectId: string, parts: PromptParts): s
     knowledge: parts.knowledge,
     claudeMemory: parts.memory ? memoryPromptSection(parts.memory) : null,
     multiAgent: task.snapshot.multiAgent === true,
+    distributedSection: distributedSectionFor(task.snapshot, parts.mergeReport),
     decisions: decisionsSection(parts.decisions),
   });
 }
@@ -167,7 +182,7 @@ export async function prepareClaim(lease: Lease, worker: Pick<Worker, "id" | "na
     const resuming = task.snapshot.resume === true;
     const decisions = answeredQuestions(task.snapshot);
     const [plan, context] = await Promise.all([
-      planCode(project.repoPath, project.baseBranch, task),
+      planCode(project.repoPath, task.snapshot.baseBranch ?? project.baseBranch, task),
       gatherContext(task, project, decisions, settings.useClaudeMemory),
     ]);
     const choice = resolveModel(task.executor, task.model, task.title, task.description, task.effort);
