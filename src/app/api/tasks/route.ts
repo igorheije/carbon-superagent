@@ -38,6 +38,7 @@ export function POST(request: Request) {
       modelLabel: plannedLabel(executor, model, effort, input.title, input.description),
       priority: input.priority,
       repo: project.name,
+      runtime: input.runtime ?? "local",
     });
     notifyChange();
     kick();
