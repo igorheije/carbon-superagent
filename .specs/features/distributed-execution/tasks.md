@@ -20,7 +20,7 @@
 ```
 T1   (T2 cancelado — U5)
 ```
-### Fase 1 — Fundação no painel (paralelo após T2)
+### Fase 1 — Fundação no painel (paralelo após T1)
 ```
       ┌→ T3 (migração+repo) → T4 (scheduler) ─┐
 T1 ───┼→ T5 [P] (auth de worker) ──────────────┼→ T7 (rotas /api/worker)
