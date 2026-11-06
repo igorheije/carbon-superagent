@@ -101,6 +101,16 @@ export function ExecutionTab() {
           </label>
         </div>
       </Panel>
+      <Panel eyebrow="Memória" title="Memória do Claude Code">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3">
+          <input type="checkbox" checked={draft.useClaudeMemory} onChange={(e) => set({ useClaudeMemory: e.target.checked })} className="mt-1 accent-[var(--accent)]" />
+          <span className="text-[13px]">Usar a memória do Claude Code de cada repositório<span className="block text-[12px] text-muted">Antes de cada tarefa, o Carbon lê a memória que o Claude Code já salvou para o repositório do projeto (a mesma que você usa no terminal) e entrega ao agente. Só leitura: os arquivos de memória não são alterados.</span></span>
+        </label>
+        <div role="note" className="mt-3 rounded-xl border border-line p-3 text-[12px] text-warn">
+          <p className="font-medium">Atenção: use esta opção só se o painel tiver uma única conta.</p>
+          <p className="mt-1">A memória lida é a do usuário do computador onde o Carbon roda, com tudo o que foi salvo nela: preferências, decisões, contexto de projetos e o que mais estiver lá. Com a opção ligada, toda tarefa, de qualquer conta do painel, recebe essa memória. Revise o que está salvo antes de ligar e não guarde segredos ou dados pessoais nela.</p>
+        </div>
+      </Panel>
       <Panel eyebrow="Entrega" title="Como entregar">
         <p className="mb-3 text-[12px] text-muted">Repositório e branch base agora ficam em cada projeto (aba Projetos).</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

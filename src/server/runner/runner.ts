@@ -11,6 +11,7 @@ import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
 import { addLesson, findTask, moveToFront, nextQueuedTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
+import { memoryPromptSection, readRepoMemory } from "../knowledge/claude-memory";
 import { buildKnowledgeContext } from "../knowledge/context";
 import { ensureFreshIndex } from "../knowledge/indexer";
 import { checkRepo } from "../system/detect";
@@ -18,7 +19,7 @@ import { findProject } from "../repo/projects";
 import { appendLog, applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
 import { buildPrompt } from "./prompt";
 import { answeredQuestions, answerQuestion as applyAnswer, decisionsSection, resumeMessage } from "./questions";
-import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeProjectMap } from "./workspace";
+import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
 
 const SAVE_THROTTLE_MS = 400;
@@ -203,6 +204,13 @@ async function execute(task: Task): Promise<void> {
     } else {
       t.log("intake", "warn", "projeto ainda não indexado: o agente vai explorar do zero (mais lento)");
     }
+    const memory = settings.useClaudeMemory ? readRepoMemory(project.repoPath) : null;
+    if (memory) writeClaudeMemory(wt.path, memory);
+    if (settings.useClaudeMemory) {
+      t.log("intake", memory ? "ok" : "info", memory
+        ? `memória do Claude Code: ${memory.files.length} arquivo(s)${memory.isTruncated ? " (cortada no limite)" : ""}`
+        : "memória do Claude Code: nenhuma encontrada para este repositório");
+    }
     const choice = resolveModel(task.executor, task.model, task.title, task.description, task.effort);
     t.set({ ...t.get(), model: executionLabel(task.executor, choice) });
     t.log("intake", "info", `modelo ${choice.label} — ${choice.reason}`);
@@ -220,6 +228,7 @@ async function execute(task: Task): Promise<void> {
         lessons: promotedLessons(project.id),
         executor: task.executor,
         knowledge: knowledge?.prompt ?? null,
+        claudeMemory: memory ? memoryPromptSection(memory) : null,
         decisions: decisionsSection(decisions),
       });
     const runAgent = async (prompt: string, resumeSessionId: string | null) => {
