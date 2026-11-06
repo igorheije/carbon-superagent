@@ -32,7 +32,21 @@ export function clipEvent(event: ExecutorEvent): ExecutorEvent {
     case "thinking":
       return { ...event, text: clipBody(event.text) };
     case "tool":
-      return { ...event, name: clipName(event.name), summary: clipBody(event.summary), path: event.path === null ? null : clipText(event.path, PATH_LIMIT) };
+      return {
+        ...event,
+        name: clipName(event.name),
+        summary: clipBody(event.summary),
+        path: event.path === null ? null : clipText(event.path, PATH_LIMIT),
+        ...(event.agentId === undefined ? {} : { agentId: clipName(event.agentId) }),
+      };
+    case "subagent_start":
+      return { ...event, id: clipName(event.id), description: clipBody(event.description), agentType: clipName(event.agentType) };
+    case "subagent_progress":
+      return { ...event, id: clipName(event.id), toolCalls: Number.isInteger(event.toolCalls) && event.toolCalls >= 0 ? event.toolCalls : 0, lastTool: clipName(event.lastTool) };
+    case "subagent_end":
+      return { ...event, id: clipName(event.id) };
+    case "tool_done":
+      return { ...event, toolUseId: clipName(event.toolUseId) };
     case "plan":
       return { ...event, items: event.items.slice(0, PLAN_ITEMS_LIMIT).map((item) => ({ text: clipBody(item.text), done: item.done })) };
     case "usage":

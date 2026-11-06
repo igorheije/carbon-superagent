@@ -174,3 +174,19 @@ describe("buildPrompt · multi-agent", () => {
     expect(buildPrompt({ ...input, executor: "codex", multiAgent: true })).not.toContain("## Multi-agent mode");
   });
 });
+
+describe("remote workers · sub-agent events on the wire", () => {
+  it("the worker→panel schema accepts every sub-agent event, clipped by the worker", async () => {
+    const { executorEventSchema } = await import("@/shared/worker-protocol");
+    const { clipEvent } = await import("@/worker/events");
+    const events: ExecutorEvent[] = [
+      { type: "subagent_start", id: "a1", description: "x".repeat(70_000), agentType: "general-purpose", isBackground: true },
+      { type: "subagent_progress", id: "a1", toolCalls: 3, lastTool: "Bash" },
+      { type: "tool", name: "Read", summary: "src/a.ts", path: "src/a.ts", agentId: "a1" },
+      { type: "subagent_end", id: "a1", isError: false },
+      { type: "tool_done", toolUseId: "a1", isError: false },
+    ];
+    for (const event of events) expect(executorEventSchema.safeParse(clipEvent(event)).success).toBe(true);
+    expect(executorEventSchema.parse(clipEvent(events[2] as ExecutorEvent))).toMatchObject({ agentId: "a1" });
+  });
+});
