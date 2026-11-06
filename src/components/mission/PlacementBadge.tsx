@@ -17,7 +17,7 @@ export function PlacementBadge({ ticket, variant = "compact" }: PlacementBadgePr
   const placement = placementOf(ticket);
   const Icon = ICONS[placement.runtime];
   return (
-    <span title={placement.label} className={`inline-flex ${variant === "full" ? "max-w-full" : "max-w-[160px]"} items-center gap-1 rounded-full border border-line px-1.5 py-px font-mono text-[10px] text-subtle`}>
+    <span title={placement.label} className={`inline-flex ${variant === "full" ? "max-w-full" : "min-w-[64px] max-w-[140px]"} items-center gap-1 rounded-full border border-line px-1.5 py-px font-mono text-[10px] text-subtle`}>
       <Icon className="size-3 shrink-0" aria-hidden />
       {variant === "full" ? (
         <span className="truncate">{placement.label}</span>

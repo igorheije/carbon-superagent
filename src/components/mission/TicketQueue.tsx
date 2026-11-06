@@ -50,9 +50,9 @@ function LiveActions({ ticket }: { ticket: Ticket }) {
     void act(`/api/tasks/${ticket.id}`, { action: "cancel" }).finally(() => setIsStopping(false));
   };
   const canStop = ticket.status === "running" || (isRemote && ticket.status === "waiting");
-  const button = "flex items-center gap-1 rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-muted hover:text-ink disabled:opacity-50";
+  const button = "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-muted hover:text-ink disabled:opacity-50";
   return (
-    <span className="flex items-center gap-1">
+    <span className="flex shrink-0 items-center gap-1">
       {error && <span role="alert" className="max-w-[180px] truncate font-mono text-[10px] text-danger" title={error}>{error}</span>}
       {canStop && (
         <button type="button" className={button} disabled={isStopping} onClick={stop}><Square className="size-3" /> {isStopping ? "parando…" : "parar"}</button>
@@ -80,20 +80,22 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
     >
       <div className="flex items-center gap-2.5">
         <PriorityGlyph priority={ticket.priority} />
-        <span className="font-mono text-[11px] text-muted">{ticket.key}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-muted">{ticket.key}</span>
         <span className="rounded-full border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-subtle">
           {ticket.source}
         </span>
-        <PlacementBadge ticket={ticket} />
-        <span className={`ml-auto font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
+        <span className={`ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
           {STATUS_LABEL[ticket.status]}
         </span>
       </div>
       <p className="mt-1.5 truncate text-[13px]">{ticket.title}</p>
       <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="truncate font-mono text-[10px] text-subtle">
-          {ticket.repo} · @{ticket.requester}{ticket.model ? ` · ${ticket.model}` : ""}
-        </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <PlacementBadge ticket={ticket} />
+          <p className="min-w-0 truncate font-mono text-[10px] text-subtle">
+            {ticket.repo} · @{ticket.requester}{ticket.model ? ` · ${ticket.model}` : ""}
+          </p>
+        </div>
         {mode === "live" && <LiveActions ticket={ticket} />}
         {ticket.status === "queued" && (
           <button

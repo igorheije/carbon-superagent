@@ -33,7 +33,7 @@ export const STATUS_LABEL: Readonly<Record<MachineStatus, string>> = {
 };
 
 export const STATUS_DOT: Readonly<Record<MachineStatus, string>> = {
-  busy: "bg-accent",
+  busy: "bg-warn animate-pulse",
   idle: "bg-ok",
   offline: "bg-subtle",
   revoked: "bg-danger",
