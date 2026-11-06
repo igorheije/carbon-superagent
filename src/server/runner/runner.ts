@@ -9,7 +9,7 @@ import { getSettings, type Settings } from "../repo/settings";
 import { classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
-import { addLesson, findTask, moveToFront, nextQueuedTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
+import { addLesson, findTask, moveToFront, nextQueuedLocalTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
 import { memoryPromptSection, readRepoMemory } from "../knowledge/claude-memory";
 import { buildKnowledgeContext } from "../knowledge/context";
@@ -415,11 +415,11 @@ export function answerPermission(taskId: string, requestId: string, choice: Perm
   return { ok: true };
 }
 
-/** Picks the next queued task if the runner is idle and enabled. Safe to call often. */
+/** Picks the next queued local task if the runner is idle and enabled. Safe to call often. */
 export function kick(): void {
   const s = state();
   if (!s.enabled || s.activeTaskId) return;
-  const task = nextQueuedTask();
+  const task = nextQueuedLocalTask();
   if (!task) return;
   s.activeTaskId = task.id;
   void execute(task).finally(() => setImmediate(kick));

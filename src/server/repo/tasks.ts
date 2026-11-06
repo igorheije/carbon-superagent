@@ -146,8 +146,9 @@ export function listTasks(projectId: string | null, limit = 50): readonly Task[]
   return rows.map(toTask);
 }
 
-export function nextQueuedTask(): Task | null {
-  const row = getDb().prepare("SELECT * FROM tasks WHERE status = 'queued' ORDER BY position LIMIT 1").get() as TaskRow | undefined;
+/** Next task for the panel's own runner. Pool/AgentCore tasks are claimed by workers (runner/scheduler.ts). */
+export function nextQueuedLocalTask(): Task | null {
+  const row = getDb().prepare("SELECT * FROM tasks WHERE runtime = 'local' AND status = 'queued' ORDER BY position LIMIT 1").get() as TaskRow | undefined;
   return row ? toTask(row) : null;
 }
 
