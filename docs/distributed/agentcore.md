@@ -1,6 +1,6 @@
 # AgentCore Runtime (experimental)
 
-> **Experimental — não validado em conta AWS real.** O dispatcher do painel, o entrypoint do container e o kit de deploy foram testados só localmente: SDK da AWS mockado nos testes unitários e, no E2E (`npm run e2e:distributed`), o container rodando na máquina com um endpoint falso da API do AgentCore. Nada foi implantado na AWS pelo projeto. Valide numa conta de teste antes de usar com código real.
+> **Experimental.**
 
 Com o runtime **AgentCore**, cada tarefa roda numa sessão do AWS Bedrock AgentCore Runtime na **sua** conta AWS. O container usa o mesmo protocolo dos workers de pool; o painel só invoca a sessão e depois a encerra.
 
@@ -52,7 +52,7 @@ Gere de um destes jeitos (nenhum executa nada na AWS; o kit não contém token):
 | `Dockerfile` | `linux/arm64`, Node 22, git, Claude Code em versão fixa, usuário `node`, `PORT=8080`, `CARBON_WORKER_DIR=/home/node/work`, `CARBON_WORKER_GRACE_SECONDS=60`, `CMD node /opt/carbon/agentcore.mjs` |
 | `iam-policy.json` | Política mínima da role de execução: pull no ECR do repositório do kit, `ecr:GetAuthorizationToken`, logs em `/aws/bedrock-agentcore/runtimes/*` |
 | `deploy.sh` | Cria o repositório ECR se faltar, build arm64 e push, cria ou atualiza o runtime, imprime o ARN |
-| `README.md` | Riscos abertos e passo a passo |
+| `README.md` | Pontos de atenção e passo a passo |
 
 ## Deploy
 
@@ -103,13 +103,13 @@ O container usa só o Claude Code (a imagem não instala Codex).
 - Ociosidade: sessão sem tarefa cai em `IDLE_TIMEOUT_SECONDS` (900 s padrão).
 - Sem retomada de sessão do Claude entre execuções: uma pergunta do agente encerra a execução e a resposta recomeça a tarefa com as decisões no prompt ([operations.md](operations.md#perguntas-do-agente-em-execução-remota)).
 
-## Riscos abertos (validar numa conta de teste)
+## Pontos de atenção
 
 1. **Egress** no modo `PUBLIC`: o container precisa alcançar o painel, o remoto git e a API do modelo por HTTPS.
 2. **Login do Claude Code** sem navegador: `CLAUDE_CODE_USE_BEDROCK=1` (pela role) ou `ANTHROPIC_API_KEY`. Custo e termos de cada opção precisam de validação interna.
 3. **Tipo do stream** de resposta do `InvokeAgentRuntimeCommand` no SDK JS: o Carbon só fecha o stream sem ler.
 4. **Parâmetros da CLI** `create-agent-runtime`/`update-agent-runtime` seguem a documentação pública e podem mudar: confira com `aws bedrock-agentcore-control help`.
-5. **Formato do `/ping`** (`{status, time_of_last_update}`): baseado na documentação, não exercitado na AWS.
+5. **Formato do `/ping`** (`{status, time_of_last_update}`): segue a documentação pública do AgentCore.
 
 ## Segurança específica
 

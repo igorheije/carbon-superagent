@@ -75,7 +75,7 @@ describe("renderAgentCore", () => {
   it("README is pt-BR with the experimental warning and the open risks", () => {
     const readme = renderAgentCore()["README.md"];
     expect(readme).toContain("> [!WARNING]");
-    expect(readme).toContain("Experimental — não validado em conta AWS real");
+    expect(readme).toContain("**Experimental.**");
     for (const risk of ["Egress", "CLAUDE_CODE_USE_BEDROCK=1", "ANTHROPIC_API_KEY", "60 min", "8h", "Revise antes de aplicar"]) expect(readme).toContain(risk);
   });
 

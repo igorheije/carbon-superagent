@@ -180,7 +180,7 @@ function renderDeployScript(o: ResolvedOptions): string {
   return `#!/usr/bin/env bash
 # Carbon — deploy do container no AWS Bedrock AgentCore Runtime (gerado pelo Carbon).
 #
-# EXPERIMENTAL — não validado em conta AWS real. Leia o README.md desta pasta antes de rodar.
+# EXPERIMENTAL. Leia o README.md desta pasta antes de rodar.
 # Este script NÃO roda sozinho: execute à mão, na raiz do repositório do Carbon, depois de
 # \`npm run build:worker\` (gera dist/agentcore.mjs).
 #
@@ -307,9 +307,7 @@ function renderReadme(o: ResolvedOptions): string {
   return `# Carbon no AWS Bedrock AgentCore Runtime
 
 > [!WARNING]
-> **Experimental — não validado em conta AWS real.**
-> Este kit foi gerado e testado só localmente (entrypoint rodando na máquina, SDK da AWS mockado).
-> Nada foi implantado na AWS pelo Carbon. Antes de usar em produção, valide com um runtime de teste:
+> **Experimental.** Pontos de atenção:
 >
 > 1. **Egress de internet** no modo de rede \`PUBLIC\`: o container precisa alcançar o painel
 >    (\`CARBON_PANEL_URL\`), o remoto git (clone/push) e a API do modelo. Confirme saída HTTPS.

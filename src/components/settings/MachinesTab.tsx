@@ -119,7 +119,7 @@ export function MachinesTab() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="flex max-w-2xl gap-2 text-[12px] text-muted">
             <Cloud className="mt-0.5 size-4 shrink-0" />
-            <span>Dockerfile arm64, política IAM mínima e <span className="font-mono">deploy.sh</span> para publicar o container na sua conta AWS. Experimental: não validado em conta AWS real. Nada é executado na AWS pelo Carbon e o kit não contém token — cada sessão recebe um token de uso único.</span>
+            <span>Dockerfile arm64, política IAM mínima e <span className="font-mono">deploy.sh</span> para publicar o container na sua conta AWS. Experimental. O kit não contém token — cada sessão recebe um token de uso único.</span>
           </p>
           <a href="/api/admin/agentcore-kit" download className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-line px-5 py-2.5 text-[14px] font-medium text-muted transition-colors hover:border-line-strong hover:text-ink">
             <Download className="size-4" /> Baixar kit AgentCore

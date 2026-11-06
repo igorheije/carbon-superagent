@@ -43,7 +43,7 @@ Não. Qualquer worker do pool com o executor da tarefa pode pegá-la.
 Não. Escala manual (`docker compose up -d --scale worker=N`, `kubectl scale`).
 
 **O AgentCore está pronto para produção?**
-Não. **Experimental — não validado em conta AWS real.** Está implementado, testado com SDK mockado e com o container rodando localmente, e documentado. Ver os riscos abertos em [agentcore.md](agentcore.md#riscos-abertos-validar-numa-conta-de-teste).
+Não. É **experimental**. Veja os pontos de atenção em [agentcore.md](agentcore.md#pontos-de-atenção).
 
 **O Carbon cria recursos na minha conta AWS?**
 Não. O `deploy.sh` do kit é executado por você. O painel só chama `InvokeAgentRuntime` e `StopRuntimeSession` num runtime que você já criou, com as credenciais AWS da máquina do painel.

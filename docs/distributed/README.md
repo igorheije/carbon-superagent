@@ -2,7 +2,7 @@
 
 Por padrão o Carbon roda **uma tarefa por vez, na máquina do painel**. A execução distribuída permite rodar tarefas em outras máquinas (Docker Compose ou Kubernetes) e, de forma experimental, no **AWS Bedrock AgentCore Runtime**. O painel continua sendo o ponto central: fila, estado, log ao vivo, diff, perguntas, permissões e entrega aparecem nele como numa tarefa local.
 
-> **AgentCore — Experimental — não validado em conta AWS real.** O código, os testes (SDK da AWS mockado), o kit de deploy e esta documentação estão prontos; nada foi implantado na AWS pelo projeto. Veja [agentcore.md](agentcore.md).
+> **AgentCore — Experimental.** Veja [agentcore.md](agentcore.md).
 
 ## Índice
 
