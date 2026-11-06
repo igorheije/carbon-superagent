@@ -7,7 +7,9 @@ tarefa → intake → plan → research → code → test → review → deliver
           (worktree isolado por tarefa · você só é chamado quando precisa decidir)
 ```
 
-**Site:** [carbon-superagent.vercel.app](https://carbon-superagent.vercel.app) · **Licença:** MIT
+Por padrão tudo roda local, uma tarefa por vez. Quando precisar de mais vazão, a **execução distribuída** leva tarefas para **workers** em outras máquinas (Docker Compose ou Kubernetes) e, de forma experimental, para o **AWS Bedrock AgentCore Runtime** — com o painel continuando como o lugar onde tudo aparece. Ver [Execução distribuída](#execução-distribuída).
+
+**Site:** [carbon-superagent.vercel.app](https://carbon-superagent.vercel.app) · **Docs:** [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html) · **Licença:** MIT
 
 ![Mission control: pipeline de agentes, fila, sessão ao vivo e plano com critérios de aceite](docs/screenshots/mission-control.png)
 
@@ -56,6 +58,7 @@ npm run doctor   # diagnóstico do ambiente
 | **Protocolo de progresso** | O agente imprime `CARBON_STAGE`, `CARBON_PLAN`, `CARBON_TESTS`, `CARBON_FINDING`, `CARBON_LESSON`, `CARBON_QUESTION` e `CARBON_OPTION`; o painel transforma isso em pipeline, plano, testes, review e perguntas ao vivo. |
 | **Entrega** | O Carbon (não o agente) faz o commit no branch da tarefa. Depois, no card **Branch e entrega**, você leva as mudanças do jeito que o repositório permite: **PR** para um branch escolhido, **merge local** ou **aplicar na pasta** (ver abaixo). Com push automático ligado, o PR abre sozinho — **draft** no modo `observe`. Tarefas do Linear recebem comentário com o link; as do Jira, comentário e mudança de status. |
 | **Pipeline** | Grafo ao vivo com o agente ativo animado. **Expandir** abre uma visão interativa: clique em cada etapa para ver o que o agente fez nela (métricas, plano, arquivos lidos, testes, achados, PR e o log só daquela etapa). |
+| **Onde roda** | Cada tarefa escolhe **Onde rodar**: *Esta máquina* (padrão, fila serial), *Pool de workers* (processos `carbon worker` em outras máquinas, várias tarefas em paralelo) ou *AgentCore* (experimental). O executor (Claude Code ou Codex) é escolhido à parte. Ver [Execução distribuída](#execução-distribuída). |
 | **Aprendizado** | O agente propõe lições; você promove ou descarta. Lições promovidas entram no prompt das próximas tarefas. Nada se autopromove. |
 
 ## Entrega: branch, aplicar, merge ou PR
@@ -205,45 +208,52 @@ Em todos os perfis `git push`, `git commit` e `rm -rf` ficam bloqueados para o a
 
 **Isolamento:** por padrão as execuções do Claude ignoram suas configurações pessoais, hooks e MCPs (`--setting-sources project,local --strict-mcp-config`); as do projeto continuam valendo. Isso garante que o perfil acima seja o que vale e reduziu o contexto de uma tarefa de teste de ~92k para ~30k tokens. Dá para desligar em *Configurações → Execução*.
 
-## Expor o painel para workers
+## Execução distribuída
 
-Workers remotos (`carbon worker` em outra máquina) só precisam alcançar `/api/worker/*`. Para isso existe um listener separado; a UI e o resto da API continuam presos em `127.0.0.1`.
+Rode várias tarefas ao mesmo tempo em outras máquinas. O painel continua dono da fila, do estado e da entrega; os workers só executam e falam com ele por HTTPS de saída (não precisam de porta aberta).
+
+| Onde rodar | Quem executa | Paralelismo |
+| --- | --- | --- |
+| **Esta máquina** (padrão) | O processo do painel | 1 tarefa por vez |
+| **Pool de workers** | `carbon worker` em Docker Compose, Kubernetes ou direto no Node | réplicas × `CARBON_WORKER_PARALLEL` por máquina |
+| **AgentCore** — *experimental, não validado em conta AWS real* | Uma sessão do AWS Bedrock AgentCore Runtime por tarefa, na sua conta | até `agentcore.maxConcurrent` (padrão 3) |
+
+O código vai para o worker por **git** (clone do `origin` e push do branch `agent/*`) ou, sem remoto/commits, por **bundle** servido pelo painel; o branch volta para o repositório do painel e **Aplicar na pasta**, **Merge local** e **Abrir PR** funcionam como numa tarefa local. Permissões aparecem no painel como sempre; uma **pergunta** do agente encerra a execução remota e, ao responder, a tarefa volta à fila e recomeça da base com as suas decisões no prompt.
+
+Em resumo:
+
+1. Exponha só `/api/worker/*` (abaixo) e defina a **URL pública do painel** (`https://`) em *Configurações → Execução*.
+2. *Configurações → Máquinas → Adicionar máquina* gera o kit (Compose ou Kubernetes) com o token da máquina — ou `node bin/carbon.mjs worker init --target compose|k8s|agentcore --out <pasta> …` no host do painel.
+3. Na máquina worker: gere a imagem com `deploy/worker/Dockerfile` (mesma versão do painel), preencha as credenciais do modelo no `.env` e `docker compose up -d`.
+
+Documentação completa em [`docs/distributed/`](docs/distributed/README.md) — [quickstart](docs/distributed/quickstart.md), [Compose](docs/distributed/docker-compose.md), [Kubernetes](docs/distributed/kubernetes.md), [AgentCore](docs/distributed/agentcore.md), [protocolo](docs/distributed/protocol.md), [segurança](docs/distributed/security.md), [operação](docs/distributed/operations.md), [variáveis](docs/distributed/environment.md), [troubleshooting](docs/distributed/troubleshooting.md), [FAQ](docs/distributed/faq.md) — e no site: [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html).
+
+### Expor o painel para workers
+
+Workers só precisam alcançar `/api/worker/*`. Um listener separado encaminha apenas essas rotas; a UI e o resto da API continuam em `127.0.0.1`.
 
 ```bash
 # .env.local (ou variável de ambiente)
-CARBON_WORKER_LISTEN=127.0.0.1:3418   # 0.0.0.0:3418 só dentro de LAN/VPN
+CARBON_WORKER_LISTEN=127.0.0.1:3418
 # opcional: TLS direto no listener
 CARBON_WORKER_TLS_CERT=/caminho/cert.pem
 CARBON_WORKER_TLS_KEY=/caminho/key.pem
 ```
 
-Com isso, `npm start` sobe o listener junto com o painel e para junto com ele. O listener:
+`npm start` sobe o listener junto com o painel. Ele encaminha **só** caminhos `/api/worker/...` (o resto recebe `404` sem corpo), recusa path traversal (também codificado), forma absoluta, `CONNECT` e upgrades, exige `Authorization: Bearer` válido no formato, limita conexões e corpo, e registra uma linha por requisição sem `Authorization` nem query string. Só o listener (debug): `CARBON_WORKER_LISTEN=127.0.0.1:3418 CARBON_PORT=3417 node bin/worker-proxy.mjs`.
 
-- encaminha **apenas** caminhos `/api/worker/...` para o painel local; qualquer outro caminho recebe `404` sem corpo;
-- recusa `..`, `.` e barras duplas (também codificados, como `%2e%2e` e `%2f`), forma absoluta (`GET http://...`), `CONNECT` e upgrades;
-- remove cabeçalhos hop-by-hop, define `X-Forwarded-For`/`X-Forwarded-Proto` e transmite os corpos em streaming (teto absoluto de 1 GB; o limite real do bundle é `workers.maxBundleMb` no painel);
-- timeouts: 30 s para receber os cabeçalhos e 120 s de inatividade (cobre o long-poll de claim);
-- registra uma linha por requisição, sem `Authorization` e sem query string.
+Como expor, em ordem de preferência — sempre com **HTTPS** (o worker recusa `http://` fora de loopback):
 
-Para rodar só o listener (debug): `CARBON_WORKER_LISTEN=127.0.0.1:3418 CARBON_PORT=3417 node bin/worker-proxy.mjs`.
+1. **Tailscale**: `tailscale serve --https=443 http://127.0.0.1:3418` e `https://<host>.<tailnet>.ts.net` nos workers.
+2. **Cloudflare Tunnel** apontando **só para a porta do listener**, nunca para a do painel (3417): `cloudflared tunnel --url http://127.0.0.1:3418`. Num túnel nomeado, o `ingress` deve ter um único serviço `http://127.0.0.1:3418` e terminar em `http_status:404`.
+3. Reverse proxy próprio com TLS (Caddy, nginx) para `127.0.0.1:3418`.
 
-**Como expor, em ordem de preferência:**
-
-1. **Tailscale** (ou outra VPN): deixe `CARBON_WORKER_LISTEN=<ip-do-tailscale>:3418` e use `http://<host>.<tailnet>.ts.net:3418` nos workers. O tráfego já vai cifrado pela VPN. Para HTTPS com certificado válido, `tailscale serve --https=443 http://127.0.0.1:3418`.
-2. **Cloudflare Tunnel** apontando **só para a porta do listener**, nunca para a do painel (3417):
-   ```bash
-   cloudflared tunnel --url http://127.0.0.1:3418
-   ```
-   Num túnel nomeado, o `ingress` deve ter um único serviço `http://127.0.0.1:3418` e terminar em `http_status:404`.
-3. Reverse proxy próprio com TLS (Caddy, nginx) encaminhando para `127.0.0.1:3418`.
-
-**Nunca** exponha o listener por HTTP puro fora de LAN/VPN: o token do worker trafega no cabeçalho `Authorization`. Sem TLS, `carbon start` mostra um aviso.
-
-Depois de expor, defina `panelPublicUrl` em *Configurações* com a URL pública (ex. `https://carbon-workers.exemplo.com.br`). É ela que entra nos comandos de instalação dos workers. Revogue tokens de workers que você não usa mais.
+Detalhes em [docs/distributed/exposing-the-panel.md](docs/distributed/exposing-the-panel.md). Revogue em *Configurações → Máquinas* os tokens de máquinas que você não usa mais.
 
 ## Segurança
 
-- O painel escuta só em `127.0.0.1`. **Não exponha a porta na internet sem necessidade**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).
+- A UI e a API do painel escutam só em `127.0.0.1`. **Não exponha a porta do painel (3417) na internet**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).
+- **Com workers ativos o modelo muda:** o listener `CARBON_WORKER_LISTEN` expõe `/api/worker/*` para outras máquinas (só essas rotas, com token `Bearer`, rate limit por token, corpo JSON ≤ 1 MB, HTTPS obrigatório fora de loopback), e o **código do repositório sai da máquina do painel** para os workers que você cadastrou ou para a sua conta AWS. Tokens de máquina são mostrados uma vez, guardados como sha256 e revogáveis; o worker remove `CARBON_WORKER_TOKEN` e `CARBON_GIT_TOKEN` do ambiente do agente, e o token git só é enviado aos hosts de `CARBON_GIT_HOSTS`. Credenciais de modelo e de git ficam na máquina worker; o painel nunca as envia. Modelo de ameaça em [docs/distributed/security.md](docs/distributed/security.md).
 - Senhas com scrypt, sessões em cookie `httpOnly` guardadas como hash, rate limit no login, checagem de origem em requisições que mudam estado.
 - Descrições de tarefa (Linear, GitHub, Jira, Slack, Telegram) são tratadas como dados não confiáveis no prompt.
 - Dados ficam em `.carbon-data/` (SQLite com permissão `600`). Chaves e tokens de Linear, Jira, Slack e Telegram ficam nesse banco e nunca voltam ao navegador.
@@ -254,14 +264,19 @@ Depois de expor, defina `panelPublicUrl` em *Configurações* com a URL pública
 ```sh
 npm run dev      # Next.js com Turbopack em 127.0.0.1:3417
 npm run check    # tsc + eslint + vitest
+npm run build:worker      # dist/worker.mjs e dist/agentcore.mjs (workers remotos)
+npm run e2e:distributed   # painel + 2 workers + AgentCore local, sem AWS (depois de build e build:worker)
 ```
 
-Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, runner) · `src/app/api` (rotas) · `src/components` (painel) · `src/lib/sim` (modo demo). Plano e fases em [`docs/PLAN.md`](docs/PLAN.md).
+Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, runner) · `src/app/api` (rotas) · `src/components` (painel) · `src/lib/sim` (modo demo) · `src/worker` (worker remoto e entrypoint AgentCore) · `src/shared` (protocolo de worker e executores) · `deploy/worker` (imagem do worker). Plano e fases em [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Limites conhecidos
 
 - O parser do Codex segue o formato documentado de `codex exec --json` e tem testes unitários, mas ainda **não foi exercitado contra a CLI real** neste repositório. O do Claude Code foi validado ponta a ponta.
-- Uma tarefa por vez por máquina (fila serial).
+- No modo local, uma tarefa por vez (fila serial). Com workers, as tarefas do pool rodam em paralelo (réplicas × `CARBON_WORKER_PARALLEL`) além da fila local; não há afinidade de máquina nem autoscaling por fila (escala manual).
+- Execução remota não retoma a sessão do agente: depois de uma pergunta, a tarefa recomeça da base com as decisões no prompt. Lease vencido (worker some) falha a tarefa por padrão.
+- O runtime **AgentCore é experimental e não foi validado em conta AWS real**: testado com o SDK mockado e com o container rodando localmente. Egress, login do Claude Code no container e parâmetros da CLI `bedrock-agentcore-control` precisam ser validados numa conta de teste ([riscos abertos](docs/distributed/agentcore.md#riscos-abertos-validar-numa-conta-de-teste)).
+- A imagem do worker não é publicada em registry: é construída a partir deste repositório (`deploy/worker/Dockerfile`).
 - A limpeza de worktrees no boot considera as últimas 500 tarefas; pastas de tarefas mais antigas são tratadas como órfãs (removidas só se estiverem limpas).
 - O `gh pr create` pelo card exige um remoto do GitHub com `gh` autenticado; em outros remotos (GitLab, Bitbucket), use merge local ou aplicar na pasta.
 - As integrações com Jira, Slack e Telegram têm testes unitários e de ponta a ponta com requisições assinadas, mas ainda **não foram exercitadas contra os serviços reais** neste repositório. Use **Testar** em cada canal ao configurar.
