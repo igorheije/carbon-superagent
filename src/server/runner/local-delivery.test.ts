@@ -78,8 +78,18 @@ describe("repository without commits", () => {
     expect(readFileSync(path.join(dir, "novo.txt"), "utf8")).toBe("arquivo novo\n");
     expect(m.tasks.findTask(taskId)?.snapshot.workspace?.appliedAt).toBeTruthy();
 
-    // Applying twice would overwrite on top of itself: the check refuses and changes nothing.
-    expect(await m.local.applyToWorkingDir(taskId, "Ana")).toMatchObject({ ok: false });
+    // Applying again (e.g. after a reload) is a no-op: the changes are already there.
+    const again = await m.local.applyToWorkingDir(taskId, "Ana");
+    expect(again).toMatchObject({ ok: true });
+    expect(again.ok && again.detail).toContain("já estão");
+    expect(readFileSync(path.join(dir, "README.md"), "utf8").match(/linha do agente/g)).toHaveLength(1);
+
+    // Edited after applying: refuses, says why and touches nothing.
+    writeFileSync(path.join(dir, "novo.txt"), "editado pela pessoa\n");
+    const edited = await m.local.applyToWorkingDir(taskId, "Ana");
+    expect(edited).toMatchObject({ ok: false });
+    expect(!edited.ok && edited.error).toContain("já foi aplicada antes");
+    expect(readFileSync(path.join(dir, "novo.txt"), "utf8")).toBe("editado pela pessoa\n");
   });
 });
 

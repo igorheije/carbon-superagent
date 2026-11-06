@@ -7,6 +7,8 @@ import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { Button } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import type { PermissionPrompt, Ticket } from "@/lib/domain/types";
+import { pendingPermissionsOf } from "./pending";
+import { PlacementBadge } from "./PlacementBadge";
 
 type Choice = "allow" | "allow_always" | "allow_task" | "deny";
 
@@ -47,7 +49,11 @@ function PendingCard({ ticket, prompt }: { ticket: Ticket; prompt: PermissionPro
           <ShieldAlert className="size-4.5" strokeWidth={1.8} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">{ticket.key} · o agente pede permissão</p>
+          <p className="eyebrow flex flex-wrap items-center gap-2">
+            <span>{ticket.key} · o agente pede permissão</span>
+            {ticket.runtime && ticket.runtime !== "local" && <PlacementBadge ticket={ticket} />}
+          </p>
+          <p className="mt-0.5 truncate text-[12.5px] text-muted">{ticket.title}</p>
           <p className="mt-1 text-[16px] font-medium">
             <span className="font-mono text-[14px] text-warn">{prompt.tool}</span> — {prompt.summary}
           </p>
@@ -81,19 +87,24 @@ function PendingCard({ ticket, prompt }: { ticket: Ticket; prompt: PermissionPro
   );
 }
 
-/** Pending prompts on top (blocking), decided ones as a compact history. */
+/**
+ * Pending prompts of every task on top (blocking — several remote tasks can wait at once), then
+ * the decided ones of the focused task as a compact history.
+ */
 export function PermissionPanel() {
-  const { mode } = useEngine();
+  const { mode, state } = useEngine();
   const ticket = useFocusTicket();
-  if (mode !== "live" || !ticket?.permissions?.length) return null;
-  const pending = ticket.permissions.filter((p) => p.status === "pending");
-  const autoCount = ticket.permissions.filter((p) => p.auto && p.status === "allowed").length;
-  const history = ticket.permissions.filter((p) => p.status !== "pending" && !(p.auto && p.status === "allowed")).slice(-6).reverse();
+  if (mode !== "live") return null;
+  const pending = pendingPermissionsOf(state.tickets);
+  const decided = ticket?.permissions ?? [];
+  const autoCount = decided.filter((p) => p.auto && p.status === "allowed").length;
+  const history = decided.filter((p) => p.status !== "pending" && !(p.auto && p.status === "allowed")).slice(-6).reverse();
+  if (pending.length === 0 && history.length === 0 && autoCount === 0) return null;
   return (
     <section aria-label="Permissões do agente" className="flex flex-col gap-3">
       <AnimatePresence>
-        {pending.map((p) => (
-          <PendingCard key={p.id} ticket={ticket} prompt={p} />
+        {pending.map(({ ticket: owner, prompt }) => (
+          <PendingCard key={`${owner.id}-${prompt.id}`} ticket={owner} prompt={prompt} />
         ))}
       </AnimatePresence>
       {(history.length > 0 || autoCount > 0) && (

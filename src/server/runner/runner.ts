@@ -1,5 +1,5 @@
 import "server-only";
-import { EventEmitter } from "node:events";
+import type { EventEmitter } from "node:events";
 import type { StageId, Ticket } from "@/lib/domain/types";
 import type { ExecutorEvent } from "../executors/events";
 import { buildCommand, startExecutor, type PermissionDecision, type RunningExecutor } from "../executors/spawn";
@@ -9,20 +9,22 @@ import { getSettings, type Settings } from "../repo/settings";
 import { classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
-import { addLesson, findTask, moveToFront, nextQueuedTask, promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
+import { addLesson, findTask, moveToFront, nextQueuedLocalTask, saveSnapshot, type Task } from "../repo/tasks";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
-import { memoryPromptSection, readRepoMemory } from "../knowledge/claude-memory";
+import { readRepoMemory } from "../knowledge/claude-memory";
 import { buildKnowledgeContext } from "../knowledge/context";
 import { ensureFreshIndex } from "../knowledge/indexer";
 import { checkRepo } from "../system/detect";
 import { findProject } from "../repo/projects";
-import { appendLog, applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
-import { buildPrompt } from "./prompt";
-import { answeredQuestions, answerQuestion as applyAnswer, decisionsSection, resumeMessage } from "./questions";
+import { applyExecutorEvent, emptyContext, reconcilePlan, type RunContext } from "./apply";
+import { createLiveTicket, liveEvents, notifyLive, type LiveTicket } from "./live";
+import { taskPrompt } from "./prepare-claim";
+import { answeredQuestions, answerQuestion as applyAnswer, resumeMessage } from "./questions";
+import { answerRemotePermission, type PermissionChoice } from "./remote-permissions";
+import { leaseHolder } from "./scheduler";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
 
-const SAVE_THROTTLE_MS = 400;
 const LESSON_CONFIDENCE = 0.6;
 
 interface PendingPermission {
@@ -52,9 +54,7 @@ const globalForRunner = globalThis as unknown as { carbonRunner?: RunnerState };
 
 function state(): RunnerState {
   if (!globalForRunner.carbonRunner) {
-    const events = new EventEmitter();
-    events.setMaxListeners(100);
-    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, runStartedAt: null, pending: new Map(), allowAll: new Set(), events };
+    globalForRunner.carbonRunner = { enabled: true, activeTaskId: null, executor: null, tracker: null, cancelled: false, runStartedAt: null, pending: new Map(), allowAll: new Set(), events: liveEvents() };
   }
   return globalForRunner.carbonRunner;
 }
@@ -62,33 +62,11 @@ function state(): RunnerState {
 export const runnerEvents = (): EventEmitter => state().events;
 export const runnerStatus = () => ({ enabled: state().enabled, activeTaskId: state().activeTaskId });
 
-const notify = () => state().events.emit("change");
+const notify = notifyLive;
 
-/** Holds the live ticket in memory and persists it at most every SAVE_THROTTLE_MS. */
-function tracker(task: Task) {
-  let ticket: Ticket = task.snapshot;
-  let lastSave = 0;
-  const persist = (force = false) => {
-    const now = Date.now();
-    if (!force && now - lastSave < SAVE_THROTTLE_MS) return;
-    lastSave = now;
-    saveSnapshot(task.id, ticket);
-    notify();
-  };
-  return {
-    get: () => ticket,
-    set: (next: Ticket, force = false) => {
-      ticket = next;
-      persist(force);
-    },
-    log: (stage: StageId, level: Parameters<typeof appendLog>[2], text: string, force = false) => {
-      ticket = appendLog({ ...ticket, stage }, stage, level, text);
-      persist(force);
-    },
-  };
-}
+const tracker = (task: Task): LiveTicket => createLiveTicket(task.id, task.snapshot);
 
-type Tracker = ReturnType<typeof tracker>;
+type Tracker = LiveTicket;
 
 /** Shows worktree paths as repo-relative paths in logs and research hits. */
 function relativize(event: ExecutorEvent, root: string): ExecutorEvent {
@@ -218,19 +196,7 @@ async function execute(task: Task): Promise<void> {
 
     const decisions = answeredQuestions(t.get());
     const fullPrompt = () =>
-      buildPrompt({
-        key: task.key,
-        title: task.title,
-        description: task.description,
-        persona: task.persona,
-        requester: task.snapshot.requester,
-        skills,
-        lessons: promotedLessons(project.id),
-        executor: task.executor,
-        knowledge: knowledge?.prompt ?? null,
-        claudeMemory: memory ? memoryPromptSection(memory) : null,
-        decisions: decisionsSection(decisions),
-      });
+      taskPrompt(task, project.id, { skills, knowledge: knowledge?.prompt ?? null, memory, decisions });
     const runAgent = async (prompt: string, resumeSessionId: string | null) => {
       let ctx = emptyContext;
       const command = buildCommand(task.executor, prompt, wt.path, settings, choice, resumeSessionId);
@@ -314,8 +280,6 @@ async function releaseFinishedWorktree(task: Task, t: Tracker): Promise<void> {
   }
 }
 
-type PermissionChoice = "allow" | "allow_always" | "allow_task" | "deny";
-
 type PermissionRequestEvent = Extract<ExecutorEvent, { type: "permission_request" }>;
 
 /** Adds an already-decided prompt to the ticket history (no card, no waiting). */
@@ -388,8 +352,18 @@ function expirePending(taskId: string) {
   }
 }
 
-/** Human decision from the panel for a pending Claude Code permission prompt. */
+/**
+ * Human decision from the panel for a pending Claude Code permission prompt. Prompts of remote
+ * tasks (pool workers, AgentCore) go through the same call: the answer is stored for the worker's
+ * long-poll instead of being written to a local process.
+ */
 export function answerPermission(taskId: string, requestId: string, choice: PermissionChoice, userName: string): { ok: boolean; error?: string } {
+  const remote = findTask(taskId);
+  if (remote && remote.runtime !== "local") {
+    const result = answerRemotePermission(taskId, requestId, choice, userName, getSettings().permissionTimeoutMinutes);
+    if (result.ok) notify();
+    return result;
+  }
   const s = state();
   const pending = s.pending.get(requestId);
   if (!pending || pending.taskId !== taskId || s.activeTaskId !== taskId || !s.executor || !s.tracker) {
@@ -415,11 +389,11 @@ export function answerPermission(taskId: string, requestId: string, choice: Perm
   return { ok: true };
 }
 
-/** Picks the next queued task if the runner is idle and enabled. Safe to call often. */
+/** Picks the next queued local task if the runner is idle and enabled. Safe to call often. */
 export function kick(): void {
   const s = state();
   if (!s.enabled || s.activeTaskId) return;
-  const task = nextQueuedTask();
+  const task = nextQueuedLocalTask();
   if (!task) return;
   s.activeTaskId = task.id;
   void execute(task).finally(() => setImmediate(kick));
@@ -462,6 +436,8 @@ export function answerTaskQuestion(taskId: string, questionId: string, answer: s
   const task = findTask(taskId);
   if (!task) return { ok: false, error: "tarefa não encontrada" };
   if (state().activeTaskId === taskId) return { ok: false, error: "esta tarefa já está executando" };
+  // A remote task still leased is running on a worker (e.g. waiting for a permission), not parked on the question.
+  if (task.runtime !== "local" && leaseHolder(taskId) !== null) return { ok: false, error: "esta tarefa já está executando" };
   const result = applyAnswer(task.snapshot, questionId, answer, userName, new Date().toISOString());
   if (!result.ok) return { ok: false, error: result.error };
   saveSnapshot(taskId, result.ticket);

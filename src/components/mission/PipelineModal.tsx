@@ -8,6 +8,7 @@ import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { pipelineProgress, stageInsight } from "@/lib/domain/pipeline-insight";
 import { STAGE_META } from "@/lib/domain/stages";
 import { STAGES, type AgentStatus, type LogLevel, type StageId } from "@/lib/domain/types";
+import { PlacementBadge } from "./PlacementBadge";
 
 const LOG_TONE: Readonly<Record<LogLevel, string>> = {
   info: "text-muted",
@@ -217,7 +218,12 @@ export function PipelineModal({ initialStage, onClose }: { readonly initialStage
             <h2 id="pipeline-modal-title" className="mt-1 truncate text-[20px] font-semibold tracking-[-0.01em]">
               {ticket ? `${ticket.key} — ${ticket.title}` : "Nenhuma tarefa em foco"}
             </h2>
-            {ticket?.model && <p className="mt-0.5 font-mono text-[11px] text-subtle">{ticket.model} · {ticket.status}</p>}
+            {ticket && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <PlacementBadge ticket={ticket} variant="full" />
+                {ticket.model && <span className="font-mono text-[11px] text-subtle">{ticket.model} · {ticket.status}</span>}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button

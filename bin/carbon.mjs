@@ -215,10 +215,38 @@ async function doctor() {
   p.outro(pc.green("Pronto para rodar."));
 }
 
+/** Starts the public worker listener when CARBON_WORKER_LISTEN is set (process env wins over .env.local). */
+async function startWorkerListener(port) {
+  const fileEnv = readEnv();
+  const pick = (name) => process.env[name] ?? fileEnv[name];
+  const listen = pick("CARBON_WORKER_LISTEN");
+  if (!listen) return;
+  const { startWorkerProxy } = await import("./worker-proxy.mjs");
+  try {
+    const proxy = await startWorkerProxy({
+      CARBON_WORKER_LISTEN: listen,
+      CARBON_PORT: String(port),
+      CARBON_WORKER_TLS_CERT: pick("CARBON_WORKER_TLS_CERT"),
+      CARBON_WORKER_TLS_KEY: pick("CARBON_WORKER_TLS_KEY"),
+      CARBON_WORKER_MAX_CONNECTIONS: pick("CARBON_WORKER_MAX_CONNECTIONS"),
+      CARBON_WORKER_MAX_CONNECTIONS_PER_IP: pick("CARBON_WORKER_MAX_CONNECTIONS_PER_IP"),
+    });
+    p.log.info(`Workers remotos: ${pc.cyan(`${proxy.url}/api/worker/`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
+    p.log.info(`Configure ${pc.cyan("panelPublicUrl")} nas configurações com a URL pública (túnel/VPN) que aponta para essa porta.`);
+    if (!proxy.tls) p.log.warn("Listener sem TLS: use só em LAN/VPN ou atrás de um túnel HTTPS (Cloudflare Tunnel, Tailscale).");
+    for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void proxy.close());
+  } catch (err) {
+    p.cancel(`Não consegui abrir o listener de workers: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 async function start() {
   console.log(BANNER);
   await ensureBuilt(false);
-  startServer(Number(readEnv().CARBON_PORT ?? DEFAULT_PORT), "/");
+  const port = Number(readEnv().CARBON_PORT ?? DEFAULT_PORT);
+  await startWorkerListener(port);
+  startServer(port, "/");
 }
 
 /** Same format as src/server/auth/password.ts: scrypt$<salt b64>$<hash b64>. */
@@ -240,10 +268,15 @@ function flag(name) {
  * Local recovery: whoever can run this on the machine already owns the database file,
  * so no e-mail round-trip is needed. Sessions of the account are revoked.
  */
+/** Panel database file, same lookup as the server (CARBON_DATA_DIR, legacy .leonidas-data). */
+function databaseFile() {
+  const dataDir = path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
+  return [path.join(dataDir, "carbon.db"), path.join(dataDir, "leonidas.db")].find((f) => existsSync(f)) ?? path.join(dataDir, "carbon.db");
+}
+
 async function resetPassword() {
   const { DatabaseSync } = await import("node:sqlite");
-  const dataDir = path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
-  const file = [path.join(dataDir, "carbon.db"), path.join(dataDir, "leonidas.db")].find((f) => existsSync(f)) ?? path.join(dataDir, "carbon.db");
+  const file = databaseFile();
   if (!existsSync(file)) {
     p.cancel(`Banco não encontrado em ${file}. Rode o setup primeiro.`);
     process.exit(1);
@@ -290,7 +323,77 @@ async function resetPassword() {
   p.outro(`${pc.green("✔")} Senha redefinida · ${revoked} sessão(ões) encerrada(s).`);
 }
 
-const commands = { setup, doctor, start, "reset-password": resetPassword };
+const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
+
+/**
+ * `carbon worker [--version]`: runs the standalone worker (dist/worker.mjs), building it first if
+ * missing. Configuration comes from CARBON_* environment variables (see src/worker/config.ts).
+ */
+async function worker() {
+  const args = process.argv.slice(3);
+  if (args[0] === "init") return workerInit(args.slice(1));
+  if (!existsSync(WORKER_BUNDLE)) {
+    console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
+    const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
+    if (built.status !== 0 || !existsSync(WORKER_BUNDLE)) {
+      console.error(pc.red("não consegui gerar dist/worker.mjs. Rode `npm install` e `npm run build:worker` e tente de novo."));
+      process.exit(1);
+    }
+  }
+  const child = spawn(process.execPath, [WORKER_BUNDLE, ...args], { stdio: "inherit", env: process.env });
+  // Ctrl+C from a terminal already reaches the child (same process group); forwarding it again
+  // would count as a second signal and skip the graceful shutdown.
+  const forwarded = process.stdin.isTTY ? ["SIGTERM", "SIGHUP"] : ["SIGTERM", "SIGHUP", "SIGINT"];
+  for (const signal of forwarded) process.on(signal, () => child.kill(signal));
+  if (process.stdin.isTTY) process.on("SIGINT", () => undefined);
+  const code = await new Promise((resolve) => {
+    child.on("error", (error) => {
+      console.error(pc.red(`não consegui iniciar o worker: ${error.message}`));
+      resolve(1);
+    });
+    child.on("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
+  });
+  process.exit(code);
+}
+
+/**
+ * `carbon worker init`: writes the setup kit to --out. For compose/k8s the worker is created in
+ * the panel database here (this runs on the panel host) and its token is printed once.
+ */
+async function workerInit(argv) {
+  const { INIT_USAGE, InitError, parseInitArgs, runWorkerInit } = await import("./worker-init.mjs");
+  let opts;
+  try {
+    opts = parseInitArgs(argv);
+  } catch (error) {
+    if (!(error instanceof InitError)) throw error;
+    console.error(`${pc.red(error.message)}\n\n${INIT_USAGE}`);
+    process.exit(1);
+  }
+  const { DatabaseSync } = await import("node:sqlite");
+  const { version } = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const openDb = () => {
+    const file = databaseFile();
+    if (!existsSync(file)) throw new InitError(`banco não encontrado em ${file}: rode o setup e inicie o painel primeiro`);
+    return new DatabaseSync(file);
+  };
+  try {
+    const result = await runWorkerInit(opts, { root: ROOT, version, openDb });
+    console.log(`${pc.green("✔")} kit ${opts.target} em ${result.out}: ${result.files.join(", ")}`);
+    if (result.token) {
+      console.log(`\nMáquina "${result.worker.name}" criada. Token (mostrado só agora; já está no ${opts.target === "compose" ? ".env" : "secret.yaml"}):\n${pc.bold(result.token)}\n`);
+      console.log(opts.target === "compose" ? `cd ${result.out} && docker compose up -d` : `kubectl apply -k ${result.out}`);
+    } else {
+      console.log(`Siga ${path.join(result.out, "README.md")} (experimental; nada é executado na AWS).`);
+    }
+  } catch (error) {
+    if (!(error instanceof InitError)) throw error;
+    console.error(pc.red(error.message));
+    process.exit(1);
+  }
+}
+
+const commands = { setup, doctor, start, "reset-password": resetPassword, worker };
 const name = process.argv[2] ?? "setup";
 if (!commands[name]) {
   console.log(`uso: carbon <${Object.keys(commands).join("|")}>`);

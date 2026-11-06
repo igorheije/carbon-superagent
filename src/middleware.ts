@@ -5,6 +5,12 @@ const PUBLIC_PAGES = ["/login", "/setup"];
 /** Webhooks have no session: each route verifies the sender's signature or shared secret. */
 const PUBLIC_API = ["/api/setup/", "/api/auth/login", "/api/webhooks/"];
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+/**
+ * Machine-to-machine API for remote workers: no cookie and no browser Origin. Every handler under
+ * this prefix authenticates with requireWorker() (Bearer token). Note the trailing slash: the admin
+ * routes under /api/workers stay behind the session cookie.
+ */
+const WORKER_API = "/api/worker/";
 
 /**
  * Cheap edge gate: cookie presence + same-origin for mutations.
@@ -13,6 +19,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
+  if (pathname.startsWith(WORKER_API)) return NextResponse.next();
 
   if (isApi && !SAFE_METHODS.has(request.method)) {
     const origin = request.headers.get("origin");

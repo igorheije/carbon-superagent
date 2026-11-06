@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "next dev --turbopack -H 127.0.0.1 -p 3417",
     "build": "next build --turbopack",
+    "build:worker": "node bin/build-worker.mjs",
+    "e2e:distributed": "node scripts/e2e-distributed.mjs",
     "start": "node bin/carbon.mjs start",
     "lint": "eslint",
     "test": "vitest run",
@@ -14,6 +16,7 @@
     "reset-password": "node bin/carbon.mjs reset-password"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "3.1163.0",
     "@clack/prompts": "^0.11.0",
     "ascii-reveal": "0.3.0",
     "lucide-react": "^0.544.0",
@@ -31,6 +34,7 @@
     "@types/node": "^22.18.8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "0.28.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "tailwindcss": "^4",

@@ -1,0 +1,94 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderCompose > renders the expected files (snapshot) 1`] = `
+{
+  ".env": "# Carbon worker "maquina-sp-01". NÃO versione nem compartilhe este arquivo: ele contém o token da máquina.
+# Se o token vazar, revogue a máquina no painel (Configurações → Máquinas) e gere um kit novo.
+CARBON_PANEL_URL=https://carbon.exemplo.local:3418
+CARBON_WORKER_TOKEN=cwk_FakeTokenForTests0123456789-_abcdefghijklmn
+CARBON_WORKER_PARALLEL=3
+CARBON_WORKER_EXECUTORS=claude,codex
+
+# Credenciais do modelo — descomente e preencha. Claude Code: UMA das duas linhas abaixo
+# (chave da API da Anthropic, ou token gerado com \`claude setup-token\`).
+# ANTHROPIC_API_KEY=
+# CLAUDE_CODE_OAUTH_TOKEN=
+# Codex (só se a imagem foi gerada com WITH_CODEX=true):
+# OPENAI_API_KEY=
+
+# Git: token com permissão de clone e push nos repositórios (usado só via https).
+# CARBON_GIT_TOKEN=
+# Hosts que podem receber o token (vírgula). Sem esta linha o token nunca é enviado.
+# CARBON_GIT_HOSTS=github.com
+",
+  "README.md": "# Carbon worker — maquina-sp-01 (Docker Compose)
+
+Este kit sobe 2 worker(s) do Carbon que pegam tarefas do painel em \`https://carbon.exemplo.local:3418\`.
+Cada worker roda até 3 tarefa(s) ao mesmo tempo com: claude, codex.
+
+## Antes de subir
+
+1. Abra o \`.env\` e preencha as credenciais do modelo e o \`CARBON_GIT_TOKEN\` (descomente as linhas).
+2. Publique a imagem \`ghcr.io/acme/carbon-worker:0.2.0\` (ela não vem pronta). No repositório do Carbon, na mesma versão do painel:
+   \`docker build -f deploy/worker/Dockerfile -t ghcr.io/acme/carbon-worker:0.2.0 . && docker push ghcr.io/acme/carbon-worker:0.2.0\`
+3. O \`.env\` contém o token da máquina: não versione e não compartilhe.
+
+## Subir
+
+\`\`\`sh
+docker compose up -d
+\`\`\`
+
+## Escalar
+
+\`\`\`sh
+docker compose up -d --scale worker=N
+\`\`\`
+
+## Logs
+
+\`\`\`sh
+docker compose logs -f worker
+\`\`\`
+
+## Parar
+
+\`docker compose down\` envia SIGTERM: o worker para de pegar tarefas e espera as atuais terminarem
+(até 150s). Para apagar também o volume de trabalho: \`docker compose down -v\`.
+
+## Revogar o token
+
+1. No painel, Configurações → Máquinas → **Revogar** em "maquina-sp-01". O worker para de receber tarefas na hora.
+2. Nesta máquina: \`docker compose down -v\` e apague o \`.env\`.
+3. Para voltar a usar, gere um kit novo (token novo) no painel.
+",
+  "docker-compose.yml": "# Carbon worker "maquina-sp-01" — gerado pelo painel.
+# Sem portas expostas: o worker só faz conexões de saída para o painel, o modelo e o git.
+# Escalar: docker compose up -d --scale worker=N
+name: "carbon-maquina-sp-01"
+services:
+  worker:
+    image: "ghcr.io/acme/carbon-worker:0.2.0"
+    env_file: ".env"
+    restart: "unless-stopped"
+    stop_grace_period: "150s"
+    environment:
+      CARBON_WORKER_DIR: "/home/carbon/work"
+    volumes:
+      - "carbon-worker-maquina-sp-01:/home/carbon/work"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: "4g"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  carbon-worker-maquina-sp-01: {}
+",
+}
+`;
