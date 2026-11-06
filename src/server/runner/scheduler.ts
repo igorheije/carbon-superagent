@@ -134,6 +134,35 @@ export function releaseLease(taskId: string, workerId: string): boolean {
   return Number(result.changes) > 0;
 }
 
+export const DELIVERY_INTERRUPTED = "painel reiniciou durante a entrega — use “rodar de novo”";
+
+/**
+ * Boot-time recovery for pool tasks left `running` without a lease. The result route releases
+ * the lease before importing/pushing (so a slow delivery is never swept), which means a panel
+ * restart in that window leaves the task with nobody owning it and no sweep that would ever end
+ * it. Such tasks fail with an explicit log line. AgentCore tasks are excluded on purpose: they
+ * are legitimately `running` without a lease between dispatch and the container's claim.
+ * Returns the ids that changed.
+ */
+export function recoverUnleasedRemoteTasks(): readonly string[] {
+  const db = getDb();
+  return immediate(db, () => {
+    const rows = db
+      .prepare("SELECT id, snapshot FROM tasks WHERE runtime = 'pool' AND lease_worker IS NULL AND status IN ('running', 'waiting')")
+      .all() as unknown as { id: string; snapshot: string }[];
+    const update = db.prepare(
+      "UPDATE tasks SET status = 'failed', snapshot = ?, cancel_requested = 0, updated_at = ? WHERE id = ? AND lease_worker IS NULL AND status IN ('running', 'waiting')",
+    );
+    const changed: string[] = [];
+    for (const row of rows) {
+      const snapshot = JSON.parse(row.snapshot) as Ticket;
+      const failed: Ticket = { ...snapshot, status: "failed", logs: withLog(snapshot, DELIVERY_INTERRUPTED) };
+      if (Number(update.run(JSON.stringify(failed), nowIso(), row.id).changes) > 0) changed.push(row.id);
+    }
+    return changed;
+  });
+}
+
 interface ExpiredRow {
   id: string;
   lease_worker: string;
