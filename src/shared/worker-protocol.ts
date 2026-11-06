@@ -165,3 +165,13 @@ export type ResultRequest = z.infer<typeof resultRequestSchema>;
 
 /** Error body codes the worker reacts to. */
 export const LEASE_LOST = "lease_lost";
+
+// ---------------------------------------------------------------- paths
+
+const taskPath = (taskId: string) => `/api/worker/tasks/${encodeURIComponent(taskId)}`;
+
+/** GET: git bundle of the task base · PUT: the worker's result bundle (application/octet-stream). */
+export const bundlePath = (taskId: string) => `${taskPath(taskId)}/bundle`;
+
+/** POST: the task's final ResultRequest. */
+export const resultPath = (taskId: string) => `${taskPath(taskId)}/result`;
