@@ -176,9 +176,14 @@ export const bundlePath = (taskId: string) => `${taskPath(taskId)}/bundle`;
 /** POST: the task's final ResultRequest. */
 export const resultPath = (taskId: string) => `${taskPath(taskId)}/result`;
 
+// ---------------------------------------------------------------- agentcore
+
 /**
- * POST (AgentCore container only): claims one specific task. Auth is `Bearer <taskToken>` (the
- * single-use token from the Invoke payload), body `{taskId}`, answer the same ClaimedTask
- * envelope as /api/worker/claim. The panel side lands in T14.
+ * POST, Authorization: Bearer <one-time task token from the Invoke payload>, body
+ * AgentCoreClaimRequest → ClaimedTask. The token is burned here; afterwards it authenticates only
+ * the task-scoped routes (/api/worker/tasks/<taskId>/*) of that same task, while it runs.
  */
 export const AGENTCORE_CLAIM_PATH = "/api/worker/agentcore/claim";
+
+export const agentcoreClaimRequestSchema = z.object({ taskId: z.string().min(1).max(200) });
+export type AgentCoreClaimRequest = z.infer<typeof agentcoreClaimRequestSchema>;

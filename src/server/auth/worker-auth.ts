@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { getDb } from "../db";
 import { HttpError } from "../http";
 import { createWorkerRecord, findWorkerByTokenHash, revokeWorkerRecord, touchLastSeen, type Worker, type WorkerKind } from "../repo/workers";
+import { agentcoreSessionId, agentcoreWorkerId } from "../runtimes/session";
 import { hashToken } from "./password";
 import { isRateLimited, recordFailure } from "./rate-limit";
 
@@ -76,6 +77,7 @@ function bearerToken(request: Request): string | null {
  */
 export function requireWorker(request: Request, now = Date.now()): Worker {
   const token = bearerToken(request);
+  if (token && looksLike(token, TASK_TOKEN_PREFIX)) return requireBoundTaskToken(request, token, now);
   if (!token || !looksLike(token, WORKER_TOKEN_PREFIX)) throw new HttpError(401, GENERIC_401);
   const tokenHash = hashToken(token);
   const failureKey = `worker:${tokenHash}`;
@@ -112,4 +114,91 @@ export function consumeTaskToken(token: string, taskId: string, now = Date.now()
     .prepare("UPDATE task_tokens SET used_at = ? WHERE token_hash = ? AND task_id = ? AND used_at IS NULL AND expires_at >= ?")
     .run(now, hashToken(token), taskId, now);
   return Number(result.changes) > 0;
+}
+
+// ---------------------------------------------------------------- AgentCore task tokens
+
+/** A container identity for the lease: there is no `workers` row behind it. */
+function agentcoreWorker(taskId: string, now: number): Worker {
+  return {
+    id: agentcoreWorkerId(taskId),
+    name: `AgentCore ${agentcoreSessionId(taskId)}`,
+    kind: "agentcore",
+    createdBy: "system",
+    createdAt: now,
+    revokedAt: null,
+    lastSeenAt: now,
+    version: null,
+    capabilities: {},
+  };
+}
+
+const TASK_SCOPED_PATH = /^\/api\/worker\/tasks\/([^/]+)(?:\/|$)/;
+
+/** Task id of a task-scoped worker route (/api/worker/tasks/<id>/...), or null for any other path. */
+export function taskScopeOf(request: Request): string | null {
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return null;
+  }
+  const match = TASK_SCOPED_PATH.exec(pathname);
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function guardTaskToken(token: string, now: number): { readonly tokenHash: string; readonly failureKey: string } {
+  const tokenHash = hashToken(token);
+  const failureKey = `task-token:${tokenHash}`;
+  if (isRateLimited(failureKey, now)) throw new HttpError(429, "muitas tentativas; aguarde 15 minutos");
+  return { tokenHash, failureKey };
+}
+
+function rejectTaskToken(failureKey: string, now: number): never {
+  recordFailure(failureKey, now);
+  throw new HttpError(401, GENERIC_401);
+}
+
+/**
+ * After the claim, the same task token keeps authenticating the container, but only:
+ * on routes scoped to its own task, after it was burned by the claim, before it expires, and while
+ * that task is still running/waiting under the AgentCore lease. Anything else is the generic 401.
+ */
+function requireBoundTaskToken(request: Request, token: string, now: number): Worker {
+  const { tokenHash, failureKey } = guardTaskToken(token, now);
+  const taskId = taskScopeOf(request);
+  if (!taskId) return rejectTaskToken(failureKey, now);
+  const row = getDb()
+    .prepare(
+      `SELECT k.task_id FROM task_tokens k JOIN tasks t ON t.id = k.task_id
+        WHERE k.token_hash = ? AND k.task_id = ? AND k.used_at IS NOT NULL AND k.expires_at >= ?
+          AND t.runtime = 'agentcore' AND t.lease_worker = ? AND t.status IN ('running', 'waiting')`,
+    )
+    .get(tokenHash, taskId, now, agentcoreWorkerId(taskId));
+  if (!row) return rejectTaskToken(failureKey, now);
+  const worker = agentcoreWorker(taskId, now);
+  if (overRequestLimit(worker.id, now)) throw new HttpError(429, "muitas requisições; reduza a frequência");
+  return worker;
+}
+
+/**
+ * The AgentCore container's claim: burns the one-time token of `taskId` (same 401 for unknown,
+ * reused, expired or foreign tokens) and returns the synthetic worker that will hold the lease.
+ */
+export function requireTaskClaim(request: Request, taskId: string, now = Date.now()): Worker {
+  const token = bearerToken(request);
+  if (!token || !looksLike(token, TASK_TOKEN_PREFIX)) throw new HttpError(401, GENERIC_401);
+  const { failureKey } = guardTaskToken(token, now);
+  if (!consumeTaskToken(token, taskId, now)) return rejectTaskToken(failureKey, now);
+  return agentcoreWorker(taskId, now);
+}
+
+/** Drops every token of a finished task (the dispatcher calls it when the session is stopped). */
+export function revokeTaskTokens(taskId: string): void {
+  getDb().prepare("DELETE FROM task_tokens WHERE task_id = ?").run(taskId);
 }

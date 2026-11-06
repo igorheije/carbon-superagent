@@ -8,6 +8,8 @@ import { Button, Field } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import { PERSONAS } from "@/lib/domain/personas";
 import { ModelPicker } from "@/components/ui/ModelPicker";
+import type { TaskRuntime } from "@/lib/domain/types";
+import { effectiveRuntime, RuntimePicker, runtimeOptionsOf } from "./RuntimePicker";
 import { DraftField } from "./DraftField";
 
 type Tab = "manual" | "linear" | "github";
@@ -88,9 +90,12 @@ export function NewTaskDialog() {
   const [isSaving, setIsSaving] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<TaskRuntime>("local");
 
   // Never send an executor that is not installed; fall back to the one that is.
   const chosen = installed.includes(executor) ? executor : (installed[0] ?? executor);
+  const runtimeOptions = runtimeOptionsOf(settings);
+  const chosenRuntime = effectiveRuntime(runtime, runtimeOptions);
 
   const defaultModel = (chosen === "claude" ? settings?.claudeModel : settings?.codexModel) || "auto";
   const currentModel = model ?? defaultModel;
@@ -105,7 +110,7 @@ export function NewTaskDialog() {
     setIsSaving(true);
     setError(null);
     try {
-      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort } });
+      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort, runtime: chosenRuntime } });
       setTitle("");
       setDescription("");
       close();
@@ -148,6 +153,7 @@ export function NewTaskDialog() {
                       <p className="eyebrow">Modelo e esforço</p>
                       <ModelPicker key={chosen} executor={chosen} value={currentModel} onChange={setModel} effort={currentEffort} onEffortChange={setEffort} task={{ title, description }} />
                     </div>
+                    <RuntimePicker value={chosenRuntime} options={runtimeOptions} onChange={setRuntime} />
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       {installed.length > 1 ? (
                         <div role="radiogroup" aria-label="Agente" className="flex gap-1 rounded-full border border-line p-0.5 font-mono text-[11px]">
