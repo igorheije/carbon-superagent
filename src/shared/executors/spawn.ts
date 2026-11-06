@@ -21,7 +21,8 @@ export interface ExecutorSettings {
 const CLAUDE_DISALLOWED = ["Bash(git push:*)", "Bash(git commit:*)", "Bash(git reset --hard:*)", "Bash(rm -rf:*)"];
 
 const CLAUDE_GUARDED_ALLOWED = [
-  "Read", "Edit", "Write", "MultiEdit", "Glob", "Grep", "TodoWrite", "Skill",
+  // Agent/Task start sub-agents; each sub-agent's own tool use is still checked against this list.
+  "Read", "Edit", "Write", "MultiEdit", "Glob", "Grep", "TodoWrite", "Skill", "Agent", "Task",
   "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(ls:*)",
   "Bash(npm test:*)", "Bash(npm run:*)", "Bash(npx vitest:*)", "Bash(npx jest:*)", "Bash(npx tsc:*)", "Bash(npx eslint:*)",
   "Bash(pnpm test:*)", "Bash(pnpm run:*)", "Bash(yarn test:*)", "Bash(yarn run:*)",

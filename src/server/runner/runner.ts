@@ -22,6 +22,7 @@ import { taskPrompt } from "./prepare-claim";
 import { answeredQuestions, answerQuestion as applyAnswer, resumeMessage } from "./questions";
 import { answerRemotePermission, type PermissionChoice } from "./remote-permissions";
 import { leaseHolder } from "./scheduler";
+import { closeRunningSubagents } from "./subagents";
 import { collectDiff, commit, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
 
@@ -95,7 +96,8 @@ function finish(t: Tracker, status: Ticket["status"], stage: StageId, text: stri
   const elapsed = s.runStartedAt ? Math.round((Date.now() - s.runStartedAt) / 1000) : 0;
   s.runStartedAt = null;
   t.log(stage, level, text);
-  const current = t.get();
+  // A cancelled or timed-out run never reports its sub-agents' end: close them with the task.
+  const current = closeRunningSubagents(t.get(), status === "failed" ? "failed" : "done", new Date().toISOString());
   t.set({ ...current, status, stage, runSeconds: (current.runSeconds ?? 0) + elapsed }, true);
   const event = EVENT_FOR_STATUS[status];
   if (event) emitTask(event, t.get().id, text);
@@ -425,7 +427,7 @@ export function retryTask(id: string): boolean {
   const task = findTask(id);
   if (!task || task.status === "running" || task.status === "queued") return false;
   // A retry starts over, but answers already given stay as decisions in the new prompt.
-  saveSnapshot(id, { ...task.snapshot, status: "queued", stage: null, resume: false });
+  saveSnapshot(id, { ...task.snapshot, status: "queued", stage: null, resume: false, subagents: [] });
   notify();
   kick();
   return true;

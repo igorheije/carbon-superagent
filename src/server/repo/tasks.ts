@@ -85,6 +85,8 @@ export interface NewTask {
   readonly modelLabel: string;
   /** Where the task runs; defaults to "local" (the panel's own runner). */
   readonly runtime?: TaskRuntime;
+  /** Allow the agent to split the task across parallel sub-agents (Claude Code only). */
+  readonly multiAgent?: boolean;
 }
 
 export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
@@ -110,6 +112,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     pr: null,
     tokens: 0,
     model: task.modelLabel,
+    ...(task.multiAgent && task.executor === "claude" ? { multiAgent: true, subagents: [] } : {}),
     startedAtTick: null,
     endedAtTick: null,
   };

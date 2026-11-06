@@ -47,6 +47,7 @@ export function taskPrompt(task: Task, projectId: string, parts: PromptParts): s
     executor: task.executor,
     knowledge: parts.knowledge,
     claudeMemory: parts.memory ? memoryPromptSection(parts.memory) : null,
+    multiAgent: task.snapshot.multiAgent === true,
     decisions: decisionsSection(parts.decisions),
   });
 }

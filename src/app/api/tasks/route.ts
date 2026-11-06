@@ -39,6 +39,7 @@ export function POST(request: Request) {
       priority: input.priority,
       repo: project.name,
       runtime: input.runtime ?? "local",
+      multiAgent: input.multiAgent,
     });
     notifyChange();
     kick();
