@@ -181,6 +181,22 @@ export type AnswerResult = { readonly ok: true } | { readonly ok: false; readonl
 
 const NOT_PENDING = "esse pedido não está mais pendente";
 
+/**
+ * First words of Bash patterns never stored as "always allow" for a remote prompt: shells,
+ * interpreters, network tools and wrappers run arbitrary code, so a persistent rule for them is a
+ * standing "run anything" in the repo (also for local runs). The answer is downgraded to "allow once".
+ */
+const UNSAFE_BASH_RULE =
+  /^(ba|z|da|k|c|tc|fi)?sh$|^python[\d.]*$|^(py|node|nodejs|deno|bun|perl|ruby|php|lua|osascript|curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|eval|exec|source|\.|sudo|su|doas|env|xargs|nohup|timeout|time|nice|command|builtin)$/;
+
+/** True when an "always allow" rule for this prompt would be too broad to keep. */
+export function isUnsafeAlwaysRule(tool: string, pattern: string): boolean {
+  if (tool !== "Bash") return false;
+  const first = pattern.trim().split(/\s+/)[0] ?? "";
+  // An empty Bash pattern matches every command.
+  return first === "" || UNSAFE_BASH_RULE.test(first.replace(/^.*\//, ""));
+}
+
 function choiceLog(userName: string, choice: PermissionChoice, tool: string, pattern: string): string {
   const what =
     choice === "deny" ? "negou" : choice === "allow_always" ? `permitiu sempre neste repositório (${tool} ${pattern})`.trim() : choice === "allow_task" ? "liberou tudo no resto desta tarefa" : "permitiu";
@@ -191,7 +207,7 @@ function choiceLog(userName: string, choice: PermissionChoice, tool: string, pat
  * Human answer from the panel for a prompt a worker forwarded. Same choices and texts as the
  * local runner; the worker picks the answer up on its long-poll and answers the agent.
  */
-export function answerRemotePermission(taskId: string, requestId: string, choice: PermissionChoice, userName: string, timeoutMinutes: number, now = Date.now()): AnswerResult {
+export function answerRemotePermission(taskId: string, requestId: string, requested: PermissionChoice, userName: string, timeoutMinutes: number, now = Date.now()): AnswerResult {
   const row = readRow(taskId);
   if (!row || !liveLease(row, now)) return { ok: false, error: NOT_PENDING };
   const current = JSON.parse(row.snapshot) as Ticket;
@@ -204,9 +220,12 @@ export function answerRemotePermission(taskId: string, requestId: string, choice
   }
   const task = findTask(taskId);
   const project = task?.projectId ? findProject(task.projectId) : null;
+  const worker = row.lease_worker ?? "?";
+  const downgraded = requested === "allow_always" && isUnsafeAlwaysRule(pending.tool, pending.pattern);
+  const choice: PermissionChoice = downgraded ? "allow" : requested;
   if (choice === "allow_always") {
     if (!project) return { ok: false, error: "o projeto desta tarefa não existe mais" };
-    addRule(project.repoPath, pending.tool, pending.pattern, userName);
+    addRule(project.repoPath, pending.tool, pending.pattern, `${userName} (pedido do worker ${worker})`);
   }
   const decided = decide(ticket, {
     requestId,
@@ -217,7 +236,11 @@ export function answerRemotePermission(taskId: string, requestId: string, choice
     promptStatus: choice === "deny" ? "denied" : "allowed",
     decidedBy: userName,
   });
-  const logged = appendLog(decided, stageOf(decided), choice === "deny" ? "warn" : "ok", choiceLog(userName, choice, pending.tool, pending.pattern));
+  const answered = appendLog(decided, stageOf(decided), choice === "deny" ? "warn" : "ok", `${choiceLog(userName, choice, pending.tool, pending.pattern)} (worker ${worker})`);
+  const logged = downgraded
+    ? appendLog(answered, stageOf(answered), "warn", `"permitir sempre" recusado para ${pending.tool} "${pending.pattern || "qualquer comando"}" (shell/interpretador/rede): permitido só desta vez`)
+    : answered;
   if (!writeLeased(taskId, row, logged)) return { ok: false, error: NOT_PENDING };
+  if (downgraded) console.warn(`[carbon] permitir sempre recusado para ${pending.tool} "${pending.pattern}" na tarefa ${taskId} (worker ${worker}): permitido uma vez`);
   return { ok: true };
 }
