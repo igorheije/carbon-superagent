@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createWorkerProxy, parseListen, workerPath } from "./worker-proxy.mjs";
+import net from "node:net";
+import { createWorkerProxy, hasWorkerAuth, parseListen, workerPath } from "./worker-proxy.mjs";
+
+const AUTH = `Bearer cwk_${"a".repeat(43)}`;
 
 /** Upstream stand-in for Next: echoes what reached it. */
 function startUpstream() {
@@ -31,7 +34,7 @@ function listen(server) {
 /** Raw request: http.request sends the path untouched (fetch would normalize `..`). */
 function request(port, { method = "GET", path, headers = {}, chunks = [] }) {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port, method, path, headers, agent: false }, (res) => {
+    const req = http.request({ host: "127.0.0.1", port, method, path, headers: { authorization: AUTH, ...headers }, agent: false }, (res) => {
       const parts = [];
       res.on("data", (c) => parts.push(c));
       res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(parts).toString("utf8") }));
@@ -123,7 +126,7 @@ describe("worker proxy", () => {
       path: "/api/worker/hello?v=1",
       headers: {
         "content-type": "application/json",
-        authorization: "Bearer cw_test_secret",
+        authorization: "Bearer cwk_test_secret_0123456789abcdefghij",
         "x-forwarded-for": "6.6.6.6",
         "x-custom-hop": "drop-me",
         connection: "x-custom-hop",
@@ -138,7 +141,7 @@ describe("worker proxy", () => {
     expect(seen.method).toBe("POST");
     expect(seen.url).toBe("/api/worker/hello?v=1");
     expect(seen.bytes).toBe(13);
-    expect(seen.headers.authorization).toBe("Bearer cw_test_secret");
+    expect(seen.headers.authorization).toBe("Bearer cwk_test_secret_0123456789abcdefghij");
     expect(seen.headers["x-forwarded-for"]).toBe("127.0.0.1");
     expect(seen.headers["x-forwarded-proto"]).toBe("http");
     expect(seen.headers["x-custom-hop"]).toBeUndefined();
@@ -193,11 +196,97 @@ describe("worker proxy", () => {
 
   it("logs one line per request without Authorization or query", async () => {
     logs.length = 0;
-    await request(proxyPort, { path: "/api/worker/hello?token=leak", headers: { authorization: "Bearer cw_super_secret" } });
+    await request(proxyPort, { path: "/api/worker/hello?token=leak", headers: { authorization: "Bearer cwk_super_secret_0123456789abcdefgh" } });
     await new Promise((r) => setTimeout(r, 20));
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatch(/GET \/api\/worker\/hello 200/);
-    expect(logs[0]).not.toContain("cw_super_secret");
+    expect(logs[0]).not.toContain("cwk_super_secret");
     expect(logs[0]).not.toContain("leak");
+  });
+
+  it.each([
+    ["no Authorization", undefined],
+    ["a session cookie style value", "Bearer abc"],
+    ["a short worker token", "Bearer cwk_short"],
+    ["Basic auth", "Basic Y3drXzp4"],
+    ["a token with spaces", `Bearer cwk_${"a".repeat(30)} x`],
+  ])("401 with an empty body for %s, without touching upstream (M4)", async (_label, authorization) => {
+    const before = upstream.seen.length;
+    const headers = authorization === undefined ? { authorization: "" } : { authorization };
+    const res = await request(proxyPort, { path: "/api/worker/hello", headers });
+    expect(res.status).toBe(401);
+    expect(res.body).toBe("");
+    expect(upstream.seen.length).toBe(before);
+  });
+
+  it("forwards task tokens (ctk_) too", async () => {
+    const res = await request(proxyPort, { path: "/api/worker/tasks/t1/heartbeat", method: "POST", headers: { authorization: `Bearer ctk_${"b".repeat(43)}` } });
+    expect(res.status).toBe(200);
+  });
+
+  it.each(["/api/worker/hello?a=<b>", "/api/worker/hello?a=b c", `/api/worker/hello?${"a".repeat(600)}`, "/api/worker/hello?a=%0d%0aX:1&\"x"])("400 for an unexpected query string %s (L3)", async (path) => {
+    const before = upstream.seen.length;
+    const res = await new Promise((resolve, reject) => {
+      const socket = net.connect(proxyPort, "127.0.0.1", () => socket.write(`GET ${path.replace(/ /g, "%20").replace("%20c", " c")} HTTP/1.1\r\nhost: x\r\nauthorization: ${AUTH}\r\nconnection: close\r\n\r\n`));
+      let data = "";
+      socket.on("data", (c) => (data += c));
+      socket.on("end", () => resolve(data));
+      socket.on("error", reject);
+    });
+    expect(res).toMatch(/^HTTP\/1\.1 400/);
+    expect(upstream.seen.length).toBe(before);
+  });
+
+  it("caps JSON routes at 1 MB while bundle uploads keep the large ceiling (M4)", async () => {
+    const big = Buffer.alloc(1024 * 1024 + 10, 1);
+    const json = await request(proxyPort, { method: "POST", path: "/api/worker/tasks/t1/events", headers: { "content-length": String(big.length) } }).catch(() => ({ status: "reset" }));
+    expect([413, "reset"]).toContain(json.status);
+    const bundle = await request(proxyPort, { method: "PUT", path: "/api/worker/tasks/t1/bundle", chunks: [big] });
+    expect(bundle.status).toBe(200);
+  });
+
+  it("ends a non-bundle request that takes longer than the request timeout with 408 (M4)", async () => {
+    const slow = http.createServer(() => undefined); // never answers
+    const slowPort = await listen(slow);
+    const quick = createWorkerProxy({ upstreamPort: slowPort, requestTimeoutMs: 200, log: () => undefined });
+    const port = await listen(quick);
+    const started = Date.now();
+    const res = await request(port, { path: "/api/worker/claim", method: "POST" });
+    expect(res.status).toBe(408);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    quick.closeAllConnections();
+    slow.closeAllConnections();
+    await new Promise((r) => quick.close(r));
+    await new Promise((r) => slow.close(r));
+  });
+
+  it("caps open connections per client address (M4)", async () => {
+    const capped = createWorkerProxy({ upstreamPort: upstream.port, maxConnectionsPerIp: 2, log: () => undefined });
+    const port = await listen(capped);
+    const open = (n) => Promise.all(Array.from({ length: n }, () => new Promise((resolve) => {
+      const socket = net.connect(port, "127.0.0.1", () => resolve(socket));
+    })));
+    const sockets = await open(3);
+    const closed = await Promise.all(sockets.map((s) => new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 300);
+      s.once("close", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    })));
+    expect(closed.filter(Boolean)).toHaveLength(1);
+    for (const s of sockets) s.destroy();
+    capped.closeAllConnections();
+    await new Promise((r) => capped.close(r));
+    expect(capped.maxConnections).toBe(256);
+  });
+});
+
+describe("hasWorkerAuth", () => {
+  it("accepts cwk_/ctk_ bearer tokens only", () => {
+    expect(hasWorkerAuth({ authorization: AUTH })).toBe(true);
+    expect(hasWorkerAuth({ authorization: `Bearer ctk_${"x".repeat(20)}` })).toBe(true);
+    expect(hasWorkerAuth({ authorization: `bearer cwk_${"x".repeat(20)}` })).toBe(false);
+    expect(hasWorkerAuth({})).toBe(false);
   });
 });

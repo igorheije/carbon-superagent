@@ -10,7 +10,7 @@ import type { ExecutorId } from "../../shared/executors";
 export interface WorkerKitOptions {
   /** DNS label (lowercase letters, digits, `-`): used for resource names. See slugifyWorkerName. */
   readonly workerName: string;
-  /** http(s) URL the worker uses to reach the panel. */
+  /** https URL the worker uses to reach the panel (http only on loopback). */
   readonly panelUrl: string;
   /** `cwk_…` worker token. Written only to `.env` (Compose) and `secret.yaml` (Kubernetes). */
   readonly token: string;
@@ -71,6 +71,10 @@ function checkPanelUrl(raw: string, errors: string[]): void {
   try {
     const url = new URL(raw);
     if (url.protocol !== "http:" && url.protocol !== "https:") errors.push("panelUrl precisa ser http(s)");
+    // The worker refuses plain http outside loopback (worker/config.ts): the token travels in every request.
+    else if (url.protocol === "http:" && !/^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])$/.test(url.hostname)) {
+      errors.push("panelUrl precisa usar https (http só para 127.0.0.1/localhost)");
+    }
     if (url.username || url.password) errors.push("panelUrl não pode conter usuário/senha");
   } catch {
     errors.push("panelUrl precisa ser uma URL válida");

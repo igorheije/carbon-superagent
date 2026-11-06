@@ -96,6 +96,49 @@ export interface RunningExecutor {
   readonly respond: (requestId: string, decision: PermissionDecision) => boolean;
 }
 
+/**
+ * Environment the agent process gets. "inherit" (default, local runner) passes the panel's whole
+ * environment. "allowlist" (worker mode) passes only what a CLI agent needs to run tools and reach
+ * its model: never the worker/git tokens, which a prompt-injected agent could otherwise read with
+ * `env` and send anywhere.
+ */
+export interface ExecutorEnvOptions {
+  readonly mode: "inherit" | "allowlist";
+  /** Added after the policy is applied (e.g. a per-task TMPDIR). */
+  readonly extra?: Readonly<Record<string, string>>;
+}
+
+/** Exact names passed in allowlist mode. */
+const AGENT_ENV_NAMES = new Set([
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TMPDIR", "TMP", "TEMP", "TZ",
+  "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+  "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+  "CLAUDE_CONFIG_DIR", "DISABLE_AUTOUPDATER", "DISABLE_TELEMETRY",
+  "JAVA_HOME", "GOPATH", "GOROOT", "GOCACHE", "GOMODCACHE", "CARGO_HOME", "RUSTUP_HOME",
+  "NVM_DIR", "PYENV_ROOT", "VIRTUAL_ENV", "npm_config_cache", "CI",
+]);
+/** Prefixes passed in allowlist mode: locale, model credentials (API key, OAuth, Bedrock/AWS role). */
+const AGENT_ENV_PREFIXES = ["LC_", "ANTHROPIC_", "CLAUDE_CODE_", "AWS_", "OPENAI_", "CODEX_"];
+/** Never passed, whatever the allowlist says. */
+const AGENT_ENV_DENIED = /^(CARBON_|GIT_ASKPASS$|SSH_AUTH_SOCK$|GH_TOKEN$|GITHUB_TOKEN$)/;
+
+/** Builds the child environment for the given policy. Pure: exported for tests. */
+export type EnvMap = Record<string, string | undefined>;
+
+export function agentEnv(source: Readonly<EnvMap>, options: ExecutorEnvOptions = { mode: "inherit" }): EnvMap {
+  const base: EnvMap =
+    options.mode === "inherit"
+      ? { ...source }
+      : Object.fromEntries(
+          Object.entries(source).filter(
+            ([name, value]) =>
+              value !== undefined && !AGENT_ENV_DENIED.test(name) && (AGENT_ENV_NAMES.has(name) || AGENT_ENV_PREFIXES.some((p) => name.startsWith(p))),
+          ),
+        );
+  return { ...base, ...(options.extra ?? {}), FORCE_COLOR: "0" };
+}
+
 const STDERR_TAIL = 4000;
 const KILL_GRACE_MS = 5000;
 
@@ -105,12 +148,13 @@ export function startExecutor(
   cwd: string,
   timeoutMs: number,
   onEvent: (event: ExecutorEvent) => void,
+  envOptions: ExecutorEnvOptions = { mode: "inherit" },
 ): RunningExecutor {
   const isInteractive = command.stdinPrompt !== undefined;
   const child = spawn(command.bin, [...command.args], {
     cwd,
     stdio: [isInteractive ? "pipe" : "ignore", "pipe", "pipe"],
-    env: { ...process.env, FORCE_COLOR: "0" },
+    env: agentEnv(process.env, envOptions) as NodeJS.ProcessEnv,
     // Own process group: stopping the task also stops the shells/tests the agent started.
     detached: process.platform !== "win32",
   });

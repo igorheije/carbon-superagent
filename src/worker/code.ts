@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { NO_COMMITS_REF, type ClaimedTask, type ContextFile } from "@/shared/worker-protocol";
@@ -23,8 +24,17 @@ const TOKEN_ENV = "CARBON_GIT_TOKEN";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const LONG_TIMEOUT_MS = 15 * 60_000;
 const MAX_BUFFER = 16 * 1024 * 1024;
-/** Settings that apply to every git call: no ext:: transport, no interactive prompts, no signing. */
-const SAFE_CONFIG = ["-c", "protocol.ext.allow=never", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"];
+/**
+ * Settings that apply to every git call: no ext:: transport, no signing, and no hooks / fsmonitor
+ * commands — the agent can write .git/hooks, and those would otherwise run inside the worker's git
+ * calls (with the git token in the environment during push).
+ */
+const SAFE_CONFIG = [
+  "-c", "protocol.ext.allow=never", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false",
+  "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+];
+/** .git/config digest taken right after prepare, per clone: a changed config never gets the token. */
+const configDigests = new Map<string, string>();
 
 export interface GitIdentity {
   readonly name: string;
@@ -46,7 +56,9 @@ export interface PrepareOptions {
 }
 
 export interface DeliverOptions {
+  /** Token for the push; dropped when the agent changed .git/config (remote/insteadOf/proxy/helpers). */
   readonly gitToken?: string;
+  readonly log?: (message: string) => void;
   /** When the push is refused, fall back to a bundle instead of failing. */
   readonly allowBundleFallback: boolean;
 }
@@ -64,6 +76,8 @@ interface GitResult {
 interface GitCallOptions {
   readonly token?: string;
   readonly timeoutMs?: number;
+  /** Ignore ~/.gitconfig (the agent shares HOME and could have rewritten it). */
+  readonly ignoreGlobalConfig?: boolean;
 }
 
 const firstLine = (text: string): string => text.trim().split(/\r?\n/)[0] ?? "";
@@ -85,7 +99,7 @@ async function git(cwd: string, args: readonly string[], options: GitCallOptions
   const { token } = options;
   const helperDir = token ? mkdtempSync(path.join(tmpdir(), "carbon-askpass-")) : null;
   try {
-    const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
+    const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", ...(options.ignoreGlobalConfig ? { GIT_CONFIG_GLOBAL: "/dev/null" } : {}) };
     // Credential helpers must not see (or store) the token: reset the helper list for this call.
     const authConfig = token ? ["-c", "credential.helper="] : [];
     if (helperDir && token) {
@@ -189,7 +203,29 @@ function writeExcludes(root: string, files: readonly ContextFile[]): void {
 
 function isUnsafeRelative(p: string): boolean {
   if (!p || path.isAbsolute(p) || p.startsWith("/") || p.includes("\\") || p.includes("\0")) return true;
-  return p.split("/").some((part) => part === ".." || part === ".git");
+  // Case-insensitive: ".GIT" is the git dir on case-insensitive filesystems (macOS, Windows).
+  return p.split("/").some((part) => part === ".." || part.toLowerCase() === ".git");
+}
+
+/** lstat that treats "missing" as null and anything else as an error. */
+function lstatOrNull(file: string): ReturnType<typeof lstatSync> | null {
+  try {
+    return lstatSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Writes without following a symlink planted at `file` (O_NOFOLLOW; O_EXCL when it did not exist). */
+function writeNoFollow(file: string, content: string, existed: boolean): void {
+  const flags = fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW | (existed ? fsConstants.O_TRUNC : fsConstants.O_CREAT | fsConstants.O_EXCL);
+  const fd = openSync(file, flags, 0o644);
+  try {
+    writeSync(fd, content, null, "utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Writes context files inside the clone; refuses absolute paths, "..", .git and symlink escapes. */
@@ -202,8 +238,16 @@ export function writeContextFiles(root: string, files: readonly ContextFile[]): 
     mkdirSync(path.dirname(to), { recursive: true });
     const parent = realpathSync(path.dirname(to));
     if (parent !== realRoot && !parent.startsWith(realRoot + path.sep)) throw new Error(`caminho de arquivo de contexto sai do repositório: ${file.path}`);
-    if (existsSync(to) && lstatSync(to).isSymbolicLink()) throw new Error(`arquivo de contexto é um link simbólico: ${file.path}`);
-    writeFileSync(to, file.content, "utf8");
+    const stat = lstatOrNull(to);
+    if (stat?.isSymbolicLink()) throw new Error(`arquivo de contexto é um link simbólico: ${file.path}`);
+    if (stat && !stat.isFile()) throw new Error(`arquivo de contexto não é um arquivo comum: ${file.path}`);
+    try {
+      writeNoFollow(to, file.content, stat !== null);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ELOOP" || code === "EEXIST") throw new Error(`arquivo de contexto é um link simbólico: ${file.path}`);
+      throw error;
+    }
   }
 }
 
@@ -227,11 +271,27 @@ export async function prepareCode(task: ClaimedTask, workDir: string, options: P
     if (baseCommit) await gitOrThrow(target, ["update-ref", BASE_REF, baseCommit], "não foi possível marcar a base");
     writeExcludes(target, task.files);
     writeContextFiles(target, task.files);
+    configDigests.set(target, configDigest(target));
     return { path: target, baseCommit };
   } catch (error) {
     rmSync(target, { recursive: true, force: true });
     throw error;
   }
+}
+
+function configDigest(repoPath: string): string {
+  const file = path.join(repoPath, ".git", "config");
+  const content = existsSync(file) ? readFileSync(file) : Buffer.alloc(0);
+  return createHash("sha256").update(content).digest("hex");
+}
+
+/** The token, unless .git/config changed since prepare (or the clone was not prepared here). */
+function pushToken(repoPath: string, token: string | undefined, log?: (message: string) => void): string | undefined {
+  if (!token) return undefined;
+  const expected = configDigests.get(path.resolve(repoPath));
+  if (expected && expected === configDigest(repoPath)) return token;
+  log?.(".git/config mudou durante a execução: push sem o token git");
+  return undefined;
 }
 
 // ---------------------------------------------------------------- commit
@@ -270,7 +330,8 @@ export async function deliverCode(repoPath: string, task: ClaimedTask, options: 
   const commit = firstLine(await gitOrThrow(repoPath, ["rev-parse", `refs/heads/${branch}^{commit}`], "branch da tarefa não encontrado"));
   if (task.code.transport === "git") {
     const ref = `refs/heads/${branch}`;
-    const push = await git(repoPath, ["push", "--quiet", "--no-verify", "origin", `${ref}:${ref}`], { token: options.gitToken, timeoutMs: LONG_TIMEOUT_MS });
+    const token = pushToken(repoPath, options.gitToken, options.log);
+    const push = await git(repoPath, ["push", "--quiet", "--no-verify", "origin", `${ref}:${ref}`], { token, timeoutMs: LONG_TIMEOUT_MS, ignoreGlobalConfig: Boolean(token) });
     if (push.ok) return { transport: "push", commit };
     if (!options.allowBundleFallback) throw new Error(`push falhou: ${firstLine(push.stderr) || "erro desconhecido do git"}`);
   }
@@ -279,8 +340,10 @@ export async function deliverCode(repoPath: string, task: ClaimedTask, options: 
 
 // ---------------------------------------------------------------- cleanup
 
-/** Removes the clone and any result bundle written next to it. */
+/** Removes the clone, the agent's temp dir and any result bundle written next to it. */
 export function cleanup(repoPath: string): void {
   rmSync(repoPath, { recursive: true, force: true });
+  rmSync(`${repoPath}.tmp`, { recursive: true, force: true });
+  configDigests.delete(path.resolve(repoPath));
   rmSync(`${repoPath}.result.bundle`, { force: true });
 }

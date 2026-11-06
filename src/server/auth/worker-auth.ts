@@ -5,7 +5,7 @@ import { HttpError } from "../http";
 import { createWorkerRecord, findWorkerByTokenHash, revokeWorkerRecord, touchLastSeen, type Worker, type WorkerKind } from "../repo/workers";
 import { agentcoreSessionId, agentcoreWorkerId } from "../runtimes/session";
 import { hashToken } from "./password";
-import { isRateLimited, recordFailure } from "./rate-limit";
+import { createLimiter, isRateLimited, MAX_TRACKED_KEYS, recordFailure } from "./rate-limit";
 
 /**
  * Machine credentials for remote workers. Tokens are shown once (on creation) and stored only as
@@ -26,6 +26,44 @@ export const WORKER_REQUESTS_PER_WINDOW = 600;
 export const WORKER_REQUEST_WINDOW_MS = 60_000;
 
 const GENERIC_401 = "não autenticado";
+const TOO_MANY = "muitas tentativas; aguarde 15 minutos";
+
+/** Failed worker authentications per client IP before 429 (token guessing from one address). */
+export const WORKER_AUTH_FAILURES_PER_IP = 50;
+const ipFailures = createLimiter({ windowMs: 15 * 60_000, maxAttempts: WORKER_AUTH_FAILURES_PER_IP, maxKeys: MAX_TRACKED_KEYS });
+const IP_CHARS = /^[0-9A-Fa-f.:]{2,45}$/;
+
+/**
+ * Client address for the per-IP limiter. Next listens on 127.0.0.1 only (bin/carbon.mjs), so every
+ * request reaching it is local; remote workers come through bin/worker-proxy.mjs, which drops any
+ * client X-Forwarded-For and sets it to the socket address. That header is therefore trusted as
+ * the peer address (last hop); without it the request came straight from this machine.
+ */
+export function clientIpOf(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const last = forwarded?.split(",").at(-1)?.trim().replace(/^::ffff:/, "") ?? "";
+  return IP_CHARS.test(last) ? last : "local";
+}
+
+/** 401 for a worker route, also counted against the client IP. */
+function unauthorized(request: Request, now: number): never {
+  ipFailures.recordFailure(`ip:${clientIpOf(request)}`, now);
+  throw new HttpError(401, GENERIC_401);
+}
+
+function guardIp(request: Request, now: number): void {
+  if (ipFailures.isLimited(`ip:${clientIpOf(request)}`, now)) throw new HttpError(429, TOO_MANY);
+}
+
+/**
+ * TTL of an AgentCore task token: the task's run limit plus 30 min for queueing, cold start and
+ * delivery — not a fixed 8 h, so a leaked token dies soon after the task could have ended (L7).
+ */
+export const TASK_TOKEN_SLACK_MINUTES = 30;
+export function taskTokenTtlMs(maxRunMinutes: number): number {
+  const minutes = Number.isFinite(maxRunMinutes) && maxRunMinutes > 0 ? maxRunMinutes : 0;
+  return (minutes + TASK_TOKEN_SLACK_MINUTES) * 60_000;
+}
 
 function newToken(prefix: string): string {
   return `${prefix}${randomBytes(TOKEN_BYTES).toString("base64url")}`;
@@ -57,6 +95,10 @@ export function revokeWorker(id: string): boolean {
 const requestWindows = new Map<string, { readonly start: number; readonly count: number }>();
 
 function overRequestLimit(workerId: string, now: number): boolean {
+  // Bounded: windows of idle workers / finished AgentCore tasks are dropped once the map grows.
+  if (requestWindows.size > MAX_TRACKED_KEYS) {
+    for (const [id, w] of requestWindows) if (now - w.start >= WORKER_REQUEST_WINDOW_MS) requestWindows.delete(id);
+  }
   const current = requestWindows.get(workerId);
   const window = !current || now - current.start >= WORKER_REQUEST_WINDOW_MS ? { start: now, count: 1 } : { start: current.start, count: current.count + 1 };
   requestWindows.set(workerId, window);
@@ -76,16 +118,17 @@ function bearerToken(request: Request): string | null {
  * one, get 429.
  */
 export function requireWorker(request: Request, now = Date.now()): Worker {
+  guardIp(request, now);
   const token = bearerToken(request);
   if (token && looksLike(token, TASK_TOKEN_PREFIX)) return requireBoundTaskToken(request, token, now);
-  if (!token || !looksLike(token, WORKER_TOKEN_PREFIX)) throw new HttpError(401, GENERIC_401);
+  if (!token || !looksLike(token, WORKER_TOKEN_PREFIX)) return unauthorized(request, now);
   const tokenHash = hashToken(token);
   const failureKey = `worker:${tokenHash}`;
-  if (isRateLimited(failureKey, now)) throw new HttpError(429, "muitas tentativas; aguarde 15 minutos");
+  if (isRateLimited(failureKey, now)) throw new HttpError(429, TOO_MANY);
   const worker = findWorkerByTokenHash(tokenHash);
   if (!worker) {
     recordFailure(failureKey, now);
-    throw new HttpError(401, GENERIC_401);
+    return unauthorized(request, now);
   }
   if (overRequestLimit(worker.id, now)) throw new HttpError(429, "muitas requisições; reduza a frequência");
   if (worker.lastSeenAt === null || now - worker.lastSeenAt >= LAST_SEEN_THROTTLE_MS) {
@@ -155,13 +198,13 @@ export function taskScopeOf(request: Request): string | null {
 function guardTaskToken(token: string, now: number): { readonly tokenHash: string; readonly failureKey: string } {
   const tokenHash = hashToken(token);
   const failureKey = `task-token:${tokenHash}`;
-  if (isRateLimited(failureKey, now)) throw new HttpError(429, "muitas tentativas; aguarde 15 minutos");
+  if (isRateLimited(failureKey, now)) throw new HttpError(429, TOO_MANY);
   return { tokenHash, failureKey };
 }
 
-function rejectTaskToken(failureKey: string, now: number): never {
+function rejectTaskToken(request: Request, failureKey: string, now: number): never {
   recordFailure(failureKey, now);
-  throw new HttpError(401, GENERIC_401);
+  return unauthorized(request, now);
 }
 
 /**
@@ -172,7 +215,7 @@ function rejectTaskToken(failureKey: string, now: number): never {
 function requireBoundTaskToken(request: Request, token: string, now: number): Worker {
   const { tokenHash, failureKey } = guardTaskToken(token, now);
   const taskId = taskScopeOf(request);
-  if (!taskId) return rejectTaskToken(failureKey, now);
+  if (!taskId) return rejectTaskToken(request, failureKey, now);
   const row = getDb()
     .prepare(
       `SELECT k.task_id FROM task_tokens k JOIN tasks t ON t.id = k.task_id
@@ -180,7 +223,7 @@ function requireBoundTaskToken(request: Request, token: string, now: number): Wo
           AND t.runtime = 'agentcore' AND t.lease_worker = ? AND t.status IN ('running', 'waiting')`,
     )
     .get(tokenHash, taskId, now, agentcoreWorkerId(taskId));
-  if (!row) return rejectTaskToken(failureKey, now);
+  if (!row) return rejectTaskToken(request, failureKey, now);
   const worker = agentcoreWorker(taskId, now);
   if (overRequestLimit(worker.id, now)) throw new HttpError(429, "muitas requisições; reduza a frequência");
   return worker;
@@ -191,10 +234,11 @@ function requireBoundTaskToken(request: Request, token: string, now: number): Wo
  * reused, expired or foreign tokens) and returns the synthetic worker that will hold the lease.
  */
 export function requireTaskClaim(request: Request, taskId: string, now = Date.now()): Worker {
+  guardIp(request, now);
   const token = bearerToken(request);
-  if (!token || !looksLike(token, TASK_TOKEN_PREFIX)) throw new HttpError(401, GENERIC_401);
+  if (!token || !looksLike(token, TASK_TOKEN_PREFIX)) return unauthorized(request, now);
   const { failureKey } = guardTaskToken(token, now);
-  if (!consumeTaskToken(token, taskId, now)) return rejectTaskToken(failureKey, now);
+  if (!consumeTaskToken(token, taskId, now)) return rejectTaskToken(request, failureKey, now);
   return agentcoreWorker(taskId, now);
 }
 

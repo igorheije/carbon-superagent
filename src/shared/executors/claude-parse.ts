@@ -48,6 +48,16 @@ function permissionDetail(tool: string, input: Record<string, unknown>): string 
   return JSON.stringify(input).slice(0, MAX_DETAIL);
 }
 
+/**
+ * Summary and detail of a permission prompt computed from its raw input only (no free-form
+ * description). The panel uses it for prompts forwarded by workers, so what a human approves is
+ * derived from the same input the rule pattern is computed from.
+ */
+export function describePermission(tool: string, input: unknown): { readonly summary: string; readonly detail: string } {
+  const data = isRecord(input) ? input : {};
+  return { summary: clipSummary(toolSummary(tool, data).summary), detail: permissionDetail(tool, data) };
+}
+
 /** Maps one line of `claude -p --output-format stream-json --verbose` to normalized events. */
 export function parseClaudeLine(line: string): readonly ExecutorEvent[] {
   const json = parseJsonLine(line);

@@ -76,6 +76,15 @@ function seconds(value: number, label: string): number {
   return value;
 }
 
+const LOOPBACK_RE = /^(localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+
+/** The container refuses a plain-http panel unless it is loopback (local tests); so does the kit. */
+function httpsUnlessLoopback(url: string): string {
+  const { protocol, hostname } = new URL(url);
+  if (protocol !== "https:" && !LOOPBACK_RE.test(hostname)) throw new InvalidKitOptions("panelUrl precisa usar https (http só para 127.0.0.1/localhost)");
+  return url;
+}
+
 /** Validates options. Everything interpolated into deploy.sh passes a strict allowlist regex. */
 export function resolveKitOptions(opts: AgentCoreKitOptions = {}): ResolvedOptions {
   const d = AGENTCORE_KIT_DEFAULTS;
@@ -87,7 +96,7 @@ export function resolveKitOptions(opts: AgentCoreKitOptions = {}): ResolvedOptio
     runtimeName: check(opts.runtimeName ?? d.runtimeName, RUNTIME_NAME_RE, "runtimeName"),
     repositoryName: check(opts.repositoryName ?? d.repositoryName, REPOSITORY_RE, "repositoryName"),
     claudeCodeVersion: check(opts.claudeCodeVersion ?? d.claudeCodeVersion, SEMVER_RE, "claudeCodeVersion"),
-    panelUrl: check((opts.panelUrl ?? d.panelUrl).replace(/\/+$/, ""), SAFE_URL_RE, "panelUrl"),
+    panelUrl: httpsUnlessLoopback(check((opts.panelUrl ?? d.panelUrl).replace(/\/+$/, ""), SAFE_URL_RE, "panelUrl")),
     idleTimeoutSeconds,
     maxLifetimeSeconds,
   };
@@ -184,12 +193,13 @@ function renderDeployScript(o: ResolvedOptions): string {
 #   RUNTIME_NAME    opcional     padrão ${o.runtimeName}
 #   REPOSITORY      opcional     padrão ${o.repositoryName} (repositório ECR)
 #   IMAGE_TAG       opcional     padrão: hash curto do git HEAD
-#   CARBON_PANEL_URL opcional    padrão ${o.panelUrl}
+#   CARBON_PANEL_URL obrigatório https (padrão ${o.panelUrl}); o container recusa outro painel
 #   IDLE_TIMEOUT_SECONDS opcional padrão ${o.idleTimeoutSeconds}
 #   MAX_LIFETIME_SECONDS opcional padrão ${o.maxLifetimeSeconds} (teto do AgentCore: 28800 = 8h)
 #   CLAUDE_CODE_USE_BEDROCK opcional "1" para o Claude Code usar modelos do Bedrock (sem chave)
 #   ANTHROPIC_API_KEY opcional   chave da API (fica visível na configuração do runtime — prefira Bedrock)
 #   CARBON_GIT_TOKEN  opcional   token git para clone/push (mesma ressalva acima)
+#   CARBON_GIT_HOSTS  opcional   hosts que podem receber o token (ex.: github.com); vazio = token nunca enviado
 set -euo pipefail
 
 REGION="\${REGION:-${o.region}}"
@@ -206,6 +216,12 @@ CONTEXT_DIR="\${CONTEXT_DIR:-$PWD}"
 fail() { echo "deploy.sh: $*" >&2; exit 1; }
 
 [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "ACCOUNT_ID precisa ter 12 dígitos"
+[[ "$CARBON_PANEL_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/.*)?$ ]] || fail "CARBON_PANEL_URL precisa ser https://…"
+[[ "$CARBON_PANEL_URL" != *SEU-PAINEL* ]] || fail "defina CARBON_PANEL_URL com a URL pública do seu painel"
+[[ "\${CARBON_GIT_HOSTS:-}" =~ ^[A-Za-z0-9.,:-]*$ ]] || fail "CARBON_GIT_HOSTS aceita hosts separados por vírgula (ex.: github.com)"
+if [[ -n "\${CARBON_GIT_TOKEN:-}" && -z "\${CARBON_GIT_HOSTS:-}" ]]; then
+  echo "deploy.sh: aviso: CARBON_GIT_TOKEN sem CARBON_GIT_HOSTS — o container não enviará o token a nenhum remoto" >&2
+fi
 [[ "$RUNTIME_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ ]] || fail "RUNTIME_NAME inválido (letras, dígitos e _)"
 if ! [[ "$MAX_LIFETIME_SECONDS" =~ ^[0-9]+$ ]] || (( MAX_LIFETIME_SECONDS > 28800 )); then
   fail "MAX_LIFETIME_SECONDS precisa ser um inteiro <= 28800"
@@ -240,10 +256,12 @@ ENV_JSON="$(jq -n \\
   --arg region "$REGION" \\
   --arg apiKey "\${ANTHROPIC_API_KEY:-}" \\
   --arg gitToken "\${CARBON_GIT_TOKEN:-}" \\
+  --arg gitHosts "\${CARBON_GIT_HOSTS:-}" \\
   '{CARBON_PANEL_URL: $panel, AWS_REGION: $region}
    + (if $bedrock != "" then {CLAUDE_CODE_USE_BEDROCK: $bedrock} else {} end)
    + (if $apiKey != "" then {ANTHROPIC_API_KEY: $apiKey} else {} end)
-   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)')"
+   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)
+   + (if $gitHosts != "" then {CARBON_GIT_HOSTS: $gitHosts} else {} end)')"
 ARTIFACT_JSON="$(jq -n --arg uri "$IMAGE_URI" '{containerConfiguration: {containerUri: $uri}}')"
 LIFECYCLE_JSON="$(jq -n --argjson idle "$IDLE_TIMEOUT_SECONDS" --argjson max "$MAX_LIFETIME_SECONDS" \\
   '{idleRuntimeSessionTimeout: $idle, maxLifetime: $max}')"
@@ -355,6 +373,7 @@ function renderReadme(o: ResolvedOptions): string {
    ROLE_ARN=arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME> \\
    CARBON_PANEL_URL=${o.panelUrl} \\
    CLAUDE_CODE_USE_BEDROCK=1 \\
+   CARBON_GIT_HOSTS=github.com \\
    bash <esta pasta>/deploy.sh
    \`\`\`
 
@@ -367,7 +386,11 @@ function renderReadme(o: ResolvedOptions): string {
 
 - O painel precisa estar acessível pela internet **só** em \`/api/worker/*\` e com TLS
   (Cloudflare Tunnel, Tailscale Funnel ou proxy reverso com HTTPS). Nunca HTTP puro.
-- \`CARBON_PANEL_URL\` no runtime faz o container recusar invocações para qualquer outro painel.
+- \`CARBON_PANEL_URL\` é **obrigatório** (https): o container não sobe sem ele, recusa IPs privados /
+  link-local e recusa invocações para qualquer outro painel.
+- \`CARBON_GIT_TOKEN\` só é enviado aos hosts listados em \`CARBON_GIT_HOSTS\` (ex.: \`github.com\`), e
+  só por https. Sem \`CARBON_GIT_HOSTS\` o token nunca sai do container. O agente não enxerga o token
+  (ambiente filtrado) e um \`.git/config\` alterado pelo agente faz o push seguir sem token.
 - Credenciais AWS ficam na cadeia padrão do SDK no host do painel; nada de chave AWS no Carbon.
 - \`ANTHROPIC_API_KEY\` e \`CARBON_GIT_TOKEN\` passados como variáveis de ambiente ficam visíveis
   para quem tem \`GetAgentRuntime\` na conta. Prefira Bedrock para o modelo e restrinja quem lê a

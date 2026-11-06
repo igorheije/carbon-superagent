@@ -4,6 +4,7 @@ import { getSettings } from "@/server/repo/settings";
 import { notifyLive } from "@/server/runner/live";
 import { pollRemoteDecisions } from "@/server/runner/remote-permissions";
 import { LEASE_LOST, type PermissionsResponse } from "@/shared/worker-protocol";
+import { withPollSlot } from "../../../_lib/poll-slots";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ const pause = (ms: number, signal: AbortSignal) =>
  * Long-poll (≤ 25 s) of the answers to permission prompts this worker forwarded (RMT-01): the
  * decisions with seq > after, or an empty list when none arrived in time. Prompts past the panel's
  * permission timeout are denied here. Lease owner only (worker token or the bound AgentCore token).
+ * Concurrent polls per worker are capped (429).
  */
 export function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
@@ -45,15 +47,17 @@ export function GET(request: Request, { params }: { params: Promise<{ id: string
     const { id } = await params;
     const after = parseAfter(request);
     const deadline = Date.now() + waitMs();
-    for (;;) {
-      const result = pollRemoteDecisions(id, worker.id, after, getSettings().permissionTimeoutMinutes);
-      if (result === "lease_lost") throw new HttpError(409, LEASE_LOST);
-      if (result.changed) notifyLive();
-      const left = deadline - Date.now();
-      if (result.decisions.length > 0 || left <= 0 || request.signal.aborted) {
-        return ok({ decisions: [...result.decisions] } satisfies PermissionsResponse);
+    return withPollSlot(worker, "permissions", async () => {
+      for (;;) {
+        const result = pollRemoteDecisions(id, worker.id, after, getSettings().permissionTimeoutMinutes);
+        if (result === "lease_lost") throw new HttpError(409, LEASE_LOST);
+        if (result.changed) notifyLive();
+        const left = deadline - Date.now();
+        if (result.decisions.length > 0 || left <= 0 || request.signal.aborted) {
+          return ok({ decisions: [...result.decisions] } satisfies PermissionsResponse);
+        }
+        await pause(Math.min(CHECK_MS, left), request.signal);
       }
-      await pause(Math.min(CHECK_MS, left), request.signal);
-    }
+    });
   });
 }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { NO_COMMITS_REF, type ClaimedTask, type CodeSource, type ContextFile } from "@/shared/worker-protocol";
-import { cleanup, commitAll, deliverCode, prepareCode } from "./code";
+import { cleanup, commitAll, deliverCode, prepareCode, writeContextFiles } from "./code";
 
 // Real git in a temp folder: a bare local "origin", panel-made bundles and a fake git wrapper
 // that records argv to prove the token never leaves the environment.
@@ -185,7 +185,7 @@ describe("bundle transport", () => {
 });
 
 describe("context file safety", () => {
-  it.each(["../fora.txt", "/etc/x", "a/../../fora.txt", ".git/hooks/pre-commit"])("rejects %s", async (bad) => {
+  it.each(["../fora.txt", "/etc/x", "a/../../fora.txt", ".git/hooks/pre-commit", ".GIT/hooks/pre-commit", "sub/.Git/config"])("rejects %s", async (bad) => {
     const { bare } = remote();
     const work = dir("work");
     await expect(prepareCode(task(gitCode(bare), [{ path: bad, content: "x" }]), work)).rejects.toThrow(/recusado/);
@@ -203,6 +203,31 @@ describe("context file safety", () => {
     const t = task({ transport: "bundle", baseRef: "main", branch: BRANCH, bundleUrl: "/x" }, [{ path: ".carbon/PROJECT_MAP.md", content: "x" }]);
     await expect(prepareCode(t, dir("work"), { bundleFile: base })).rejects.toThrow(/sai do repositório/);
     expect(existsSync(path.join(outside, "PROJECT_MAP.md"))).toBe(false);
+  });
+
+  it("refuses to write through an existing symlink file inside the clone (lstat + O_NOFOLLOW)", () => {
+    const root = dir("ctx-root");
+    const outside = path.join(dir("ctx-outside"), "alvo.txt");
+    writeFileSync(outside, "original\n");
+    mkdirSync(path.join(root, ".carbon"));
+    symlinkSync(outside, path.join(root, ".carbon", "PROJECT_MAP.md"));
+    expect(() => writeContextFiles(root, [{ path: ".carbon/PROJECT_MAP.md", content: "x" }])).toThrow(/link simbólico/);
+    expect(readFileSync(outside, "utf8")).toBe("original\n");
+  });
+
+  it("refuses a dangling symlink too (would otherwise create the target outside)", () => {
+    const root = dir("ctx-root");
+    const outside = path.join(dir("ctx-outside"), "novo.txt");
+    symlinkSync(outside, path.join(root, "a.md"));
+    expect(() => writeContextFiles(root, [{ path: "a.md", content: "x" }])).toThrow(/link simbólico/);
+    expect(existsSync(outside)).toBe(false);
+  });
+
+  it("overwrites a regular file in place", () => {
+    const root = dir("ctx-root");
+    writeFileSync(path.join(root, "a.md"), "velho e comprido\n");
+    writeContextFiles(root, [{ path: "a.md", content: "novo\n" }]);
+    expect(readFileSync(path.join(root, "a.md"), "utf8")).toBe("novo\n");
   });
 
   it("rejects an invalid branch name", async () => {
@@ -249,5 +274,48 @@ exec "${realGit}" "$@"
     expect(readFileSync(askLog, "utf8")).toContain("x-access-token");
     expect(readFileSync(path.join(prepared.path, ".git", "config"), "utf8")).not.toContain(TOKEN);
     expect(git(prepared.path, "remote", "get-url", "origin")).not.toContain(TOKEN);
+  });
+
+  it("drops the token when the agent changed .git/config (e.g. insteadOf to another host)", async () => {
+    const TOKEN = "ghs_secretToken999999";
+    const fake = dir("fakegit");
+    const askLog = path.join(fake, "askpass.log");
+    const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+    writeFileSync(
+      path.join(fake, "git"),
+      `#!/bin/sh
+if [ -n "$GIT_ASKPASS" ]; then "$GIT_ASKPASS" "Password for 'https://x':" >> "${askLog}"; fi
+exec "${realGit}" "$@"
+`,
+      { mode: 0o755 },
+    );
+    const { bare } = remote();
+    const t = task(gitCode(bare));
+    const prepared = await prepareCode(t, dir("work"));
+    // What a prompt-injected agent could do: redirect the remote through config.
+    git(prepared.path, "config", "url.file://" + bare + ".insteadOf", "https://attacker.test/");
+    writeFileSync(path.join(prepared.path, "c.txt"), "c\n");
+    await commitAll(prepared.path, "feat: c", IDENTITY);
+    process.env.PATH = `${fake}${path.delimiter}${originalPath ?? ""}`;
+    const logs: string[] = [];
+    const delivered = await deliverCode(prepared.path, t, { gitToken: TOKEN, allowBundleFallback: true, log: (l) => logs.push(l) });
+    expect(delivered.transport).toBe("push");
+    expect(existsSync(askLog) ? readFileSync(askLog, "utf8") : "").not.toContain(TOKEN);
+    expect(logs.join("\n")).toMatch(/\.git\/config mudou/);
+  });
+
+  it("never runs hooks the agent wrote in .git/hooks (core.hooksPath=/dev/null)", async () => {
+    const { bare } = remote();
+    const t = task(gitCode(bare));
+    const prepared = await prepareCode(t, dir("work"));
+    const marker = path.join(dir("marker"), "ran");
+    for (const hook of ["post-commit", "pre-push", "reference-transaction", "post-checkout"]) {
+      writeFileSync(path.join(prepared.path, ".git", "hooks", hook), `#!/bin/sh\necho "$0" >> "${marker}"\n`, { mode: 0o755 });
+    }
+    writeFileSync(path.join(prepared.path, "c.txt"), "c\n");
+    await commitAll(prepared.path, "feat: c", IDENTITY);
+    const delivered = await deliverCode(prepared.path, t, { allowBundleFallback: false });
+    expect(delivered.transport).toBe("push");
+    expect(existsSync(marker)).toBe(false);
   });
 });
