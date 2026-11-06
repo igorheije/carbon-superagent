@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "next dev --turbopack -H 127.0.0.1 -p 3417",
     "build": "next build --turbopack",
+    "build:worker": "node bin/build-worker.mjs",
     "start": "node bin/carbon.mjs start",
     "lint": "eslint",
     "test": "vitest run",
@@ -31,6 +32,7 @@
     "@types/node": "^22.18.8",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "0.28.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "tailwindcss": "^4",

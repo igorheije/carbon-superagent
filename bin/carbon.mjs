@@ -290,7 +290,39 @@ async function resetPassword() {
   p.outro(`${pc.green("✔")} Senha redefinida · ${revoked} sessão(ões) encerrada(s).`);
 }
 
-const commands = { setup, doctor, start, "reset-password": resetPassword };
+const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
+
+/**
+ * `carbon worker [--version]`: runs the standalone worker (dist/worker.mjs), building it first if
+ * missing. Configuration comes from CARBON_* environment variables (see src/worker/config.ts).
+ */
+async function worker() {
+  const args = process.argv.slice(3);
+  if (!existsSync(WORKER_BUNDLE)) {
+    console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
+    const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
+    if (built.status !== 0 || !existsSync(WORKER_BUNDLE)) {
+      console.error(pc.red("não consegui gerar dist/worker.mjs. Rode `npm install` e `npm run build:worker` e tente de novo."));
+      process.exit(1);
+    }
+  }
+  const child = spawn(process.execPath, [WORKER_BUNDLE, ...args], { stdio: "inherit", env: process.env });
+  // Ctrl+C from a terminal already reaches the child (same process group); forwarding it again
+  // would count as a second signal and skip the graceful shutdown.
+  const forwarded = process.stdin.isTTY ? ["SIGTERM", "SIGHUP"] : ["SIGTERM", "SIGHUP", "SIGINT"];
+  for (const signal of forwarded) process.on(signal, () => child.kill(signal));
+  if (process.stdin.isTTY) process.on("SIGINT", () => undefined);
+  const code = await new Promise((resolve) => {
+    child.on("error", (error) => {
+      console.error(pc.red(`não consegui iniciar o worker: ${error.message}`));
+      resolve(1);
+    });
+    child.on("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
+  });
+  process.exit(code);
+}
+
+const commands = { setup, doctor, start, "reset-password": resetPassword, worker };
 const name = process.argv[2] ?? "setup";
 if (!commands[name]) {
   console.log(`uso: carbon <${Object.keys(commands).join("|")}>`);

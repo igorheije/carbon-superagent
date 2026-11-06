@@ -52,3 +52,6 @@ next-env.d.ts
 
 # local agent settings
 .claude/
+
+# standalone worker bundle (npm run build:worker)
+/dist/

@@ -189,6 +189,33 @@ describe("sweepExpiredLeases", () => {
   });
 });
 
+describe("recoverUnleasedRemoteTasks (boot)", () => {
+  it("fails pool tasks left running without a lease (delivery cut by a restart), keeps the rest", () => {
+    const stuck = newTask("RB-1", "pool");
+    m.scheduler.claimNext("w1", ["claude"], LEASE);
+    expect(m.scheduler.releaseLease(stuck.id, "w1")).toBe(true);
+    const leased = newTask("RB-2", "pool");
+    m.scheduler.claimNext("w2", ["claude"], LEASE);
+    const queued = newTask("RB-3", "pool");
+    const agentcore = newTask("RB-4", "agentcore");
+    m.db.getDb().prepare("UPDATE tasks SET status = 'running' WHERE id = ?").run(agentcore.id);
+    const local = newTask("RB-5", "local");
+    m.db.getDb().prepare("UPDATE tasks SET status = 'running' WHERE id = ?").run(local.id);
+
+    expect(m.scheduler.recoverUnleasedRemoteTasks()).toEqual([stuck.id]);
+
+    const failed = m.tasks.findTask(stuck.id);
+    expect(failed?.status).toBe("failed");
+    expect(failed?.snapshot.status).toBe("failed");
+    expect(failed?.snapshot.logs.at(-1)).toMatchObject({ level: "warn", text: expect.stringContaining("painel reiniciou durante a entrega") });
+    expect(m.tasks.findTask(leased.id)?.status).toBe("running");
+    expect(m.tasks.findTask(queued.id)?.status).toBe("queued");
+    expect(m.tasks.findTask(agentcore.id)?.status).toBe("running");
+    expect(m.tasks.findTask(local.id)?.status).toBe("running");
+    expect(m.scheduler.recoverUnleasedRemoteTasks()).toEqual([]);
+  });
+});
+
 describe("local runner", () => {
   it("nextQueuedLocalTask and kick() ignore pool and agentcore tasks", async () => {
     const pool = newTask("K-1", "pool");

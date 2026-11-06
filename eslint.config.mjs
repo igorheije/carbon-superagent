@@ -21,6 +21,7 @@ const eslintConfig = [
       ".leonidas-data/**",
       "out/**",
       "build/**",
+      "dist/**",
       "next-env.d.ts",
     ],
   },

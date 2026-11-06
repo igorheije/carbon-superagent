@@ -4,9 +4,15 @@ const LEASE_SWEEP_MS = 15_000;
 async function startLeaseSweeper(): Promise<void> {
   const globalForSweeper = globalThis as unknown as { carbonLeaseSweeper?: ReturnType<typeof setInterval> };
   if (globalForSweeper.carbonLeaseSweeper) return;
-  const { sweepExpiredLeases } = await import("./server/runner/scheduler");
+  const { recoverUnleasedRemoteTasks, sweepExpiredLeases } = await import("./server/runner/scheduler");
   const { getSettings } = await import("./server/repo/settings");
   const { notifyLive } = await import("./server/runner/live");
+  // Pool tasks whose delivery was cut by a restart have no lease left to expire: end them now.
+  const stuck = recoverUnleasedRemoteTasks();
+  if (stuck.length > 0) {
+    console.warn(`[carbon] ${stuck.length} tarefa(s) remota(s) marcada(s) como falha: painel reiniciou durante a entrega`);
+    notifyLive();
+  }
   const timer = setInterval(() => {
     try {
       const changed = sweepExpiredLeases(Date.now(), { requeue: getSettings().workers.requeueOnLeaseLoss });
