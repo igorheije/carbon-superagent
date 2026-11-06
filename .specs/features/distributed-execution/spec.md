@@ -1,6 +1,6 @@
 # Execução distribuída (workers remotos + AWS AgentCore) — Especificação
 
-**Status:** Draft — aguardando aprovação
+**Status:** Done (2026-11-06) — T1, T3–T25 entregues; T2 cancelado (U5)
 **Escopo:** Complex (novo domínio, mexe no núcleo do runner, rede e segurança)
 **Data:** 2026-11-06
 

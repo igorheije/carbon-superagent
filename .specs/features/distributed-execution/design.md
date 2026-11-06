@@ -1,7 +1,7 @@
 # Execução distribuída — Design
 
 **Spec:** `.specs/features/distributed-execution/spec.md`
-**Status:** Draft — aguardando aprovação
+**Status:** Done (2026-11-06) — T1, T3–T25 entregues; T2 cancelado (U5)
 
 Legenda de confiança: [Certo] lido no código/doc oficial · [Provável] inferência · [Incerto] validar antes de implementar.
 

@@ -1,7 +1,7 @@
 # Execução distribuída — Tasks
 
 **Design:** `.specs/features/distributed-execution/design.md`
-**Status:** Draft — aguardando aprovação
+**Status:** Done (2026-11-06) — T1, T3–T25 entregues; T2 cancelado (U5)
 
 **Gates** (não há `.specs/codebase/TESTING.md`; derivado de `package.json` e `vitest.config.ts`):
 - **quick:** `npx vitest run <arquivos de teste da tarefa>`
