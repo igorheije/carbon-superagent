@@ -249,7 +249,7 @@ describe("worker client — calls", () => {
     await expect(bad.client.claim(["claude"])).rejects.toBeInstanceOf(WorkerClientError);
 
     const controller = new AbortController();
-    const aborted = makeClient((call) => {
+    const aborted = makeClient(() => {
       controller.abort();
       return Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
     });
