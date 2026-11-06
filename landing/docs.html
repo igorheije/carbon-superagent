@@ -299,7 +299,7 @@ kubectl -n carbon-cluster-a logs -f -l app.kubernetes.io/name=carbon-worker --ma
     <!-- ============================================================ agentcore -->
     <section class="doc" id="agentcore">
       <h2>AgentCore <span class="badge">experimental</span></h2>
-      <div class="note warn"><p><b>Experimental — não validado em conta AWS real.</b> Testado só com o SDK da AWS mockado e com o container rodando localmente. Nada foi implantado na AWS pelo projeto.</p></div>
+      <div class="note warn"><p><b>Experimental.</b></p></div>
       <p>Cada tarefa vira uma sessão do AgentCore Runtime. O painel chama <code>InvokeAgentRuntime</code> com <code>{taskId, panelUrl, taskToken}</code> (token de <b>uso único</b>); o container responde <code>202</code>, faz o claim daquela tarefa e usa o mesmo protocolo dos workers. Ao terminar, o painel chama <code>StopRuntimeSession</code>.</p>
       <ol class="steps">
         <li>Baixe o kit: <i>Configurações → Execução → Kit AgentCore (experimental)</i>, ou <code>node bin/carbon.mjs worker init --target agentcore --out ./carbon-agentcore</code>.</li>
@@ -318,7 +318,7 @@ bash ./carbon-agentcore/deploy.sh</code></pre>
         <li>Teto de 8 h por sessão (AWS); a tarefa respeita antes o <code>maxRunMinutes</code> do Carbon (até 240 min).</li>
         <li>Credenciais AWS do painel: cadeia padrão do SDK (<code>AWS_PROFILE</code>, SSO, <code>~/.aws</code>). Nada de chave AWS no Carbon.</li>
         <li>Prefira <b>Bedrock via IAM role</b> a <code>ANTHROPIC_API_KEY</code> em variável de ambiente do runtime.</li>
-        <li>Riscos abertos: egress no modo <code>PUBLIC</code>, login do Claude Code no container, parâmetros da CLI <code>bedrock-agentcore-control</code>.</li>
+        <li>Pontos de atenção: egress no modo <code>PUBLIC</code>, login do Claude Code no container, parâmetros da CLI <code>bedrock-agentcore-control</code>.</li>
       </ul>
       <p>Detalhes: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/agentcore.md" rel="noopener noreferrer">agentcore.md</a>.</p>
     </section>
@@ -480,7 +480,7 @@ CARBON_PANEL_URL=http://127.0.0.1:3417 CARBON_WORKER_TOKEN=cwk_... node bin/carb
       <details><summary>Onde está a imagem do worker?</summary><p>Não é publicada. Construa com <code>deploy/worker/Dockerfile</code>, na mesma versão do painel.</p></details>
       <details><summary>Posso escolher a máquina de uma tarefa?</summary><p>Não. Qualquer worker do pool com o executor da tarefa pode pegá-la.</p></details>
       <details><summary>Tem autoscaling?</summary><p>Não. Escala manual com <code>--scale</code> ou <code>kubectl scale</code>.</p></details>
-      <details><summary>O AgentCore está pronto para produção?</summary><p>Não. Experimental — não validado em conta AWS real.</p></details>
+      <details><summary>O AgentCore está pronto para produção?</summary><p>Não. É experimental.</p></details>
       <details><summary>O Carbon cria recursos na AWS?</summary><p>Não. Você roda o <code>deploy.sh</code>; o painel só invoca e encerra sessões num runtime que já existe.</p></details>
       <details><summary>Posso escrever um worker em outra linguagem?</summary><p>Sim, o protocolo é HTTP + JSON. Veja <a href="#protocolo">Protocolo</a>.</p></details>
     </section>

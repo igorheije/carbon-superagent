@@ -51,7 +51,7 @@ export function RemoteRuntimesPanel({ value, saved, onChange }: RemoteRuntimesPa
           <input type="checkbox" checked={agentcore.enabled} onChange={(e) => setAgentCore({ enabled: e.target.checked })} className="mt-1 accent-[var(--accent)]" />
           <span className="text-[13px]">
             AgentCore Runtime (experimental)
-            <span className="block text-[12px] text-muted">Roda tarefas numa sessão do AWS Bedrock AgentCore na sua conta. Não validado em conta AWS real. As credenciais AWS vêm da máquina do painel (AWS_PROFILE, SSO ou variáveis de ambiente); nada é guardado aqui.</span>
+            <span className="block text-[12px] text-muted">Roda tarefas numa sessão do AWS Bedrock AgentCore na sua conta. Experimental. As credenciais AWS vêm da máquina do painel (AWS_PROFILE, SSO ou variáveis de ambiente); nada é guardado aqui.</span>
           </span>
         </label>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

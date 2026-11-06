@@ -216,7 +216,7 @@ Rode várias tarefas ao mesmo tempo em outras máquinas. O painel continua dono 
 | --- | --- | --- |
 | **Esta máquina** (padrão) | O processo do painel | 1 tarefa por vez |
 | **Pool de workers** | `carbon worker` em Docker Compose, Kubernetes ou direto no Node | réplicas × `CARBON_WORKER_PARALLEL` por máquina |
-| **AgentCore** — *experimental, não validado em conta AWS real* | Uma sessão do AWS Bedrock AgentCore Runtime por tarefa, na sua conta | até `agentcore.maxConcurrent` (padrão 3) |
+| **AgentCore** — *experimental* | Uma sessão do AWS Bedrock AgentCore Runtime por tarefa, na sua conta | até `agentcore.maxConcurrent` (padrão 3) |
 
 O código vai para o worker por **git** (clone do `origin` e push do branch `agent/*`) ou, sem remoto/commits, por **bundle** servido pelo painel; o branch volta para o repositório do painel e **Aplicar na pasta**, **Merge local** e **Abrir PR** funcionam como numa tarefa local. Permissões aparecem no painel como sempre; uma **pergunta** do agente encerra a execução remota e, ao responder, a tarefa volta à fila e recomeça da base com as suas decisões no prompt.
 
@@ -275,7 +275,7 @@ Estrutura: `bin/carbon.mjs` (CLI) · `src/server` (SQLite, auth, executores, run
 - O parser do Codex segue o formato documentado de `codex exec --json` e tem testes unitários, mas ainda **não foi exercitado contra a CLI real** neste repositório. O do Claude Code foi validado ponta a ponta.
 - No modo local, uma tarefa por vez (fila serial). Com workers, as tarefas do pool rodam em paralelo (réplicas × `CARBON_WORKER_PARALLEL`) além da fila local; não há afinidade de máquina nem autoscaling por fila (escala manual).
 - Execução remota não retoma a sessão do agente: depois de uma pergunta, a tarefa recomeça da base com as decisões no prompt. Lease vencido (worker some) falha a tarefa por padrão.
-- O runtime **AgentCore é experimental e não foi validado em conta AWS real**: testado com o SDK mockado e com o container rodando localmente. Egress, login do Claude Code no container e parâmetros da CLI `bedrock-agentcore-control` precisam ser validados numa conta de teste ([riscos abertos](docs/distributed/agentcore.md#riscos-abertos-validar-numa-conta-de-teste)).
+- O runtime **AgentCore é experimental**. Veja os [pontos de atenção](docs/distributed/agentcore.md#pontos-de-atenção) (egress, login do Claude Code no container, parâmetros da CLI `bedrock-agentcore-control`).
 - A imagem do worker não é publicada em registry: é construída a partir deste repositório (`deploy/worker/Dockerfile`).
 - A limpeza de worktrees no boot considera as últimas 500 tarefas; pastas de tarefas mais antigas são tratadas como órfãs (removidas só se estiverem limpas).
 - O `gh pr create` pelo card exige um remoto do GitHub com `gh` autenticado; em outros remotos (GitLab, Bitbucket), use merge local ou aplicar na pasta.

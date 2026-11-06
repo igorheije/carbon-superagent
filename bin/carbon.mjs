@@ -384,7 +384,7 @@ async function workerInit(argv) {
       console.log(`\nMáquina "${result.worker.name}" criada. Token (mostrado só agora; já está no ${opts.target === "compose" ? ".env" : "secret.yaml"}):\n${pc.bold(result.token)}\n`);
       console.log(opts.target === "compose" ? `cd ${result.out} && docker compose up -d` : `kubectl apply -k ${result.out}`);
     } else {
-      console.log(`Siga ${path.join(result.out, "README.md")} (experimental; nada é executado na AWS).`);
+      console.log(`Siga ${path.join(result.out, "README.md")} (experimental).`);
     }
   } catch (error) {
     if (!(error instanceof InitError)) throw error;
