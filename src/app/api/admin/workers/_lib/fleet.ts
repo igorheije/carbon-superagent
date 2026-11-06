@@ -3,7 +3,7 @@ import { getDb } from "@/server/db";
 import { listWorkers, type Worker, type WorkerCapabilities, type WorkerKind } from "@/server/repo/workers";
 
 /**
- * Fleet view (FLT-01) for Admin → Máquinas. Status comes from `last_seen_at` and the tasks the
+ * Fleet view (FLT-01) for Configurações → Máquinas. Status comes from `last_seen_at` and the tasks the
  * worker currently holds a lease on. "online" is not a state of its own: an online worker is
  * either `busy` (holds at least one lease) or `idle`.
  */

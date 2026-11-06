@@ -228,6 +228,8 @@ async function startWorkerListener(port) {
       CARBON_PORT: String(port),
       CARBON_WORKER_TLS_CERT: pick("CARBON_WORKER_TLS_CERT"),
       CARBON_WORKER_TLS_KEY: pick("CARBON_WORKER_TLS_KEY"),
+      CARBON_WORKER_MAX_CONNECTIONS: pick("CARBON_WORKER_MAX_CONNECTIONS"),
+      CARBON_WORKER_MAX_CONNECTIONS_PER_IP: pick("CARBON_WORKER_MAX_CONNECTIONS_PER_IP"),
     });
     p.log.info(`Workers remotos: ${pc.cyan(`${proxy.url}/api/worker/`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
     p.log.info(`Configure ${pc.cyan("panelPublicUrl")} nas configurações com a URL pública (túnel/VPN) que aponta para essa porta.`);

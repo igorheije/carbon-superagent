@@ -46,7 +46,7 @@ export function agentcoreAvailability(settings: Pick<Settings, "agentcore" | "pa
 
 /** The pool needs at least one registered, non-revoked worker machine. */
 export function poolAvailability(workers: readonly { readonly kind: string; readonly revokedAt: number | null }[] = listWorkers()): RuntimeAvailability {
-  return workers.some((w) => w.kind === "pool" && w.revokedAt === null) ? AVAILABLE : unavailable("nenhuma máquina worker cadastrada (Admin → Máquinas)");
+  return workers.some((w) => w.kind === "pool" && w.revokedAt === null) ? AVAILABLE : unavailable("nenhuma máquina worker cadastrada (Configurações → Máquinas)");
 }
 
 export type RuntimeAvailabilityMap = Readonly<Record<TaskRuntime, RuntimeAvailability>>;

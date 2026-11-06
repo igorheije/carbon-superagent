@@ -3,7 +3,7 @@
 exports[`renderCompose > renders the expected files (snapshot) 1`] = `
 {
   ".env": "# Carbon worker "maquina-sp-01". NÃO versione nem compartilhe este arquivo: ele contém o token da máquina.
-# Se o token vazar, revogue a máquina no painel (Admin → Máquinas) e gere um kit novo.
+# Se o token vazar, revogue a máquina no painel (Configurações → Máquinas) e gere um kit novo.
 CARBON_PANEL_URL=https://carbon.exemplo.local:3418
 CARBON_WORKER_TOKEN=cwk_FakeTokenForTests0123456789-_abcdefghijklmn
 CARBON_WORKER_PARALLEL=3
@@ -58,7 +58,7 @@ docker compose logs -f worker
 
 ## Revogar o token
 
-1. No painel, Admin → Máquinas → **Revogar** em "maquina-sp-01". O worker para de receber tarefas na hora.
+1. No painel, Configurações → Máquinas → **Revogar** em "maquina-sp-01". O worker para de receber tarefas na hora.
 2. Nesta máquina: \`docker compose down -v\` e apague o \`.env\`.
 3. Para voltar a usar, gere um kit novo (token novo) no painel.
 ",

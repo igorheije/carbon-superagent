@@ -196,7 +196,7 @@ export function readWorkerConfig(env: Readonly<Record<string, string | undefined
   const errors: string[] = [];
   const panelUrl = panelUrlOf(env.CARBON_PANEL_URL, errors);
   const token = env.CARBON_WORKER_TOKEN?.trim() ?? "";
-  if (!token) errors.push("CARBON_WORKER_TOKEN é obrigatório (gere em Admin → Máquinas)");
+  if (!token) errors.push("CARBON_WORKER_TOKEN é obrigatório (gere em Configurações → Máquinas)");
   else if (/\s/.test(token) || !token.startsWith("cwk_")) errors.push("CARBON_WORKER_TOKEN inválido (deve começar com cwk_)");
   const parallel = intInRange(env.CARBON_WORKER_PARALLEL, "CARBON_WORKER_PARALLEL", 1, MAX_PARALLEL, DEFAULT_PARALLEL, errors);
   const graceSeconds = intInRange(env.CARBON_WORKER_GRACE_SECONDS, "CARBON_WORKER_GRACE_SECONDS", 0, MAX_GRACE_SECONDS, DEFAULT_GRACE_SECONDS, errors);

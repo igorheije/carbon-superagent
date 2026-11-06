@@ -153,7 +153,7 @@ export function k8sImageStep(image: string): string {
   return `A imagem \`${image}\` não é publicada em nenhum registry, e o cluster precisa baixá-la. No repositório
    do Carbon, na mesma versão do painel, publique num registry seu:
    \`${buildx(`<registry>/${image}`)}\`
-   e troque \`image:\` no \`deployment.yaml\` (ou gere o kit já com a imagem: campo "Imagem" em Admin → Máquinas
+   e troque \`image:\` no \`deployment.yaml\` (ou gere o kit já com a imagem: campo "Imagem" em Configurações → Máquinas
    ou \`carbon worker init --image <registry>/${image}\`).`;
 }
 
@@ -196,7 +196,7 @@ ${K8S_WORKER_GRACE_SECONDS}s (\`terminationGracePeriodSeconds: ${K8S_TERMINATION
 
 ## Revogar o token
 
-1. No painel, Admin → Máquinas → **Revogar** em "${opts.workerName}". O worker para de receber tarefas na hora.
+1. No painel, Configurações → Máquinas → **Revogar** em "${opts.workerName}". O worker para de receber tarefas na hora.
 2. No cluster: \`kubectl delete -k .\` (apaga o namespace \`${ns}\` e o secret).
 3. Para voltar a usar, gere um kit novo (token novo) no painel.
 `;
