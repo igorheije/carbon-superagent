@@ -50,6 +50,7 @@ export interface PublicSettings {
   readonly maxRunMinutes: number;
   readonly aiProjectSummary: boolean;
   readonly isolateClaudeConfig: boolean;
+  readonly useClaudeMemory: boolean;
   readonly permissionTimeoutMinutes: number;
   readonly approvalPolicy: "ask" | "smart" | "autonomous";
   readonly linearConfigured: boolean;

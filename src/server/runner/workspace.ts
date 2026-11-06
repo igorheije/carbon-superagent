@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { DiffFile } from "@/lib/domain/types";
 import { dataDir } from "../db";
+import { MEMORY_WORKTREE_DIR, type RepoMemory } from "../knowledge/claude-memory";
 import { firstLine, run } from "../proc";
 import type { Skill } from "../repo/skills";
 import { toSkillMarkdown } from "../skills/parse";
@@ -35,6 +36,13 @@ export function materializeSkills(worktreePath: string, skills: readonly Skill[]
     }
     return { name, description: skill.description, path: `.claude/skills/${name}/SKILL.md` };
   });
+}
+
+/** Copy of the repo's Claude Code memory for the agent to open on demand; excluded from commits. */
+export function writeClaudeMemory(worktreePath: string, memory: RepoMemory): void {
+  const dir = path.join(worktreePath, MEMORY_WORKTREE_DIR);
+  mkdirSync(dir, { recursive: true });
+  for (const file of memory.files) writeFileSync(path.join(dir, path.basename(file.name)), `${file.content}\n`, "utf8");
 }
 
 /** Full project map for the agent; excluded from commits like the skills. */

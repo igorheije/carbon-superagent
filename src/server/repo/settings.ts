@@ -34,6 +34,11 @@ export const settingsSchema = z.object({
   aiProjectSummary: z.boolean().default(true),
   /** Skip the user's personal Claude settings/hooks/MCP in runs (project settings still apply). */
   isolateClaudeConfig: z.boolean().default(true),
+  /**
+   * Inject the repository's Claude Code memory (from the machine user running Carbon) into each run.
+   * Every portal account then gets that one person's memory, so it is off by default.
+   */
+  useClaudeMemory: z.boolean().default(false),
   /** A permission prompt nobody answers is denied after this many minutes. */
   permissionTimeoutMinutes: z.number().int().min(1).max(120).default(15),
   /** smart: auto-approve low-risk actions inside the worktree; ask only for risky ones. */
