@@ -32,6 +32,43 @@ export const workersSettingsSchema = z.object({
 export type WorkersSettings = z.infer<typeof workersSettingsSchema>;
 const WORKERS_DEFAULTS: WorkersSettings = { leaseMs: 60_000, pollMs: 25_000, requeueOnLeaseLoss: false, maxBundleMb: 200 };
 
+/** ARN of an AgentCore Runtime: arn:aws:bedrock-agentcore:<region>:<account>:runtime/<id>. */
+export const AGENTCORE_RUNTIME_ARN = /^arn:aws(-[a-z]+)*:bedrock-agentcore:[a-z]{2}(-[a-z]+)+-\d:\d{12}:runtime\/[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
+
+/** AgentCore Runtime (experimental, decision U5: implemented, never deployed by Carbon itself). */
+export const agentcoreSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  region: z
+    .string()
+    .trim()
+    .regex(/^[a-z]{2}(-[a-z]+)+-\d$/, "região AWS inválida (ex.: sa-east-1)")
+    .default("sa-east-1"),
+  runtimeArn: z
+    .string()
+    .trim()
+    .max(300)
+    .refine((v) => v === "" || AGENTCORE_RUNTIME_ARN.test(v), "ARN inválido: use arn:aws:bedrock-agentcore:<região>:<conta>:runtime/<id>")
+    .default(""),
+  /** Endpoint name of the runtime ("DEFAULT" when the runtime has no custom endpoint). */
+  qualifier: z
+    .string()
+    .trim()
+    .max(100)
+    .regex(/^[A-Za-z0-9_-]*$/, "qualifier com letras, números, _ ou -")
+    .default("DEFAULT"),
+  /** Simultaneous AgentCore sessions (cost control). */
+  maxConcurrent: z.number().int().min(1).max(20).default(3),
+});
+export type AgentCoreSettings = z.infer<typeof agentcoreSettingsSchema>;
+const AGENTCORE_DEFAULTS: AgentCoreSettings = { enabled: false, region: "sa-east-1", runtimeArn: "", qualifier: "DEFAULT", maxConcurrent: 3 };
+
+const httpsUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((v) => v === "" || /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(v), "use uma URL https://")
+  .transform((v) => v.replace(/\/+$/, ""));
+
 export const settingsSchema = z.object({
   repoPath: z.string().trim().max(1024).default(""),
   baseBranch: z.string().trim().max(200).default(""),
@@ -95,6 +132,9 @@ export const settingsSchema = z.object({
   telegramChatId: z.string().trim().max(40).default(""),
 
   workers: workersSettingsSchema.default(WORKERS_DEFAULTS),
+  /** HTTPS URL where remote workers and AgentCore containers reach this panel (/api/worker/*). */
+  panelPublicUrl: httpsUrl.default(""),
+  agentcore: agentcoreSettingsSchema.default(AGENTCORE_DEFAULTS),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
