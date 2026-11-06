@@ -128,3 +128,24 @@ describe("runWorkerInit", () => {
     await expect(runWorkerInit(parseInitArgs(["--target", "compose", "--out", freshDir(), ...BASE]), env(panelDb({ withAdmin: false })))).rejects.toThrow("admin");
   });
 });
+
+describe("writeKitFiles (L8)", () => {
+  it("writes through a temp file with the final mode and leaves no temp files; replaces a symlink instead of following it", async () => {
+    const { writeKitFiles } = await import("./worker-init.mjs");
+    const { lstatSync, readdirSync, symlinkSync } = await import("node:fs");
+    const out = freshDir();
+    const elsewhere = freshDir();
+    mkdirSync(out, { recursive: true });
+    mkdirSync(elsewhere, { recursive: true });
+    const outside = path.join(elsewhere, "alvo");
+    writeFileSync(outside, "original\n");
+    symlinkSync(outside, path.join(out, ".env"));
+    writeKitFiles(out, { ".env": "CARBON_WORKER_TOKEN=x\n", "deploy.sh": "#!/bin/sh\n", "README.md": "# kit\n" });
+    expect(readFileSync(outside, "utf8")).toBe("original\n");
+    expect(lstatSync(path.join(out, ".env")).isSymbolicLink()).toBe(false);
+    expect(statSync(path.join(out, ".env")).mode & 0o777).toBe(0o600);
+    expect(statSync(path.join(out, "deploy.sh")).mode & 0o777).toBe(0o755);
+    expect(statSync(path.join(out, "README.md")).mode & 0o777).toBe(0o644);
+    expect(readdirSync(out).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+});
