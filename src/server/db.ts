@@ -182,6 +182,34 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX tasks_project ON tasks(project_id, position);
   CREATE INDEX tasks_source ON tasks(source, source_ref);
   `,
+  // Distributed execution: where a task runs (runtime), its worker lease, and machine credentials.
+  // No CHECK on runtime (validated by zod) so new runtimes never need a table rebuild.
+  `
+  ALTER TABLE tasks ADD COLUMN runtime TEXT NOT NULL DEFAULT 'local';
+  ALTER TABLE tasks ADD COLUMN lease_worker TEXT;
+  ALTER TABLE tasks ADD COLUMN lease_expires_at INTEGER;
+  ALTER TABLE tasks ADD COLUMN lease_seq INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE tasks ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX IF NOT EXISTS tasks_runtime_queue ON tasks (runtime, status, position);
+  CREATE TABLE IF NOT EXISTS workers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    last_seen_at INTEGER,
+    version TEXT,
+    capabilities TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE IF NOT EXISTS task_tokens (
+    token_hash TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER
+  );
+  `,
 ];
 
 /**

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { PersonaId } from "@/lib/domain/personas";
-import type { Lesson, Ticket, TicketStatus } from "@/lib/domain/types";
+import type { Lesson, TaskRuntime, Ticket, TicketStatus } from "@/lib/domain/types";
 import { getDb, nowIso } from "../db";
 import type { ExecutorId } from "./settings";
 
@@ -21,6 +21,7 @@ export interface Task {
   readonly model: string;
   readonly effort: string;
   readonly status: TicketStatus;
+  readonly runtime: TaskRuntime;
   readonly position: number;
   readonly snapshot: Ticket;
 }
@@ -39,6 +40,7 @@ interface TaskRow {
   model: string;
   effort: string;
   status: string;
+  runtime: string;
   position: number;
   snapshot: string;
 }
@@ -58,6 +60,7 @@ function toTask(row: TaskRow): Task {
     model: row.model,
     effort: row.effort,
     status: row.status as TicketStatus,
+    runtime: row.runtime as TaskRuntime,
     position: row.position,
     snapshot: JSON.parse(row.snapshot) as Ticket,
   };
@@ -80,6 +83,8 @@ export interface NewTask {
   readonly repo: string;
   /** Planned executor · model · effort label (auto already resolved), replaced by the actual one at run start. */
   readonly modelLabel: string;
+  /** Where the task runs; defaults to "local" (the panel's own runner). */
+  readonly runtime?: TaskRuntime;
 }
 
 export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
@@ -92,6 +97,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     requester: task.requesterName,
     priority: task.priority,
     status: "queued",
+    runtime: task.runtime ?? "local",
     stage: null,
     cursor: 0,
     totalEvents: 0,
@@ -117,8 +123,8 @@ export function createTask(task: NewTask): Task {
   const key = task.key ?? `FRG-${count.n + 1}`;
   const now = nowIso();
   db.prepare(
-    "INSERT INTO tasks (id, project_id, key, title, description, source, source_ref, requester_id, persona, executor, model, effort, priority, status, position, snapshot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)",
-  ).run(id, task.projectId, key, task.title, task.description, task.source, task.sourceRef, task.requesterId, task.persona, task.executor, task.model, task.effort, task.priority, maxPos.p + 1, JSON.stringify(emptyTicket(id, task, key)), now, now);
+    "INSERT INTO tasks (id, project_id, key, title, description, source, source_ref, requester_id, persona, executor, model, effort, priority, status, runtime, position, snapshot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
+  ).run(id, task.projectId, key, task.title, task.description, task.source, task.sourceRef, task.requesterId, task.persona, task.executor, task.model, task.effort, task.priority, task.runtime ?? "local", maxPos.p + 1, JSON.stringify(emptyTicket(id, task, key)), now, now);
   return findTask(id) as Task;
 }
 
@@ -140,8 +146,9 @@ export function listTasks(projectId: string | null, limit = 50): readonly Task[]
   return rows.map(toTask);
 }
 
-export function nextQueuedTask(): Task | null {
-  const row = getDb().prepare("SELECT * FROM tasks WHERE status = 'queued' ORDER BY position LIMIT 1").get() as TaskRow | undefined;
+/** Next task for the panel's own runner. Pool/AgentCore tasks are claimed by workers (runner/scheduler.ts). */
+export function nextQueuedLocalTask(): Task | null {
+  const row = getDb().prepare("SELECT * FROM tasks WHERE runtime = 'local' AND status = 'queued' ORDER BY position LIMIT 1").get() as TaskRow | undefined;
   return row ? toTask(row) : null;
 }
 
@@ -159,9 +166,12 @@ export function deleteTask(id: string): void {
   getDb().prepare("DELETE FROM tasks WHERE id = ? AND status <> 'running'").run(id);
 }
 
-/** Tasks left "running" by a crash/restart go back to failed so nothing hangs forever. */
+/**
+ * Local tasks left "running" by a crash/restart go back to failed so nothing hangs forever.
+ * Remote tasks (pool/agentcore) keep running on their worker; expired leases are handled by the scheduler.
+ */
 export function recoverInterruptedTasks(): void {
-  const rows = getDb().prepare("SELECT * FROM tasks WHERE status IN ('running', 'waiting')").all() as unknown as TaskRow[];
+  const rows = getDb().prepare("SELECT * FROM tasks WHERE runtime = 'local' AND status IN ('running', 'waiting')").all() as unknown as TaskRow[];
   for (const row of rows) {
     const task = toTask(row);
     const hasPendingPermission = (task.snapshot.permissions ?? []).some((p) => p.status === "pending");

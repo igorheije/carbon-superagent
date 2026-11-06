@@ -40,6 +40,8 @@ export const newTaskSchema = z.object({
   model: modelSchema.optional(),
   effort: z.enum(["auto", "low", "medium", "high", "xhigh", "max"]).optional(),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
+  /** Where the task runs; omitted = "local" (this machine). */
+  runtime: z.enum(["local", "pool", "agentcore"]).optional(),
 });
 
 export const skillBodySchema = z.object({
