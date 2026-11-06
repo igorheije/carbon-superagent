@@ -1,7 +1,4 @@
 import "server-only";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 import type { TaskRuntime } from "@/lib/domain/types";
 import { listWorkers } from "../repo/workers";
 import type { Settings } from "../repo/settings";
@@ -17,18 +14,24 @@ const unavailable = (reason: string): RuntimeAvailability => ({ available: false
 
 type Env = Readonly<Record<string, string | undefined>>;
 
+// Builtins resolved at call time: repo/settings.ts imports this module, and Next also traces it for
+// the Edge bundle of instrumentation, where static node:fs/node:os imports only produce warnings.
+const fileExistsNode = (file: string): boolean => process.getBuiltinModule("node:fs").existsSync(file);
+const homeDirNode = (): string => process.getBuiltinModule("node:os").homedir();
+const join = (...parts: string[]): string => parts.join("/").replace(/\/{2,}/g, "/");
+
 /**
  * Cheap, offline check that the AWS SDK default credential chain has something to work with:
  * static keys, a profile/SSO/role in the shared files, web identity (EKS) or container
  * credentials (ECS). It never resolves credentials (that may call STS/IMDS over the network), so
  * expired SSO sessions still pass here and fail later with a clear SDK error on Invoke.
  */
-export function hasAwsCredentialSource(env: Env = process.env, fileExists: (file: string) => boolean = existsSync, home: string = homedir()): boolean {
+export function hasAwsCredentialSource(env: Env = process.env, fileExists: (file: string) => boolean = fileExistsNode, home: string = homeDirNode()): boolean {
   if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) return true;
   if (env.AWS_WEB_IDENTITY_TOKEN_FILE && env.AWS_ROLE_ARN) return true;
   if (env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI || env.AWS_CONTAINER_CREDENTIALS_FULL_URI) return true;
-  const credentials = env.AWS_SHARED_CREDENTIALS_FILE || path.join(home, ".aws", "credentials");
-  const config = env.AWS_CONFIG_FILE || path.join(home, ".aws", "config");
+  const credentials = env.AWS_SHARED_CREDENTIALS_FILE || join(home, ".aws", "credentials");
+  const config = env.AWS_CONFIG_FILE || join(home, ".aws", "config");
   return fileExists(credentials) || fileExists(config);
 }
 
