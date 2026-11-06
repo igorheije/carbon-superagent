@@ -122,3 +122,33 @@ describe("task tokens", () => {
     expect(stored).not.toContain(token);
   });
 });
+
+describe("per-IP failure limiter and TTL (M3, L7)", () => {
+  const fromIp = (ip: string, authorization?: string) =>
+    new Request("http://localhost/api/worker/hello", { method: "POST", headers: { "x-forwarded-for": ip, ...(authorization ? { authorization } : {}) } });
+
+  it("429s an address after too many failed authentications, with any token, while other addresses still work", () => {
+    const now = 5_000_000;
+    for (let i = 0; i < m.auth.WORKER_AUTH_FAILURES_PER_IP; i++) {
+      expect(statusOf(() => m.auth.requireWorker(fromIp("203.0.113.7", `Bearer cwk_${String(i).padStart(43, "x")}`), now))).toBe(401);
+    }
+    const { token } = m.auth.createWorker("ip-ok", "pool", "admin-1");
+    expect(statusOf(() => m.auth.requireWorker(fromIp("203.0.113.7", `Bearer ${token}`), now))).toBe(429);
+    expect(statusOf(() => m.auth.requireWorker(fromIp("203.0.113.8", `Bearer ${token}`), now))).toBeNull();
+    // The window slides: 15 min later the address may try again.
+    expect(statusOf(() => m.auth.requireWorker(fromIp("203.0.113.7", `Bearer ${token}`), now + 15 * 60_000 + 1))).toBeNull();
+  });
+
+  it("takes the last X-Forwarded-For hop (set by the worker proxy) and ignores junk", () => {
+    expect(m.auth.clientIpOf(fromIp("1.2.3.4, 198.51.100.2"))).toBe("198.51.100.2");
+    expect(m.auth.clientIpOf(fromIp("::ffff:10.0.0.9"))).toBe("10.0.0.9");
+    expect(m.auth.clientIpOf(fromIp("<script>"))).toBe("local");
+    expect(m.auth.clientIpOf(req())).toBe("local");
+  });
+
+  it("task token TTL is the run limit plus 30 minutes", () => {
+    expect(m.auth.taskTokenTtlMs(60)).toBe(90 * 60_000);
+    expect(m.auth.taskTokenTtlMs(0)).toBe(30 * 60_000);
+    expect(m.auth.taskTokenTtlMs(Number.NaN)).toBe(30 * 60_000);
+  });
+});
