@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { AUTO_EFFORT, AUTO_MODEL, isValidModelName } from "@/lib/domain/models";
 import { getDb } from "../db";
+import { runtimeAvailability, type RuntimeAvailabilityMap } from "../runtimes/availability";
 
 export const EXECUTORS = ["claude", "codex"] as const;
 export type ExecutorId = (typeof EXECUTORS)[number];
@@ -159,6 +160,8 @@ export type PublicSettings = Omit<Settings, SecretKey> & {
   readonly jiraWebhookSecretSet: boolean;
   readonly slackConfigured: boolean;
   readonly telegramConfigured: boolean;
+  /** Where new tasks can run right now ("Onde rodar" selector), with the reason when not. */
+  readonly runtimes: RuntimeAvailabilityMap;
 };
 
 export const isJiraConfigured = (s: Settings): boolean => Boolean(s.jiraSite && s.jiraEmail && s.jiraApiToken);
@@ -196,5 +199,6 @@ export function toPublicSettings(settings: Settings): PublicSettings {
     jiraWebhookSecretSet: settings.jiraWebhookSecret.length > 0,
     slackConfigured: isSlackConfigured(settings),
     telegramConfigured: isTelegramConfigured(settings),
+    runtimes: runtimeAvailability(settings),
   };
 }

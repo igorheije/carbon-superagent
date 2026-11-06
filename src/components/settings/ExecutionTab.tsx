@@ -8,6 +8,7 @@ import { Panel } from "@/components/ui/Panel";
 import { api, type PublicSettings } from "@/lib/client/api";
 import { ModelPicker } from "@/components/ui/ModelPicker";
 import { ApprovalRules } from "./ApprovalRules";
+import { RemoteRuntimesPanel, remoteRuntimesOf, type RemoteRuntimesDraft } from "./RemoteRuntimesPanel";
 
 function Segmented<T extends string>({ id, value, options, onChange }: { id: string; value: T; options: readonly { value: T; label: string; hint: string; disabled?: boolean }[]; onChange: (v: T) => void }) {
   return (
@@ -38,6 +39,7 @@ export function ExecutionTab() {
     try {
       const body: Record<string, unknown> = { ...draft, linearApiKey: linearKey };
       delete body.linearConfigured;
+      delete body.runtimes;
       await api("/api/settings", { method: "PUT", body });
       setLinearKey("");
       await refresh();
@@ -124,6 +126,7 @@ export function ExecutionTab() {
           </label>
         </div>
       </Panel>
+      <RemoteRuntimesPanel value={remoteRuntimesOf(draft)} saved={settings} onChange={(next: RemoteRuntimesDraft) => setDraft({ ...draft, ...next })} />
       <Panel eyebrow="Linear" title={draft.linearConfigured ? "API key configurada" : "Não configurado"}>
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
           <div className="flex-1">
