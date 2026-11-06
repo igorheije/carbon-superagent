@@ -4,12 +4,13 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { ExecutionTab } from "@/components/settings/ExecutionTab";
 import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
+import { MachinesTab } from "@/components/settings/MachinesTab";
 import { PeopleTab } from "@/components/settings/PeopleTab";
 import { ProjectsTab } from "@/components/settings/ProjectsTab";
 import { ProfileTab } from "@/components/settings/ProfileTab";
 import { useSession } from "@/components/session/SessionProvider";
 
-type Tab = "profile" | "projects" | "execution" | "integrations" | "people";
+type Tab = "profile" | "projects" | "execution" | "machines" | "integrations" | "people";
 
 export default function SettingsPage() {
   const { user, isLoading } = useSession();
@@ -21,6 +22,7 @@ export default function SettingsPage() {
       ? [
           { id: "projects" as const, label: "Projetos" },
           { id: "execution" as const, label: "Execução" },
+          { id: "machines" as const, label: "Máquinas" },
           { id: "integrations" as const, label: "Integrações" },
           { id: "people" as const, label: "Pessoas" },
         ]
@@ -41,7 +43,7 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
-      {isLoading ? null : tab === "profile" ? <ProfileTab key={user?.id} /> : tab === "projects" && isAdmin ? <ProjectsTab /> : tab === "execution" && isAdmin ? <ExecutionTab /> : tab === "integrations" && isAdmin ? <IntegrationsTab /> : isAdmin ? <PeopleTab /> : null}
+      {isLoading ? null : tab === "profile" ? <ProfileTab key={user?.id} /> : tab === "projects" && isAdmin ? <ProjectsTab /> : tab === "execution" && isAdmin ? <ExecutionTab /> : tab === "machines" && isAdmin ? <MachinesTab /> : tab === "integrations" && isAdmin ? <IntegrationsTab /> : isAdmin ? <PeopleTab /> : null}
     </div>
   );
 }

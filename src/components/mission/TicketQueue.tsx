@@ -1,12 +1,14 @@
 "use client";
 
 import { AsciiReveal, AsciiSkeleton } from "ascii-reveal";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, RotateCcw, Square, Trash2 } from "lucide-react";
 import { api } from "@/lib/client/api";
 import { useEngine } from "@/components/engine/EngineProvider";
 import { Panel } from "@/components/ui/Panel";
 import { STAGES, type Ticket, type TicketStatus } from "@/lib/domain/types";
+import { PlacementBadge } from "./PlacementBadge";
 
 const STATUS_LABEL: Readonly<Record<TicketStatus, string>> = {
   queued: "na fila",
@@ -34,18 +36,32 @@ function PriorityGlyph({ priority }: { priority: Ticket["priority"] }) {
 }
 
 function LiveActions({ ticket }: { ticket: Ticket }) {
-  const act = (path: string, body?: unknown, method = "POST") => void api(path, { method, body }).catch(() => null);
-  const button = "flex items-center gap-1 rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-muted hover:text-ink";
+  const [error, setError] = useState<string | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
+  const isRemote = (ticket.runtime ?? "local") !== "local";
+  const act = (path: string, body?: unknown, method = "POST") =>
+    api(path, { method, body }).then(
+      () => setError(null),
+      (e: unknown) => setError(e instanceof Error ? e.message : "falha"),
+    );
+  // Remote tasks stop on the worker's next heartbeat: show it until the status changes.
+  const stop = () => {
+    setIsStopping(true);
+    void act(`/api/tasks/${ticket.id}`, { action: "cancel" }).finally(() => setIsStopping(false));
+  };
+  const canStop = ticket.status === "running" || (isRemote && ticket.status === "waiting");
+  const button = "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-muted hover:text-ink disabled:opacity-50";
   return (
-    <span className="flex gap-1">
-      {ticket.status === "running" && (
-        <button type="button" className={button} onClick={() => act(`/api/tasks/${ticket.id}`, { action: "cancel" })}><Square className="size-3" /> parar</button>
+    <span className="flex shrink-0 items-center gap-1">
+      {error && <span role="alert" className="max-w-[180px] truncate font-mono text-[10px] text-danger" title={error}>{error}</span>}
+      {canStop && (
+        <button type="button" className={button} disabled={isStopping} onClick={stop}><Square className="size-3" /> {isStopping ? "parando…" : "parar"}</button>
       )}
       {(ticket.status === "failed" || ticket.status === "done" || ticket.status === "waiting") && (
-        <button type="button" className={button} onClick={() => act(`/api/tasks/${ticket.id}`, { action: "retry" })}><RotateCcw className="size-3" /> rodar de novo</button>
+        <button type="button" className={button} onClick={() => void act(`/api/tasks/${ticket.id}`, { action: "retry" })}><RotateCcw className="size-3" /> rodar de novo</button>
       )}
       {ticket.status !== "running" && (
-        <button type="button" className={button} aria-label={`Remover ${ticket.key}`} onClick={() => act(`/api/tasks/${ticket.id}`, undefined, "DELETE")}><Trash2 className="size-3" /></button>
+        <button type="button" className={button} aria-label={`Remover ${ticket.key}`} onClick={() => void act(`/api/tasks/${ticket.id}`, undefined, "DELETE")}><Trash2 className="size-3" /></button>
       )}
     </span>
   );
@@ -64,19 +80,22 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
     >
       <div className="flex items-center gap-2.5">
         <PriorityGlyph priority={ticket.priority} />
-        <span className="font-mono text-[11px] text-muted">{ticket.key}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[11px] text-muted">{ticket.key}</span>
         <span className="rounded-full border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-subtle">
           {ticket.source}
         </span>
-        <span className={`ml-auto font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
+        <span className={`ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
           {STATUS_LABEL[ticket.status]}
         </span>
       </div>
       <p className="mt-1.5 truncate text-[13px]">{ticket.title}</p>
       <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="truncate font-mono text-[10px] text-subtle">
-          {ticket.repo} · @{ticket.requester}{ticket.model ? ` · ${ticket.model}` : ""}
-        </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <PlacementBadge ticket={ticket} />
+          <p className="min-w-0 truncate font-mono text-[10px] text-subtle">
+            {ticket.repo} · @{ticket.requester}{ticket.model ? ` · ${ticket.model}` : ""}
+          </p>
+        </div>
         {mode === "live" && <LiveActions ticket={ticket} />}
         {ticket.status === "queued" && (
           <button
