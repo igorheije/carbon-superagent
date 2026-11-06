@@ -1,4 +1,4 @@
-/** Client-side model of Admin → Máquinas (mirrors src/app/api/admin/workers/_lib/fleet.ts). */
+/** Client-side model of Configurações → Máquinas (mirrors src/app/api/admin/workers/_lib/fleet.ts). */
 
 export type MachineStatus = "busy" | "idle" | "offline" | "revoked";
 export type MachineTarget = "compose" | "k8s";

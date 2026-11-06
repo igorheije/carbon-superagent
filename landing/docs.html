@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs · Carbon SuperAgent</title>
+<meta name="description" content="Documentação do Carbon SuperAgent: instalação, primeira tarefa, execução distribuída com workers em Docker Compose e Kubernetes, AWS AgentCore (experimental), protocolo, segurança, operação e troubleshooting.">
+<meta property="og:title" content="Docs · Carbon SuperAgent">
+<meta property="og:description" content="Instale, rode a primeira tarefa e escale para outras máquinas e para a AWS.">
+<meta property="og:image" content="https://carbon-superagent.vercel.app/assets/mission-control.png">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // Apply the saved theme before first paint (no flash). Storage can be unavailable: ignore.
+  try { const t = localStorage.getItem("carbon-docs-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<style>
+  /* Same tokens as index.html */
+  :root {
+    --bg: #0a0a0b; --surface: #111113; --surface-2: #17171a;
+    --line: #232327; --line-strong: #34343a;
+    --ink: #f4f4f5; --muted: #9b9ba3; --subtle: #6b6b73;
+    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
+    --warn: #f59e0b; --warn-soft: rgba(245,158,11,.12);
+    --radius: 14px;
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+      --line: #e6e6e8; --line-strong: #d4d4d8;
+      --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+      --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+      --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+    --line: #e6e6e8; --line-strong: #d4d4d8;
+    --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+    --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+    --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; }
+  .mono, code, pre { font-family: var(--mono); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* top bar */
+  .top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
+  .brand small { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--accent); font-weight: 500; }
+  .brand .tag { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .top-links { display: flex; gap: 8px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 500; text-decoration: none; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); cursor: pointer; font-family: var(--sans); transition: border-color .2s; }
+  .btn:hover { border-color: var(--muted); }
+  .btn-ghost { color: var(--muted); }
+  .icon-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  .menu-btn { display: none; }
+
+  /* layout */
+  .layout { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 48px; }
+  .side { position: sticky; top: 64px; align-self: start; height: calc(100vh - 64px); overflow-y: auto; padding: 24px 4px 40px 0; }
+  .search { width: 100%; font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; padding: 9px 12px; }
+  .search::placeholder { color: var(--subtle); }
+  .side nav { margin-top: 18px; }
+  .side .group { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--subtle); margin: 18px 0 6px; }
+  .side ol { list-style: none; margin: 0; padding: 0; }
+  .side a { display: block; text-decoration: none; color: var(--muted); font-size: 14px; padding: 5px 10px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+  .side a:hover { color: var(--ink); background: var(--surface-2); }
+  .side a.active { color: var(--ink); border-left-color: var(--accent); background: var(--accent-soft); }
+  .side a .exp { font-family: var(--mono); font-size: 9.5px; color: var(--warn); margin-left: 6px; letter-spacing: .06em; }
+  .no-results { display: none; color: var(--muted); font-size: 14px; margin-top: 16px; }
+
+  /* content */
+  main { min-width: 0; padding: 32px 0 96px; }
+  .hero { padding: 8px 0 24px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .eyebrow .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 10px var(--accent); }
+  h1 { font-size: clamp(34px, 5vw, 52px); letter-spacing: -.04em; line-height: 1.02; margin: 12px 0 0; font-weight: 700; }
+  .lede { color: var(--muted); max-width: 720px; margin: 16px 0 0; font-size: 17px; }
+  section.doc { padding: 40px 0 8px; border-bottom: 1px solid var(--line); }
+  section.doc[hidden] { display: none; }
+  h2 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.03em; line-height: 1.1; margin: 0 0 14px; font-weight: 650; }
+  h2 a.anchor, h3 a.anchor { text-decoration: none; color: var(--subtle); margin-left: 8px; font-weight: 400; opacity: 0; transition: opacity .15s; }
+  h2:hover a.anchor, h3:hover a.anchor, a.anchor:focus { opacity: 1; }
+  h3 { font-size: 18px; letter-spacing: -.01em; margin: 28px 0 8px; font-weight: 600; }
+  p, li { color: var(--muted); }
+  p b, li b, td b, strong { color: var(--ink); font-weight: 600; }
+  ul, ol.steps { padding-left: 20px; }
+  li { margin: 4px 0; }
+  code { font-size: .88em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--ink); overflow-wrap: anywhere; }
+  .code { position: relative; margin: 14px 0; }
+  pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; font-size: 13px; line-height: 1.75; overflow-x: auto; color: var(--ink); }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; overflow-wrap: normal; }
+  pre .c { color: var(--subtle); }
+  .copy { position: absolute; top: 8px; right: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+  .copy:hover { color: var(--ink); }
+  .table { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--subtle); font-weight: 500; background: var(--surface); }
+  td { color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  .note { border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); background: var(--surface); border-radius: 10px; padding: 12px 16px; margin: 16px 0; }
+  .note p { margin: 0; }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .badge { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid var(--warn); color: var(--warn); border-radius: 999px; padding: 2px 8px; vertical-align: 4px; margin-left: 6px; }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .card .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+  .card h4 { margin: 8px 0 6px; font-size: 16px; }
+  .card p { margin: 0; font-size: 14px; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 8px 0; background: var(--surface); }
+  details summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+  details p { margin: 8px 0 2px; }
+  mark { background: var(--accent-soft); color: var(--ink); border-radius: 3px; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; margin-top: 40px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-family: var(--mono); font-size: 12.5px; color: var(--subtle); }
+  footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
+
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .menu-btn { display: inline-flex; }
+    .side { position: fixed; top: 64px; left: 0; right: 0; height: calc(100vh - 64px); z-index: 15; background: var(--bg); padding: 20px 24px 40px; border-top: 1px solid var(--line); display: none; }
+    body.menu-open .side { display: block; }
+    body.menu-open { overflow: hidden; }
+    .cards { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .top-in, .layout { padding: 0 16px; }
+    .side { padding: 16px 16px 40px; }
+    .brand .tag, .hide-sm { display: none; }
+    pre { font-size: 12px; padding: 40px 14px 14px; }
+    th, td { padding: 8px 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="index.html">Carbon <small>SUPERAGENT</small> <span class="tag">/ docs</span></a>
+    <div class="top-links">
+      <a class="btn btn-ghost hide-sm" href="index.html">Início</a>
+      <a class="btn btn-ghost hide-sm" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">GitHub</a>
+      <button type="button" class="btn icon-btn" id="theme" aria-label="Alternar tema claro/escuro" title="Alternar tema">◐</button>
+      <button type="button" class="btn menu-btn" id="menu" aria-expanded="false" aria-controls="side">Seções</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="side" id="side" aria-label="Seções da documentação">
+    <label class="mono" for="q" style="font-size:11px;letter-spacing:.12em;color:var(--subtle);text-transform:uppercase">Buscar</label>
+    <input class="search" id="q" type="search" placeholder="lease, token, bundle…" autocomplete="off" style="margin-top:6px">
+    <p class="no-results" id="none">Nada encontrado. Tente outro termo.</p>
+    <nav id="toc">
+      <p class="group">Começar</p>
+      <ol>
+        <li><a href="#comecar">Instalar o Carbon</a></li>
+        <li><a href="#primeira-tarefa">Primeira tarefa local</a></li>
+      </ol>
+      <p class="group">Execução distribuída</p>
+      <ol>
+        <li><a href="#conceitos">Conceitos</a></li>
+        <li><a href="#compose">Workers com Docker Compose</a></li>
+        <li><a href="#kubernetes">Kubernetes</a></li>
+        <li><a href="#agentcore">AgentCore <span class="exp">EXP</span></a></li>
+        <li><a href="#expor">Expor o painel</a></li>
+        <li><a href="#maquinas">Máquinas e <code>worker init</code></a></li>
+      </ol>
+      <p class="group">Referência</p>
+      <ol>
+        <li><a href="#protocolo">Protocolo</a></li>
+        <li><a href="#variaveis">Variáveis de ambiente</a></li>
+        <li><a href="#seguranca">Segurança</a></li>
+        <li><a href="#operacao">Operação</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main id="content">
+    <div class="hero">
+      <p class="eyebrow"><span class="dot"></span>documentação</p>
+      <h1>Carbon SuperAgent</h1>
+      <p class="lede">Do primeiro <code>npm run setup</code> a várias tarefas rodando ao mesmo tempo em outras máquinas. Referência completa em <a href="https://github.com/leolegends/carbon-superagent/tree/main/docs/distributed" rel="noopener noreferrer"><code>docs/distributed/</code></a> no GitHub.</p>
+    </div>
+
+    <!-- ============================================================ começar -->
+    <section class="doc" id="comecar">
+      <h2>Instalar o Carbon</h2>
+      <p>Requisitos: <b>Node 22.13+</b>, <b>git</b> e <b>um</b> agente logado: <b>Claude Code</b> ou <b>Codex</b>. <code>gh</code> é opcional (para abrir PRs).</p>
+      <pre><code><span class="c"># clone, instale e rode o setup interativo</span>
+git clone https://github.com/leolegends/carbon-superagent.git
+cd carbon-superagent
+npm install
+npm run setup</code></pre>
+      <p>O setup verifica a máquina, oferece instalar o agente que faltar, compila o painel e abre o assistente no navegador (perfil de admin, agente e repositório). Depois:</p>
+      <pre><code>npm start        <span class="c"># painel em http://127.0.0.1:3417</span>
+npm run doctor   <span class="c"># diagnóstico do ambiente</span></code></pre>
+      <div class="note"><p>Só quer olhar? No painel, troque para <b>demo</b> no topo: simulação completa sem rodar nada.</p></div>
+    </section>
+
+    <section class="doc" id="primeira-tarefa">
+      <h2>Primeira tarefa local</h2>
+      <ol class="steps">
+        <li>No Mission Control, crie uma tarefa à mão (ou importe do Linear, GitHub, Jira, Slack, Telegram).</li>
+        <li>Escolha executor, modelo e esforço (ou automático). Em <b>Onde rodar</b>, deixe <b>Esta máquina</b>.</li>
+        <li>A tarefa passa por <code>intake → plan → research → code → test → review → deliver → reflect</code> num worktree isolado, no branch <code>agent/&lt;tarefa&gt;</code>.</li>
+        <li>Se o agente pedir permissão ou fizer uma pergunta, um card aparece com as opções.</li>
+        <li>No card <b>Branch e entrega</b>: <b>Abrir PR</b>, <b>Merge local</b> ou <b>Aplicar na pasta</b>.</li>
+      </ol>
+      <p>Localmente, o Carbon roda <b>uma tarefa por vez</b> (fila serial) e a UI escuta só em <code>127.0.0.1</code>. Para rodar mais de uma ao mesmo tempo, use workers.</p>
+    </section>
+
+    <!-- ============================================================ conceitos -->
+    <section class="doc" id="conceitos">
+      <h2>Conceitos</h2>
+      <p>Cada tarefa tem um <b>runtime</b> (onde roda), independente do <b>executor</b> (Claude Code ou Codex). O painel continua dono da fila, do estado e da entrega; o worker só executa.</p>
+      <div class="cards">
+        <div class="card"><span class="k">LOCAL</span><h4>Esta máquina</h4><p>Padrão. Processo do painel, uma por vez. Sempre disponível.</p></div>
+        <div class="card"><span class="k">POOL</span><h4>Pool de workers</h4><p>Qualquer <code>carbon worker</code> cadastrado com o executor da tarefa pode pegá-la.</p></div>
+        <div class="card"><span class="k">AGENTCORE</span><h4>AgentCore <span class="badge">experimental</span></h4><p>Uma sessão do AWS Bedrock AgentCore Runtime por tarefa, na sua conta.</p></div>
+      </div>
+      <h3 id="pull">O worker puxa</h3>
+      <p>Toda conexão sai do worker para o painel por HTTPS: <code>hello</code>, <code>claim</code> (long-poll de 25 s), eventos, heartbeat, entrega. A máquina worker não abre portas; o painel precisa de uma URL alcançável só em <code>/api/worker/*</code>.</p>
+      <h3 id="lease">Lease</h3>
+      <p>Quem pega a tarefa recebe um lease (padrão <b>60 s</b>) e o renova a cada <code>leaseMs/3</code>. Sem renovação, a tarefa falha com <code>worker &lt;nome&gt; parou de responder</code> — ou volta para a fila com <code>workers.requeueOnLeaseLoss</code>. O cancelamento chega ao worker no próximo heartbeat.</p>
+      <h3 id="transporte">Transporte de código: git ou bundle</h3>
+      <div class="table"><table>
+        <thead><tr><th>Transporte</th><th>Quando</th><th>Ida</th><th>Volta</th></tr></thead>
+        <tbody>
+          <tr><td><code>git</code></td><td>Repositório tem <code>origin</code> e o branch base existe no remoto</td><td>Worker clona do remoto</td><td>Push do branch <code>agent/*</code>; painel faz <code>git fetch</code></td></tr>
+          <tr><td><code>bundle</code></td><td>Sem remoto, sem commits, base só local — ou push recusado</td><td>Worker baixa um <code>git bundle</code> do painel</td><td>Worker envia um bundle com o commit; painel importa o branch</td></tr>
+        </tbody>
+      </table></div>
+      <p>Com o branch no repositório do painel, <b>Aplicar na pasta</b>, <b>Merge local</b> e <b>Abrir PR</b> funcionam como numa tarefa local.</p>
+    </section>
+
+    <!-- ============================================================ compose -->
+    <section class="doc" id="compose">
+      <h2>Workers com Docker Compose</h2>
+      <p>Pré-requisitos: <a href="#expor">painel exposto</a> e <b>URL pública do painel</b> (<code>https://</code>) em <i>Configurações → Execução</i>.</p>
+      <ol class="steps">
+        <li><i>Configurações → Máquinas → Adicionar máquina</i> → <b>Docker Compose</b>, réplicas, tarefas por worker, executores, imagem (opcional) → <b>Gerar kit</b>. O token aparece <b>uma única vez</b> e já vai no <code>.env</code> do kit.</li>
+        <li>Na máquina worker, gere a imagem (não é publicada em registry), na mesma versão do painel.</li>
+        <li>Preencha o <code>.env</code> e suba.</li>
+      </ol>
+      <pre><code><span class="c"># imagem (no repositório do Carbon, mesma versão do painel)</span>
+docker build -f deploy/worker/Dockerfile -t carbon-worker:0.2.0 .
+<span class="c"># com Codex: --build-arg WITH_CODEX=true</span>
+
+<span class="c"># kit</span>
+tar xzf carbon-worker-servidor-sp-01.tar.gz &amp;&amp; cd carbon-worker-servidor-sp-01
+docker compose up -d
+docker compose up -d --scale worker=3
+docker compose logs -f worker</code></pre>
+      <pre><code><span class="c"># .env — credenciais na máquina worker (nunca vêm do painel)</span>
+ANTHROPIC_API_KEY=...            <span class="c"># ou CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)</span>
+<span class="c"># OPENAI_API_KEY=...             # Codex</span>
+CARBON_GIT_TOKEN=...             <span class="c"># push via https (opcional)</span>
+CARBON_GIT_HOSTS=github.com      <span class="c"># hosts que podem receber o token</span></code></pre>
+      <p>Parada: <code>docker compose down</code> envia SIGTERM; o worker para de pegar tarefas e espera as atuais até <code>CARBON_WORKER_GRACE_SECONDS</code> (120 s). Capacidade = réplicas × <code>CARBON_WORKER_PARALLEL</code>.</p>
+      <p>Detalhes: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/docker-compose.md" rel="noopener noreferrer">docker-compose.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ k8s -->
+    <section class="doc" id="kubernetes">
+      <h2>Kubernetes</h2>
+      <p>Mesmo fluxo, escolhendo <b>Kubernetes</b>. O kit cria o namespace <code>carbon-&lt;nome&gt;</code> com <code>namespace.yaml</code>, <code>secret.yaml</code> (único arquivo com o token), <code>deployment.yaml</code>, <code>networkpolicy.yaml</code> (sem ingress) e <code>kustomization.yaml</code>.</p>
+      <pre><code>kubectl apply -k .
+kubectl -n carbon-cluster-a scale deployment/carbon-worker --replicas=5
+kubectl -n carbon-cluster-a logs -f -l app.kubernetes.io/name=carbon-worker --max-log-requests=20</code></pre>
+      <ul>
+        <li>Use uma imagem de registry acessível pelo cluster (campo <b>Imagem</b> ou <code>--image</code>).</li>
+        <li><code>terminationGracePeriodSeconds: 600</code>, o worker espera até 540 s pelas tarefas.</li>
+        <li>Pod não-root (UID 10001), <code>readOnlyRootFilesystem</code>, <code>emptyDir</code> para <code>/home/carbon</code> e <code>/tmp</code>; 2 CPU / 4Gi.</li>
+        <li>Em produção, troque o <code>secret.yaml</code> por Sealed Secrets ou External Secrets e restrinja o egress da NetworkPolicy.</li>
+      </ul>
+      <p>Detalhes: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/kubernetes.md" rel="noopener noreferrer">kubernetes.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ agentcore -->
+    <section class="doc" id="agentcore">
+      <h2>AgentCore <span class="badge">experimental</span></h2>
+      <div class="note warn"><p><b>Experimental — não validado em conta AWS real.</b> Testado só com o SDK da AWS mockado e com o container rodando localmente. Nada foi implantado na AWS pelo projeto.</p></div>
+      <p>Cada tarefa vira uma sessão do AgentCore Runtime. O painel chama <code>InvokeAgentRuntime</code> com <code>{taskId, panelUrl, taskToken}</code> (token de <b>uso único</b>); o container responde <code>202</code>, faz o claim daquela tarefa e usa o mesmo protocolo dos workers. Ao terminar, o painel chama <code>StopRuntimeSession</code>.</p>
+      <ol class="steps">
+        <li>Baixe o kit: <i>Configurações → Execução → Kit AgentCore (experimental)</i>, ou <code>node bin/carbon.mjs worker init --target agentcore --out ./carbon-agentcore</code>.</li>
+        <li>Crie a role de execução com <code>iam-policy.json</code> (ECR + logs) e trust para <code>bedrock-agentcore.amazonaws.com</code>.</li>
+        <li>Na raiz do Carbon: <code>npm run build:worker</code> e rode o <code>deploy.sh</code> (você executa; o Carbon não executa nada na AWS).</li>
+        <li>Cole o ARN em <i>Configurações → Execução</i>, ligue o AgentCore e defina sessões simultâneas (padrão 3).</li>
+      </ol>
+      <pre><code>ACCOUNT_ID=&lt;ACCOUNT_ID&gt; \
+ROLE_ARN=arn:aws:iam::&lt;ACCOUNT_ID&gt;:role/&lt;ROLE_NAME&gt; \
+CARBON_PANEL_URL=https://workers.exemplo.com \
+CLAUDE_CODE_USE_BEDROCK=1 \
+bash ./carbon-agentcore/deploy.sh</code></pre>
+      <ul>
+        <li><code>CARBON_PANEL_URL</code> (<code>https://</code>) é obrigatória no container; invocações para outro painel recebem <code>403</code>.</li>
+        <li>Imagem <code>linux/arm64</code>, porta 8080, <code>POST /invocations</code>, <code>GET /ping</code> (<code>HealthyBusy</code> enquanto trabalha).</li>
+        <li>Teto de 8 h por sessão (AWS); a tarefa respeita antes o <code>maxRunMinutes</code> do Carbon (até 240 min).</li>
+        <li>Credenciais AWS do painel: cadeia padrão do SDK (<code>AWS_PROFILE</code>, SSO, <code>~/.aws</code>). Nada de chave AWS no Carbon.</li>
+        <li>Prefira <b>Bedrock via IAM role</b> a <code>ANTHROPIC_API_KEY</code> em variável de ambiente do runtime.</li>
+        <li>Riscos abertos: egress no modo <code>PUBLIC</code>, login do Claude Code no container, parâmetros da CLI <code>bedrock-agentcore-control</code>.</li>
+      </ul>
+      <p>Detalhes: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/agentcore.md" rel="noopener noreferrer">agentcore.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ expor -->
+    <section class="doc" id="expor">
+      <h2>Expor o painel</h2>
+      <p>Workers precisam alcançar <b>só</b> <code>/api/worker/*</code>. O listener separado encaminha essas rotas para o painel local; qualquer outra recebe <code>404</code>. A UI continua em <code>127.0.0.1</code>.</p>
+      <pre><code><span class="c"># .env.local do painel</span>
+CARBON_WORKER_LISTEN=127.0.0.1:3418
+<span class="c"># opcional: TLS direto no listener</span>
+CARBON_WORKER_TLS_CERT=/caminho/cert.pem
+CARBON_WORKER_TLS_KEY=/caminho/key.pem</code></pre>
+      <p>Em ordem de preferência:</p>
+      <ol class="steps">
+        <li><b>Tailscale</b>: <code>tailscale serve --https=443 http://127.0.0.1:3418</code> (Funnel para AgentCore).</li>
+        <li><b>Cloudflare Tunnel</b> só para a porta do listener: <code>cloudflared tunnel --url http://127.0.0.1:3418</code>.</li>
+        <li><b>Reverse proxy</b> com TLS (Caddy, nginx) para <code>127.0.0.1:3418</code>.</li>
+      </ol>
+      <p>Depois, configure a <b>URL pública do painel</b> (<code>https://</code>) em <i>Configurações → Execução</i>. HTTPS é obrigatório fora de loopback: o token vai no cabeçalho <code>Authorization</code>.</p>
+      <pre><code>curl -s -o /dev/null -w '%{http_code}\n' https://workers.exemplo.com/   <span class="c"># 404</span></code></pre>
+      <p>Detalhes: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/exposing-the-panel.md" rel="noopener noreferrer">exposing-the-panel.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ máquinas -->
+    <section class="doc" id="maquinas">
+      <h2>Máquinas (UI) e <code>carbon worker init</code></h2>
+      <p><i>Configurações → Máquinas</i> (admin) lista a frota: nome, tipo, status, última batida, tarefa atual e versão.</p>
+      <div class="table"><table>
+        <thead><tr><th>Status</th><th>Quando</th></tr></thead>
+        <tbody>
+          <tr><td>ocupada</td><td>Vista recentemente, com tarefa sob lease</td></tr>
+          <tr><td>ociosa</td><td>Vista há menos de 2 × lease, sem tarefa</td></tr>
+          <tr><td>offline</td><td>Nunca conectou ou sem contato há mais de 2 × lease</td></tr>
+          <tr><td>revogada</td><td>Token revogado: próximos requests recebem <code>401</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>O mesmo gerador existe na CLI, no host do painel (grava a máquina direto no banco e imprime o token uma vez):</p>
+      <pre><code>node bin/carbon.mjs worker init --target compose|k8s|agentcore --out &lt;pasta&gt; \
+  --name &lt;nome&gt; --panel-url &lt;url&gt; [--replicas N] [--parallel N] \
+  [--executors claude,codex] [--image &lt;imagem&gt;] [--region &lt;região&gt;] [--force]
+
+<span class="c"># worker sem Docker (na mesma máquina, para testar)</span>
+CARBON_PANEL_URL=http://127.0.0.1:3417 CARBON_WORKER_TOKEN=cwk_... node bin/carbon.mjs worker</code></pre>
+    </section>
+
+    <!-- ============================================================ protocolo -->
+    <section class="doc" id="protocolo">
+      <h2>Protocolo</h2>
+      <p>HTTP + JSON, versão <b>1</b>, <code>Authorization: Bearer cwk_…</code> (máquina) ou <code>ctk_…</code> (tarefa AgentCore). Envelope <code>{success, data, error}</code>, corpo JSON ≤ 1 MB.</p>
+      <div class="table"><table>
+        <thead><tr><th>Rota</th><th>Para quê</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /api/worker/hello</code></td><td>Versão e capacidades → <code>{protocol, leaseMs, pollMs}</code>; <code>426</code> se desatualizado</td></tr>
+          <tr><td><code>POST /api/worker/claim</code></td><td>Long-poll 25 s → <code>ClaimedTask</code> ou <code>204</code></td></tr>
+          <tr><td><code>POST /api/worker/agentcore/claim</code></td><td>Claim da tarefa da sessão com o token de uso único</td></tr>
+          <tr><td><code>POST …/tasks/:id/heartbeat</code></td><td>Renova o lease → <code>{cancel}</code></td></tr>
+          <tr><td><code>POST …/tasks/:id/events</code></td><td>Lote <code>{seq, events[]}</code>, idempotente por <code>seq</code></td></tr>
+          <tr><td><code>GET  …/tasks/:id/bundle</code></td><td>Bundle git da base</td></tr>
+          <tr><td><code>PUT  …/tasks/:id/bundle</code></td><td>Bundle do resultado (≤ <code>maxBundleMb</code>)</td></tr>
+          <tr><td><code>GET  …/tasks/:id/permissions?after=N</code></td><td>Long-poll das respostas de permissão</td></tr>
+          <tr><td><code>POST …/tasks/:id/result</code></td><td><code>{status, branch, commit, transport}</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Códigos: <code>400</code> corpo/query inválido · <code>401</code> token inválido · <code>403</code> painel não autorizado no container · <code>408</code> tempo total no listener · <code>409 lease_lost</code> descarte a tarefa · <code>413</code> corpo, bundle ou estado da tarefa grande · <code>422</code> base/resultado não importável · <code>426</code> protocolo antigo · <code>429</code> rate limit ou long-polls demais.</p>
+      <p>Referência completa, schemas, diagrama de sequência e checklist para escrever um worker próprio: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/protocol.md" rel="noopener noreferrer">protocol.md no GitHub</a>.</p>
+    </section>
+
+    <!-- ============================================================ variáveis -->
+    <section class="doc" id="variaveis">
+      <h2>Variáveis de ambiente</h2>
+      <div class="table"><table>
+        <thead><tr><th>Variável</th><th>Onde</th><th>Padrão</th></tr></thead>
+        <tbody>
+          <tr><td><code>CARBON_PANEL_URL</code></td><td>worker, AgentCore</td><td>obrigatória; <code>https://</code> fora de loopback</td></tr>
+          <tr><td><code>CARBON_WORKER_TOKEN</code></td><td>worker</td><td>obrigatória, <code>cwk_…</code></td></tr>
+          <tr><td><code>CARBON_WORKER_PARALLEL</code></td><td>worker</td><td>1 (1–64)</td></tr>
+          <tr><td><code>CARBON_WORKER_EXECUTORS</code></td><td>worker</td><td>detectado</td></tr>
+          <tr><td><code>CARBON_WORKER_DIR</code></td><td>worker, AgentCore</td><td>pasta temporária</td></tr>
+          <tr><td><code>CARBON_WORKER_GRACE_SECONDS</code></td><td>worker, AgentCore</td><td>120</td></tr>
+          <tr><td><code>CARBON_GIT_TOKEN</code> · <code>CARBON_GIT_HOSTS</code></td><td>worker, AgentCore</td><td>— · vazio (token nunca enviado)</td></tr>
+          <tr><td><code>PORT</code></td><td>AgentCore</td><td>8080</td></tr>
+          <tr><td><code>CARBON_WORKER_LISTEN</code></td><td>painel (listener)</td><td>desligado</td></tr>
+          <tr><td><code>CARBON_WORKER_TLS_CERT</code> · <code>_KEY</code></td><td>painel (listener)</td><td>—</td></tr>
+          <tr><td><code>CARBON_WORKER_MAX_CONNECTIONS</code> · <code>_PER_IP</code></td><td>painel (listener)</td><td>256 · 32</td></tr>
+          <tr><td><code>CARBON_PORT</code> · <code>CARBON_DATA_DIR</code></td><td>painel</td><td>3417 · <code>./.carbon-data</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Tabela completa (inclui <code>deploy.sh</code> e configurações do painel): <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/environment.md" rel="noopener noreferrer">environment.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ segurança -->
+    <section class="doc" id="seguranca">
+      <h2>Segurança</h2>
+      <ul>
+        <li><b>Superfície mínima:</b> só <code>/api/worker/*</code> sai de <code>127.0.0.1</code>; UI e admin continuam locais.</li>
+        <li><b>Tokens:</b> 32 bytes aleatórios, mostrados uma vez, guardados como sha256, revogáveis; nunca em log. Token de tarefa AgentCore é de uso único e vale só para aquela tarefa.</li>
+        <li><b>Limites:</b> rate limit por token (600/min) e por IP, long-polls simultâneos por worker, corpo JSON ≤ 1 MB, 256 conexões no listener (32 por IP), tempo total por requisição (60 s; 30 min no bundle), mesmo <code>401</code> para qualquer token inválido.</li>
+        <li><b>Isolamento de ambiente:</b> o worker tira <code>CARBON_WORKER_TOKEN</code> e <code>CARBON_GIT_TOKEN</code> do ambiente; o agente recebe só variáveis permitidas (nenhuma <code>CARBON_*</code>). Clone e <code>TMPDIR</code> são por tarefa, mas o <code>HOME</code> é compartilhado: isolamento real é <b>uma tarefa por container</b> (<code>CARBON_WORKER_PARALLEL=1</code>, o padrão).</li>
+        <li><b><code>CARBON_GIT_HOSTS</code>:</b> o token git só vai para hosts <code>https://</code> listados; vazio (padrão) = nunca enviado.</li>
+        <li><b>Sem resolução de DNS:</b> nomes que resolvem para IP privado não são bloqueados. Nunca exponha a porta 3417: o limite por IP confia no <code>X-Forwarded-For</code> definido pelo listener.</li>
+        <li><b>O que nunca sai do painel:</b> banco SQLite, usuários, chaves de integrações, credenciais de modelo/git do painel, credenciais embutidas na URL do <code>origin</code>.</li>
+        <li><b>Permissões:</b> "sempre neste repositório" vira "permitir uma vez" para comandos de shell, interpretador ou rede (<code>bash</code>, <code>python</code>, <code>curl</code>, <code>ssh</code>…).</li>
+        <li><b>AgentCore:</b> Bedrock via IAM role em vez de chave em variável de ambiente; restrinja <code>GetAgentRuntime</code>.</li>
+      </ul>
+      <div class="note warn"><p>Repositórios com dados pessoais ou de saúde: valide com quem responde por LGPD/segurança antes de mandar código para outras máquinas ou para a AWS.</p></div>
+      <p>Modelo de ameaça completo: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/security.md" rel="noopener noreferrer">security.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ operação -->
+    <section class="doc" id="operacao">
+      <h2>Operação</h2>
+      <h3 id="op-reinicio">Reinício do painel</h3>
+      <p>Tarefas locais em execução falham no boot; remotas com lease válido continuam e os workers reenviam eventos sem confirmação. Tarefas pool interrompidas durante a importação falham com <code>painel reiniciou durante a entrega</code>.</p>
+      <h3 id="op-cancelar">Cancelamento</h3>
+      <p>Pool: o worker recebe <code>cancel</code> no próximo heartbeat (≤ 20 s no padrão), mata o agente e reporta <code>canceled</code>. AgentCore antes do claim: o painel encerra a sessão na hora.</p>
+      <h3 id="op-permissoes">Permissões e perguntas remotas</h3>
+      <p>Pedidos de permissão aparecem no painel como numa tarefa local; o worker espera a resposta (15 min, depois nega). Quando o agente faz uma pergunta, a execução termina sem entregar; ao responder, a tarefa volta para a fila do mesmo runtime e <b>recomeça da base com as decisões</b> no prompt.</p>
+      <h3 id="op-limites">Limites</h3>
+      <div class="table"><table>
+        <tbody>
+          <tr><td>Tarefas por processo worker</td><td>1–64</td></tr>
+          <tr><td>Tempo máximo por tarefa</td><td>5–240 min (padrão 45)</td></tr>
+          <tr><td>Lease</td><td>60 s (10 s–10 min)</td></tr>
+          <tr><td>Bundle de resultado</td><td>200 MB (até 2000)</td></tr>
+          <tr><td>Requisições por token</td><td>600/min</td></tr>
+          <tr><td>Sessões AgentCore simultâneas</td><td>3 (1–20)</td></tr>
+        </tbody>
+      </table></div>
+      <p>Teste de ponta a ponta sem AWS: <code>npm run build &amp;&amp; npm run build:worker &amp;&amp; npm run e2e:distributed</code>. Mais em <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/operations.md" rel="noopener noreferrer">operations.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ troubleshooting -->
+    <section class="doc" id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <div class="table"><table>
+        <thead><tr><th>Mensagem</th><th>Causa</th><th>Correção</th></tr></thead>
+        <tbody>
+          <tr><td><code>o painel recusou o token do worker (revogado ou inválido)</code></td><td>Token revogado ou de outro painel</td><td>Gere um kit novo</td></tr>
+          <tr><td><code>o painel exige um worker mais novo</code></td><td>Protocolo antigo (426)</td><td>Reconstrua a imagem na versão do painel</td></tr>
+          <tr><td><code>painel indisponível (…); tentando de novo</code></td><td>Túnel/listener fora, DNS, certificado</td><td><code>curl</code> na URL pública deve dar 404</td></tr>
+          <tr><td><code>nenhuma máquina worker cadastrada</code></td><td>Pool sem máquinas</td><td><i>Configurações → Máquinas</i></td></tr>
+          <tr><td><code>worker … parou de responder</code></td><td>Lease venceu</td><td>Logs do worker; <code>workers.leaseMs</code></td></tr>
+          <tr><td><code>git clone falhou</code></td><td>Repo privado sem token / host fora de <code>CARBON_GIT_HOSTS</code></td><td>Token + hosts, ou use bundle</td></tr>
+          <tr><td><code>resultado maior que N MB</code></td><td>Bundle acima do limite</td><td><code>workers.maxBundleMb</code></td></tr>
+          <tr><td><code>credenciais AWS não encontradas nesta máquina</code></td><td>Sem fonte de credencial no host do painel</td><td><code>aws configure</code> / <code>aws sso login</code></td></tr>
+          <tr><td><code>AgentCore: falha ao invocar o runtime após 4 tentativas</code></td><td>ARN/região/permissão/throttling</td><td>Confira configurações e IAM</td></tr>
+        </tbody>
+      </table></div>
+      <p>Lista completa a partir das mensagens do código: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/troubleshooting.md" rel="noopener noreferrer">troubleshooting.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ faq -->
+    <section class="doc" id="faq">
+      <h2>FAQ</h2>
+      <details><summary>Preciso de workers para usar o Carbon?</summary><p>Não. O padrão é rodar local, uma tarefa por vez, sem rede.</p></details>
+      <details><summary>A máquina worker precisa de porta aberta?</summary><p>Não. Só conexões de saída: painel, API do modelo e git.</p></details>
+      <details><summary>O worker usa o login do Claude do meu computador?</summary><p>Não. Cada máquina usa as credenciais configuradas nela; o painel nunca envia credenciais de modelo.</p></details>
+      <details><summary>Onde está a imagem do worker?</summary><p>Não é publicada. Construa com <code>deploy/worker/Dockerfile</code>, na mesma versão do painel.</p></details>
+      <details><summary>Posso escolher a máquina de uma tarefa?</summary><p>Não. Qualquer worker do pool com o executor da tarefa pode pegá-la.</p></details>
+      <details><summary>Tem autoscaling?</summary><p>Não. Escala manual com <code>--scale</code> ou <code>kubectl scale</code>.</p></details>
+      <details><summary>O AgentCore está pronto para produção?</summary><p>Não. Experimental — não validado em conta AWS real.</p></details>
+      <details><summary>O Carbon cria recursos na AWS?</summary><p>Não. Você roda o <code>deploy.sh</code>; o painel só invoca e encerra sessões num runtime que já existe.</p></details>
+      <details><summary>Posso escrever um worker em outra linguagem?</summary><p>Sim, o protocolo é HTTP + JSON. Veja <a href="#protocolo">Protocolo</a>.</p></details>
+    </section>
+
+    <footer>
+      <span>Carbon SuperAgent · licença MIT</span>
+      <a href="index.html">← voltar ao site</a>
+      <a href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">github.com/leolegends/carbon-superagent</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+
+  // ---------------------------------------------------------------- theme toggle
+  const current = () => root.dataset.theme || (media.matches ? "light" : "dark");
+  document.getElementById("theme").addEventListener("click", () => {
+    const next = current() === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    try { localStorage.setItem("carbon-docs-theme", next); } catch {}
+  });
+
+  // ---------------------------------------------------------------- mobile menu
+  const menu = document.getElementById("menu");
+  const setMenu = (open) => {
+    document.body.classList.toggle("menu-open", open);
+    menu.setAttribute("aria-expanded", String(open));
+  };
+  menu.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+  document.getElementById("toc").addEventListener("click", (e) => { if (e.target.closest("a")) setMenu(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+
+  // ---------------------------------------------------------------- code blocks: wrap + copy
+  document.querySelectorAll("main pre").forEach((pre) => {
+    const box = document.createElement("div");
+    box.className = "code";
+    pre.replaceWith(box);
+    box.appendChild(pre);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.textContent = "copiar";
+    button.setAttribute("aria-label", "Copiar bloco de código");
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(pre.innerText.replace(/\n$/, ""));
+        button.textContent = "copiado";
+      } catch {
+        button.textContent = "selecione e copie";
+      }
+      setTimeout(() => (button.textContent = "copiar"), 1600);
+    });
+    box.appendChild(button);
+  });
+
+  // ---------------------------------------------------------------- heading anchors
+  document.querySelectorAll("main h2, main h3").forEach((h) => {
+    const id = h.id || h.closest("section")?.id;
+    if (!id) return;
+    const a = document.createElement("a");
+    a.className = "anchor";
+    a.href = "#" + id;
+    a.textContent = "#";
+    a.setAttribute("aria-label", "Link para esta seção");
+    h.appendChild(a);
+  });
+
+  // ---------------------------------------------------------------- search (filters sections)
+  const sections = [...document.querySelectorAll("section.doc")];
+  const links = new Map([...document.querySelectorAll("#toc a")].map((a) => [a.getAttribute("href").slice(1), a]));
+  const texts = new Map(sections.map((s) => [s.id, s.textContent.toLowerCase()]));
+  const fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const folded = new Map([...texts].map(([id, t]) => [id, fold(t)]));
+  const none = document.getElementById("none");
+  document.getElementById("q").addEventListener("input", (e) => {
+    const terms = fold(e.target.value.trim().toLowerCase()).split(/\s+/).filter(Boolean);
+    let shown = 0;
+    sections.forEach((s) => {
+      const hit = terms.every((t) => folded.get(s.id).includes(t));
+      s.hidden = !hit;
+      const link = links.get(s.id);
+      if (link) link.parentElement.hidden = !hit;
+      if (hit) shown++;
+    });
+    document.querySelectorAll("#toc .group").forEach((g) => {
+      const list = g.nextElementSibling;
+      g.hidden = list && [...list.children].every((li) => li.hidden);
+    });
+    none.style.display = shown === 0 ? "block" : "none";
+  });
+
+  // ---------------------------------------------------------------- active section in sidebar
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((a) => a.classList.remove("active"));
+      links.get(entry.target.id)?.classList.add("active");
+    });
+  }, { rootMargin: "-80px 0px -70% 0px" });
+  sections.forEach((s) => spy.observe(s));
+})();
+</script>
+</body>
+</html>

@@ -40,7 +40,7 @@ Ao remover um pod, o worker para de pegar tarefas e espera as atuais terminarem 
 
 ## Revogar o token
 
-1. No painel, Admin → Máquinas → **Revogar** em "maquina-sp-01". O worker para de receber tarefas na hora.
+1. No painel, Configurações → Máquinas → **Revogar** em "maquina-sp-01". O worker para de receber tarefas na hora.
 2. No cluster: \`kubectl delete -k .\` (apaga o namespace \`carbon-maquina-sp-01\` e o secret).
 3. Para voltar a usar, gere um kit novo (token novo) no painel.
 ",

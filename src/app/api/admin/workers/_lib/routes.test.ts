@@ -4,7 +4,7 @@ import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Admin → Máquinas routes called directly with a throwaway database and a mocked session cookie.
+// Configurações → Máquinas routes called directly with a throwaway database and a mocked session cookie.
 const sandbox = mkdtempSync(path.join(tmpdir(), "carbon-admin-workers-"));
 process.env.CARBON_DATA_DIR = path.join(sandbox, "data");
 

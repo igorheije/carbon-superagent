@@ -50,7 +50,7 @@ function EmptyState({ onAdd }: { readonly onAdd: () => void }) {
   );
 }
 
-/** Admin → Máquinas: fleet (FLT-01), "Adicionar máquina" (SET-04), revoke and the AgentCore kit. */
+/** Configurações → Máquinas: fleet (FLT-01), "Adicionar máquina" (SET-04), revoke and the AgentCore kit. */
 export function MachinesTab() {
   const [machines, setMachines] = useState<readonly Machine[] | null>(null);
   const [now, setNow] = useState(() => Date.now());

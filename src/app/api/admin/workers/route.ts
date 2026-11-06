@@ -6,7 +6,7 @@ import { kitOptionsOf, kitProblems, MISSING_PANEL_URL, newMachineSchema, renderW
 
 export const dynamic = "force-dynamic";
 
-/** Admin → Máquinas: fleet with computed status (FLT-01). */
+/** Configurações → Máquinas: fleet with computed status (FLT-01). */
 export function GET() {
   return handle(async () => {
     await requireAdmin();

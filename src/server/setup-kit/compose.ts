@@ -52,7 +52,7 @@ function renderComposeYaml(opts: WorkerKitOptions): string {
 function renderEnv(opts: WorkerKitOptions): string {
   return [
     `# Carbon worker "${opts.workerName}". NÃO versione nem compartilhe este arquivo: ele contém o token da máquina.`,
-    "# Se o token vazar, revogue a máquina no painel (Admin → Máquinas) e gere um kit novo.",
+    "# Se o token vazar, revogue a máquina no painel (Configurações → Máquinas) e gere um kit novo.",
     `CARBON_PANEL_URL=${opts.panelUrl}`,
     `CARBON_WORKER_TOKEN=${opts.token}`,
     `CARBON_WORKER_PARALLEL=${opts.parallel}`,
@@ -87,7 +87,7 @@ export function composeImageStep(image: string): string {
   return `Gere a imagem \`${image}\` (ela não é publicada em nenhum registry). No repositório do Carbon, na mesma versão do painel:
    \`${build}\`
    Mais de uma máquina? Envie para um registry — \`docker tag ${image} <registry>/${image} && docker push <registry>/${image}\` —
-   e troque \`image:\` no \`docker-compose.yml\` (ou gere o kit já com a imagem: campo "Imagem" em Admin → Máquinas
+   e troque \`image:\` no \`docker-compose.yml\` (ou gere o kit já com a imagem: campo "Imagem" em Configurações → Máquinas
    ou \`carbon worker init --image <registry>/${image}\`).`;
 }
 
@@ -128,7 +128,7 @@ docker compose logs -f worker
 
 ## Revogar o token
 
-1. No painel, Admin → Máquinas → **Revogar** em "${opts.workerName}". O worker para de receber tarefas na hora.
+1. No painel, Configurações → Máquinas → **Revogar** em "${opts.workerName}". O worker para de receber tarefas na hora.
 2. Nesta máquina: \`docker compose down -v\` e apague o \`.env\`.
 3. Para voltar a usar, gere um kit novo (token novo) no painel.
 `;

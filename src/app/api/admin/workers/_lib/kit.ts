@@ -7,7 +7,7 @@ import { renderK8s } from "@/server/setup-kit/k8s";
 import { MAX_PARALLEL, MAX_REPLICAS, slugifyWorkerName, validateKitOptions, type KitFiles, type WorkerKitOptions } from "@/server/setup-kit/worker-kit";
 import { version } from "../../../../../../package.json";
 
-/** Admin → Máquinas → "Adicionar máquina": request body and kit rendering (SET-04). */
+/** Configurações → Máquinas → "Adicionar máquina": request body and kit rendering (SET-04). */
 
 export const KIT_TARGETS = ["compose", "k8s"] as const;
 export type KitTarget = (typeof KIT_TARGETS)[number];
