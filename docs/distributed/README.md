@@ -8,8 +8,10 @@ Por padrão o Carbon roda **uma tarefa por vez, na máquina do painel**. A execu
 
 | Documento | Para quê |
 | --- | --- |
+| [distributed-task.md](distributed-task.md) | Uma tarefa dividida em partes que rodam em vários computadores e voltam num PR só |
+| [cluster-join.md](cluster-join.md) | Colocar servidores no cluster com um comando (estilo Docker Swarm), pausar e remover nós |
 | [quickstart.md](quickstart.md) | Do zero a 2 workers rodando: na mesma máquina e em outra |
-| [direct-join.md](direct-join.md) | `carbon join <ip>:<porta>`: outro computador entra como worker pela rede local ou IP público, sem servidor nem domínio |
+| [direct-join.md](direct-join.md) | `carbon join <ip>:<porta>`: o join do cluster pela rede local ou IP público, sem servidor nem domínio (certificado próprio + fingerprint) |
 | [docker-compose.md](docker-compose.md) | Kit Compose: arquivos, variáveis, escala, atualização, logs, revogação |
 | [kubernetes.md](kubernetes.md) | Kit Kubernetes: manifests, Secret, escala, rollout, revogação |
 | [agentcore.md](agentcore.md) | AgentCore Runtime (experimental): kit, `deploy.sh`, IAM, configuração, custos, limites |

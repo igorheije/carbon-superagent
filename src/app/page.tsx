@@ -8,6 +8,8 @@ import { LiveTerminal } from "@/components/mission/LiveTerminal";
 import { PipelineSection } from "@/components/mission/PipelineSection";
 import { PlanPanel } from "@/components/mission/PlanPanel";
 import { QuestionPanel } from "@/components/mission/QuestionPanel";
+import { SplitPanel } from "@/components/mission/SplitPanel";
+import { SubagentPanel } from "@/components/mission/SubagentPanel";
 import { TicketQueue } from "@/components/mission/TicketQueue";
 
 export default function MissionControlPage() {
@@ -24,6 +26,9 @@ export default function MissionControlPage() {
       <EfficiencyBar />
 
       <PipelineSection />
+
+      <SplitPanel />
+      <SubagentPanel />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <div className="lg:col-span-4">

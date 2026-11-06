@@ -34,6 +34,8 @@ export const helloResponseSchema = z.object({
   protocol: z.number().int(),
   leaseMs: z.number().int().positive(),
   pollMs: z.number().int().positive(),
+  /** Optional for older panels: "active" when absent. paused/pending → claims return 204. */
+  availability: z.enum(["active", "paused", "pending"]).optional(),
 });
 export type HelloResponse = z.infer<typeof helloResponseSchema>;
 
@@ -123,7 +125,11 @@ export const executorEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("session"), sessionId: z.string().max(200), model: z.string().max(200).nullable() }),
   z.object({ type: z.literal("text"), text: eventText }),
   z.object({ type: z.literal("thinking"), text: eventText }),
-  z.object({ type: z.literal("tool"), name: z.string().max(200), summary: eventText, path: z.string().max(2000).nullable() }),
+  z.object({ type: z.literal("tool"), name: z.string().max(200), summary: eventText, path: z.string().max(2000).nullable(), agentId: z.string().max(200).optional() }),
+  z.object({ type: z.literal("subagent_start"), id: z.string().max(200), description: eventText, agentType: z.string().max(200), isBackground: z.boolean() }),
+  z.object({ type: z.literal("subagent_progress"), id: z.string().max(200), toolCalls: z.number().int().min(0), lastTool: z.string().max(200) }),
+  z.object({ type: z.literal("subagent_end"), id: z.string().max(200), isError: z.boolean() }),
+  z.object({ type: z.literal("tool_done"), toolUseId: z.string().max(200), isError: z.boolean() }),
   z.object({ type: z.literal("plan"), items: z.array(z.object({ text: eventText, done: z.boolean() })).max(200) }),
   z.object({ type: z.literal("usage"), tokens: z.number().finite().min(0), costUsd: z.number().finite().min(0).nullable() }),
   z.object({ type: z.literal("result"), isError: z.boolean(), text: eventText }),
@@ -219,3 +225,32 @@ export const AGENTCORE_CLAIM_PATH = "/api/worker/agentcore/claim";
 
 export const agentcoreClaimRequestSchema = z.object({ taskId: z.string().min(1).max(200) });
 export type AgentCoreClaimRequest = z.infer<typeof agentcoreClaimRequestSchema>;
+
+// ---------------------------------------------------------------- cluster join
+
+/**
+ * POST, Authorization: Bearer <cluster join token cjt_…>, body JoinRequest → 201 JoinResponse.
+ * Trades the shared join token for this node's own worker credential (cwk_…), returned once.
+ */
+export const JOIN_PATH = "/api/worker/join";
+/** POST with the node credential: the node removes itself from the cluster (revokes its credential). */
+export const LEAVE_PATH = "/api/worker/leave";
+
+export const joinRequestSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  hostname: z.string().trim().max(253).optional(),
+  version: z.number().int().min(0),
+  executors: z.array(executorId).max(2).default([]),
+  git: z.boolean().default(false),
+  maxParallel: z.number().int().min(1).max(64).default(1),
+  workerVersion: shortText.optional(),
+});
+export type JoinRequest = z.infer<typeof joinRequestSchema>;
+
+export const joinResponseSchema = z.object({
+  nodeId: z.string().min(1),
+  token: z.string().min(1),
+  name: z.string(),
+  availability: z.enum(["active", "paused", "pending"]),
+});
+export type JoinResponse = z.infer<typeof joinResponseSchema>;

@@ -35,13 +35,14 @@ RUN npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE
 # Fixed numeric UID/GID so Kubernetes `runAsNonRoot` can verify the user without a lookup.
 RUN groupadd --gid 10001 carbon \
  && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/carbon --shell /usr/sbin/nologin carbon \
- && mkdir -p /home/carbon/work \
+ && mkdir -p /home/carbon/work /home/carbon/state \
  && chown -R 10001:10001 /home/carbon
 
 COPY --from=build /src/dist/worker.mjs /app/worker.mjs
 
 ENV NODE_ENV=production \
     CARBON_WORKER_DIR=/home/carbon/work \
+    CARBON_WORKER_STATE_DIR=/home/carbon/state \
     DISABLE_AUTOUPDATER=1
 
 USER 10001:10001

@@ -7,7 +7,7 @@ Não. O padrão continua sendo `local`: uma tarefa por vez, na máquina do paine
 A UI e a API administrativa, sim. Com `CARBON_WORKER_LISTEN`, uma segunda porta passa a aceitar **apenas** `/api/worker/*`, com token. Você decide como expor essa porta (VPN, túnel, reverse proxy com TLS).
 
 **Dá para conectar outro computador sem servidor, domínio ou túnel?**
-Sim. No painel, `CARBON_WORKER_LISTEN=0.0.0.0:3418`; no outro computador, `carbon join <ip>:3418 --fingerprint …`, pela rede local ou pelo IP público com a porta liberada no roteador. O tráfego vai em TLS com o certificado próprio do painel, fixado pelo fingerprint. Ver [direct-join.md](direct-join.md).
+Sim. No painel, `CARBON_WORKER_LISTEN=0.0.0.0:3418` e um token em *Entrar no cluster*; no outro computador, `carbon join <ip>:3418 --token cjt_… --fingerprint …`, pela rede local ou pelo IP público com a porta liberada no roteador. O tráfego vai em TLS com o certificado próprio do painel, fixado pelo fingerprint. Ver [direct-join.md](direct-join.md).
 
 **A máquina worker precisa de porta aberta?**
 Não. O worker só faz conexões de saída: painel, API do modelo e git.

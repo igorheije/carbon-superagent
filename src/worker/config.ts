@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { hostname as osHostname, tmpdir } from "node:os";
 import path from "node:path";
 import type { ExecutorId } from "../shared/executors";
 import { normalizeFingerprint } from "../shared/fingerprint";
+import { DEFAULT_STATE_DIR } from "./node-state";
 
 /**
  * Worker configuration from the environment (`carbon worker`, Docker, Kubernetes):
@@ -10,7 +11,10 @@ import { normalizeFingerprint } from "../shared/fingerprint";
  * | Variable                      | Required | Default                          |
  * |-------------------------------|----------|----------------------------------|
  * | CARBON_PANEL_URL              | yes      | —  (http(s) URL of the panel)    |
- * | CARBON_WORKER_TOKEN           | yes      | —  (cwk_… token from the panel)  |
+ * | CARBON_WORKER_TOKEN           | no*      | —  (cwk_… token from the panel)  |
+ * | CARBON_JOIN_TOKEN             | no*      | —  (cjt_… cluster join token)    |
+ * | CARBON_WORKER_STATE_DIR       | no       | ~/.carbon-worker (node credential after join) |
+ * | CARBON_WORKER_NAME            | no       | hostname                         |
  * | CARBON_WORKER_PARALLEL        | no       | 1  (1..64 tasks at once)         |
  * | CARBON_WORKER_EXECUTORS       | no       | detected: `claude --version`, `codex --version` |
  * | CARBON_WORKER_DIR             | no       | <os tmpdir>/carbon-worker        |
@@ -18,6 +22,8 @@ import { normalizeFingerprint } from "../shared/fingerprint";
  * | CARBON_GIT_HOSTS              | no       | —  (hosts that may get the git token; empty = token never sent) |
  * | CARBON_WORKER_GRACE_SECONDS   | no       | 120 (0..3600, wait on SIGTERM)   |
  * | CARBON_PANEL_FINGERPRINT      | no       | —  (SHA-256 of the panel's self-signed certificate: `carbon join`) |
+ *
+ * (*) One of: CARBON_WORKER_TOKEN, CARBON_JOIN_TOKEN, or a credential saved by `carbon join`.
  *
  * Tokens are validated but never echoed back in errors or logs. After reading, main.ts removes
  * them from process.env (scrubSecretEnv) so nothing spawned later inherits them.
@@ -39,10 +45,15 @@ export interface WorkerConfig {
   readonly graceSeconds: number;
   /** Pinned SHA-256 of the panel certificate (canonical hex), or undefined to use the CA store. */
   readonly panelFingerprint: string | undefined;
+  /** Empty when the credential comes from a join (see join.ts). */
+  readonly joinToken: string | undefined;
+  readonly stateDir: string;
+  readonly hostname: string;
+  readonly name: string;
 }
 
 /** Environment variables holding secrets the worker reads once and then removes. */
-export const SECRET_ENV_NAMES = ["CARBON_WORKER_TOKEN", "CARBON_GIT_TOKEN"] as const;
+export const SECRET_ENV_NAMES = ["CARBON_WORKER_TOKEN", "CARBON_GIT_TOKEN", "CARBON_JOIN_TOKEN"] as const;
 
 /** Deletes the worker/git tokens from `env` (process.env at startup) after the config is read. */
 export function scrubSecretEnv(env: Record<string, string | undefined>): void {
@@ -208,12 +219,27 @@ function executorsOf(raw: string | undefined, detect: () => readonly ExecutorId[
 }
 
 /** Reads and validates the worker environment. `detect` is only called when executors are not set. */
-export function readWorkerConfig(env: Readonly<Record<string, string | undefined>>, detect: () => readonly ExecutorId[] = detectExecutors): ConfigResult {
+export interface ConfigOptions {
+  /** true when a join may provide the credential (env join token, saved node state, `carbon join`). */
+  readonly allowJoin?: boolean;
+  readonly hostname?: () => string;
+}
+
+export function readWorkerConfig(
+  env: Readonly<Record<string, string | undefined>>,
+  detect: () => readonly ExecutorId[] = detectExecutors,
+  options: ConfigOptions = {},
+): ConfigResult {
   const errors: string[] = [];
   const panelUrl = panelUrlOf(env.CARBON_PANEL_URL, errors);
   const token = env.CARBON_WORKER_TOKEN?.trim() ?? "";
-  if (!token) errors.push("CARBON_WORKER_TOKEN é obrigatório (gere em Configurações → Máquinas)");
-  else if (/\s/.test(token) || !token.startsWith("cwk_")) errors.push("CARBON_WORKER_TOKEN inválido (deve começar com cwk_)");
+  const joinToken = env.CARBON_JOIN_TOKEN?.trim() || undefined;
+  if (!token && !options.allowJoin) errors.push("CARBON_WORKER_TOKEN é obrigatório (gere em Configurações → Máquinas) — ou entre no cluster com carbon join");
+  else if (token && (/\s/.test(token) || !token.startsWith("cwk_"))) errors.push("CARBON_WORKER_TOKEN inválido (deve começar com cwk_)");
+  if (joinToken && (/\s/.test(joinToken) || !joinToken.startsWith("cjt_"))) errors.push("CARBON_JOIN_TOKEN inválido (deve começar com cjt_)");
+  const hostname = (options.hostname ?? osHostname)().trim() || "node";
+  const name = (env.CARBON_WORKER_NAME?.trim() || hostname).slice(0, 80);
+  const stateDir = path.resolve(env.CARBON_WORKER_STATE_DIR?.trim() || DEFAULT_STATE_DIR);
   const parallel = intInRange(env.CARBON_WORKER_PARALLEL, "CARBON_WORKER_PARALLEL", 1, MAX_PARALLEL, DEFAULT_PARALLEL, errors);
   const graceSeconds = intInRange(env.CARBON_WORKER_GRACE_SECONDS, "CARBON_WORKER_GRACE_SECONDS", 0, MAX_GRACE_SECONDS, DEFAULT_GRACE_SECONDS, errors);
   const executors = executorsOf(env.CARBON_WORKER_EXECUTORS, detect, errors);
@@ -222,5 +248,5 @@ export function readWorkerConfig(env: Readonly<Record<string, string | undefined
   const gitHosts = parseGitHosts(env.CARBON_GIT_HOSTS, errors);
   const panelFingerprint = fingerprintOf(env.CARBON_PANEL_FINGERPRINT, panelUrl, errors);
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, config: { panelUrl, token, parallel, executors, workDir, gitToken, gitHosts, graceSeconds, panelFingerprint } };
+  return { ok: true, config: { panelUrl, token, parallel, executors, workDir, gitToken, gitHosts, graceSeconds, panelFingerprint, joinToken, stateDir, hostname, name } };
 }

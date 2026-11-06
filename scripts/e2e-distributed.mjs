@@ -385,16 +385,17 @@ async function main() {
     const { project: projectB } = await api("POST", "/api/projects", { repoPath: fx.repoB, name: "repo-sem-commits" });
     const machines = [];
     machines.push(await api("POST", "/api/admin/workers", { name: "e2e-maquina-1", target: "compose", executors: ["claude"] }));
-    const joined = await api("POST", "/api/admin/workers", { name: "e2e-maquina-2", target: "direct", executors: ["claude"] });
-    check(joined.direct?.fingerprint === directPin && joined.direct.port === directPort, "direto", `painel devolveu ${JSON.stringify(joined.direct)}`);
-    machines.push(joined);
+    // Cluster join token; the panel adds the `carbon join <ip>:<porta> --fingerprint` line for the listener.
+    const joinToken = await api("POST", "/api/admin/workers/join-token", {});
+    const lan = joinToken.direct?.lan?.[0]?.cli ?? "";
+    check(lan.includes(`'https://127.0.0.1:${directPort}'`) && lan.includes(`--fingerprint ${directPin}`), "join direto", `comando inesperado: ${lan}`);
     await api("POST", "/api/projects/active", { id: projectA.id });
     const a1 = (await api("POST", "/api/tasks", { title: "Ajustar rodapé", description: "e2e git 1", runtime: "pool" })).task;
     const a2 = (await api("POST", "/api/tasks", { title: "Corrigir cabeçalho", description: "e2e git 2", runtime: "pool" })).task;
     await api("POST", "/api/projects/active", { id: projectB.id });
     const b1 = (await api("POST", "/api/tasks", { title: "Primeiro arquivo", description: "e2e bundle", runtime: "pool" })).task;
-    return { a: [a1.id, a2.id], b: b1.id, projectA: projectA.id, tokens: machines.map((m) => ({ name: m.worker.name, token: m.token })) };
-  }, (v) => `${v.tokens.length} máquinas · 3 tarefas (2 git, 1 bundle)`);
+    return { a: [a1.id, a2.id], b: b1.id, projectA: projectA.id, tokens: machines.map((m) => ({ name: m.worker.name, token: m.token })), joinToken: joinToken.token };
+  }, (v) => `1 máquina por kit + token de join · 3 tarefas (2 git, 1 bundle)`);
 
   const db = await openDb(fx.dataDir);
   try {
@@ -410,11 +411,12 @@ async function main() {
       CARBON_WORKER_GRACE_SECONDS: "5",
     });
     const tickets = await step("worker por kit + worker por `carbon join` (IP:porta, fingerprint) → 3 tarefas done", async () => {
-      const [kit, joined] = ids.tokens;
+      const [kit] = ids.tokens;
       startProcess("worker-1", process.execPath, [path.join(ROOT, "dist/worker.mjs")], workerEnv(kit, 1));
-      // No NODE_EXTRA_CA_CERTS: trust comes only from the pinned fingerprint.
-      const { NODE_EXTRA_CA_CERTS: _ca, CARBON_PANEL_URL: _url, ...joinEnv } = workerEnv(joined, 2);
-      startProcess("worker-2", process.execPath, [path.join(ROOT, "bin/carbon.mjs"), "join", `127.0.0.1:${directPort}`, "--fingerprint", directPin, "--executors", "claude"], joinEnv);
+      // No NODE_EXTRA_CA_CERTS nor machine token: cluster join by IP, trust only from the pinned fingerprint.
+      const { NODE_EXTRA_CA_CERTS: _ca, CARBON_PANEL_URL: _url, CARBON_WORKER_TOKEN: _token, ...joinEnv } = workerEnv({ token: "" }, 2);
+      const joinArgs = ["join", `127.0.0.1:${directPort}`, "--token", ids.joinToken, "--fingerprint", directPin, "--name", "e2e-maquina-2"];
+      startProcess("worker-2", process.execPath, [path.join(ROOT, "bin/carbon.mjs"), ...joinArgs], { ...joinEnv, CARBON_WORKER_STATE_DIR: path.join(tmp, "worker-2-state") });
       const done = await waitDone(db, [...ids.a, ids.b], TIMEOUT_MS.pool).catch((error) => {
         throw new E2EError(`${error.message}\n--- worker-1\n${tailLog("worker-1")}\n--- worker-2\n${tailLog("worker-2")}`);
       });

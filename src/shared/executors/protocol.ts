@@ -13,7 +13,8 @@ export type Marker =
   | { readonly kind: "finding"; readonly finding: ReviewFinding }
   | { readonly kind: "lesson"; readonly rule: string; readonly evidence: string }
   | { readonly kind: "question"; readonly text: string }
-  | { readonly kind: "option"; readonly option: QuestionOption };
+  | { readonly kind: "option"; readonly option: QuestionOption }
+  | { readonly kind: "subtask"; readonly title: string; readonly files: readonly string[]; readonly brief: string };
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 const MAX_TEXT = 500;
@@ -23,6 +24,24 @@ const MAX_QUESTION = 2_000;
 const MARKER_RE = /^\s*(?:[-*+>]\s+|\d+[.)]\s+)?[`*_]*CARBON_([A-Z]+)[`*_]*:[`*_]*\s*(.*?)[`*_]*\s*$/;
 
 const clip = (text: string, max = MAX_TEXT): string => text.trim().slice(0, max);
+
+/** A subtask brief is the whole assignment of another machine, so it gets more room. */
+export const MAX_SUBTASK_BRIEF = 2_000;
+const MAX_SUBTASK_FILES = 50;
+const MAX_SUBTASK_TITLE = 120;
+/** Workspace-relative path or glob: no absolute paths, no "..", no shell-ish characters. */
+const SAFE_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[\w.\-/*@+]{1,200}$/;
+
+/** "title | file, file, glob | brief" → subtask marker; null when any part is missing or unsafe. */
+function parseSubtask(value: string): Marker | null {
+  const [rawTitle = "", rawFiles = "", ...rest] = value.split("|");
+  const title = clip(rawTitle.replace(/\s+/g, " "), MAX_SUBTASK_TITLE);
+  const files = rawFiles.split(",").map((f) => f.trim().replace(/^\.\//, "")).filter(Boolean);
+  const brief = clip(rest.join("|"), MAX_SUBTASK_BRIEF);
+  if (!title || !brief || files.length === 0 || files.length > MAX_SUBTASK_FILES) return null;
+  if (!files.every((f) => SAFE_PATH.test(f))) return null;
+  return { kind: "subtask", title, files: [...new Set(files)], brief };
+}
 
 const MAX_OPTION_LABEL = 120;
 const RECOMMENDED_RE = /\s*[([]?\s*(recomendad[oa]|recommended)\s*[)\]]?\s*/i;
@@ -85,6 +104,8 @@ function parseLine(line: string): Marker | null {
       return value ? { kind: "question", text: clip(value, MAX_QUESTION) } : null;
     case "OPTION":
       return parseOption(value);
+    case "SUBTASK":
+      return parseSubtask(value);
     default:
       return null;
   }

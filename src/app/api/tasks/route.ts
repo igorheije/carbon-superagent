@@ -38,7 +38,10 @@ export function POST(request: Request) {
       modelLabel: plannedLabel(executor, model, effort, input.title, input.description),
       priority: input.priority,
       repo: project.name,
-      runtime: input.runtime ?? "local",
+      // A distributed task plans and integrates on this machine; only its parts go to the cluster.
+      runtime: input.distributed ? "local" : (input.runtime ?? "local"),
+      multiAgent: input.multiAgent,
+      distributed: input.distributed,
     });
     notifyChange();
     kick();

@@ -42,6 +42,10 @@ export const newTaskSchema = z.object({
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
   /** Where the task runs; omitted = "local" (this machine). */
   runtime: z.enum(["local", "pool", "agentcore"]).optional(),
+  /** Let the agent use parallel sub-agents when the task benefits (Claude Code only). */
+  multiAgent: z.boolean().default(false),
+  /** Let the agent split the task into parts that run on other cluster machines (the task itself runs here). */
+  distributed: z.boolean().default(false),
 });
 
 export const skillBodySchema = z.object({

@@ -56,7 +56,7 @@ Painel no seu computador, outro computador na mesma rede (ou pela internet, com 
 # painel (.env.local)
 CARBON_WORKER_LISTEN=0.0.0.0:3418
 # outro computador
-carbon join 192.168.0.12:3418 --fingerprint <sha256 mostrado pelo painel>
+carbon join 192.168.0.12:3418 --token cjt_… --fingerprint <sha256 mostrado pelo painel>
 ```
 
 TLS com certificado próprio, fixado pelo fingerprint no worker. Guia completo: [direct-join.md](direct-join.md).
@@ -109,7 +109,7 @@ Com `CARBON_WORKER_TLS_CERT`/`CARBON_WORKER_TLS_KEY`, o listener fala HTTPS com 
 
 ## URL pública (`panelPublicUrl`)
 
-Não é usada no modo *Direto* (`carbon join`). Nos outros, depois de expor, configure *Configurações → Execução → Workers e AgentCore → URL pública do painel* com a URL `https://…` que chega no listener (sem barra final; só `https://` é aceito). Ela:
+Não é obrigatória no join por IP (`carbon join <ip>:<porta>`): sem ela, *Entrar no cluster* monta o comando com o IP deste computador e o fingerprint. Nos outros casos, depois de expor, configure *Configurações → Execução → Workers e AgentCore → URL pública do painel* com a URL `https://…` que chega no listener (sem barra final; só `https://` é aceito). Ela:
 
 - entra no `.env`/Deployment dos kits gerados pela UI (`CARBON_PANEL_URL`);
 - vai no payload de cada invocação do AgentCore;

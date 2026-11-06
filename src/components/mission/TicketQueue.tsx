@@ -9,6 +9,7 @@ import { useEngine } from "@/components/engine/EngineProvider";
 import { Panel } from "@/components/ui/Panel";
 import { STAGES, type Ticket, type TicketStatus } from "@/lib/domain/types";
 import { PlacementBadge } from "./PlacementBadge";
+import { runningCount } from "./SubagentPanel";
 
 const STATUS_LABEL: Readonly<Record<TicketStatus, string>> = {
   queued: "na fila",
@@ -67,6 +68,39 @@ function LiveActions({ ticket }: { ticket: Ticket }) {
   );
 }
 
+/** "⟁ 3" while sub-agents run; a quiet "multi" chip when the task only allows them. */
+function SubagentBadge({ ticket }: { ticket: Ticket }) {
+  const running = runningCount(ticket);
+  if (running > 0) {
+    return (
+      <motion.span
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="flex items-center gap-1 rounded-full border border-accent/50 bg-accent-weak px-1.5 py-px font-mono text-[9.5px] text-accent"
+        aria-label={`${running} sub-agentes rodando`}
+        title={`${running} sub-agente(s) rodando`}
+      >
+        <span className="relative flex size-1.5">
+          <span className="absolute inset-0 animate-ping rounded-full bg-accent opacity-60 motion-reduce:hidden" />
+          <span className="relative size-1.5 rounded-full bg-accent" />
+        </span>
+        ⟁ {running}
+      </motion.span>
+    );
+  }
+  if (!ticket.multiAgent) return null;
+  return <span className="rounded-full border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-subtle" title="multi-agentes liberado">multi</span>;
+}
+
+/** Distributed task: "⇉ N" on the parent, "↳ KEY" on each part. */
+function SplitBadge({ ticket }: { ticket: Ticket }) {
+  const chip = "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-px font-mono text-[9.5px]";
+  if (ticket.parent) return <span className={`${chip} border-line text-subtle`} title={`parte de ${ticket.parent.key}: ${ticket.parent.title}`}>↳ {ticket.parent.key}</span>;
+  if (ticket.split) return <span className={`${chip} border-accent/50 bg-accent-weak text-accent`} title={`${ticket.split.children.length} partes em outros computadores`}>⇉ {ticket.split.children.length}</span>;
+  if (ticket.distributed) return <span className={`${chip} border-line uppercase tracking-[0.08em] text-subtle`} title="pode dividir entre os computadores do cluster">cluster</span>;
+  return null;
+}
+
 function TicketRow({ ticket }: { ticket: Ticket }) {
   const { dispatch, mode } = useEngine();
   const stageProgress = ticket.stage ? (STAGES.indexOf(ticket.stage) + 1) / STAGES.length : 0;
@@ -84,6 +118,8 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
         <span className="rounded-full border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-subtle">
           {ticket.source}
         </span>
+        <SubagentBadge ticket={ticket} />
+        <SplitBadge ticket={ticket} />
         <span className={`ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
           {STATUS_LABEL[ticket.status]}
         </span>

@@ -1,8 +1,8 @@
 /** Client-side model of Configurações → Máquinas (mirrors src/app/api/admin/workers/_lib/fleet.ts). */
 
-export type MachineStatus = "busy" | "idle" | "offline" | "revoked";
-export type MachineTarget = "compose" | "k8s" | "direct";
-export type KitMachineTarget = Exclude<MachineTarget, "direct">;
+export type MachineStatus = "busy" | "idle" | "paused" | "pending" | "offline" | "revoked";
+export type MachineAvailability = "active" | "paused" | "pending";
+export type MachineTarget = "compose" | "k8s";
 export type MachineExecutor = "claude" | "codex";
 
 export interface Machine {
@@ -13,45 +13,37 @@ export interface Machine {
   readonly revokedAt: number | null;
   readonly lastSeenAt: number | null;
   readonly version: string | null;
+  readonly capabilities: { readonly maxParallel?: number; readonly executors?: readonly string[] };
+  readonly availability: MachineAvailability;
+  readonly joinedVia: "manual" | "join";
+  readonly hostname: string | null;
   readonly status: MachineStatus;
   readonly currentTasks: readonly { readonly id: string; readonly key: string }[];
 }
 
-export interface CreatedKitMachine {
+export interface CreatedMachine {
   readonly worker: Machine;
   readonly token: string;
   readonly kitBase64: string;
   readonly filename: string;
   readonly folder: string;
-  readonly target: KitMachineTarget;
+  readonly target: MachineTarget;
 }
-
-/** Mirrors src/server/direct-join.ts (available case). */
-export interface DirectJoin {
-  readonly port: number;
-  readonly fingerprint: string | null;
-  readonly addresses: readonly string[];
-}
-
-export interface CreatedDirectMachine {
-  readonly worker: Machine;
-  readonly token: string;
-  readonly direct: DirectJoin;
-  readonly target: "direct";
-}
-
-export type CreatedMachine = CreatedKitMachine | CreatedDirectMachine;
 
 export const STATUS_LABEL: Readonly<Record<MachineStatus, string>> = {
   busy: "ocupada",
   idle: "ociosa",
+  paused: "pausada",
+  pending: "aguardando aprovação",
   offline: "offline",
-  revoked: "revogada",
+  revoked: "removida",
 };
 
 export const STATUS_DOT: Readonly<Record<MachineStatus, string>> = {
   busy: "bg-warn animate-pulse",
   idle: "bg-ok",
+  paused: "bg-subtle ring-2 ring-warn/50",
+  pending: "bg-accent animate-pulse",
   offline: "bg-subtle",
   revoked: "bg-danger",
 };
@@ -59,7 +51,6 @@ export const STATUS_DOT: Readonly<Record<MachineStatus, string>> = {
 export const TARGET_LABEL: Readonly<Record<MachineTarget, string>> = {
   compose: "Docker Compose",
   k8s: "Kubernetes",
-  direct: "Direto (IP:porta)",
 };
 
 const MINUTE = 60_000;
@@ -77,27 +68,8 @@ export function relativeTime(at: number | null, now: number): string {
   return `há ${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
-/** Optional flags shared by every `carbon join` line. */
-function joinFlags(fingerprint: string | null, parallel: number, executors: readonly MachineExecutor[]): string {
-  const flags = fingerprint ? [`--fingerprint ${fingerprint}`] : [];
-  if (parallel > 1) flags.push(`--parallel ${parallel}`);
-  if (executors.length > 0) flags.push(`--executors ${executors.join(",")}`);
-  return flags.length > 0 ? ` ${flags.join(" ")}` : "";
-}
-
-/**
- * `carbon join` lines for the "Direto" target: one per address of the panel on the local network,
- * plus the public-IP form (port forwarding on the router). The token is asked by the command, so it
- * never lands in shell history or `ps`.
- */
-export function joinCommands(direct: DirectJoin, parallel: number, executors: readonly MachineExecutor[]): { readonly lan: readonly string[]; readonly internet: string } {
-  const flags = joinFlags(direct.fingerprint, parallel, executors);
-  const lan = (direct.addresses.length > 0 ? direct.addresses : ["<ip-deste-computador>"]).map((ip) => `carbon join ${ip}:${direct.port}${flags}`);
-  return { lan, internet: `carbon join <ip-público>:${direct.port}${flags}` };
-}
-
 /** Exact commands shown after the kit is generated. */
-export function nextCommands(created: Pick<CreatedKitMachine, "filename" | "folder" | "target">): readonly string[] {
+export function nextCommands(created: Pick<CreatedMachine, "filename" | "folder" | "target">): readonly string[] {
   const start = created.target === "compose" ? "docker compose up -d" : "kubectl apply -k .";
   return [`tar xzf ${created.filename}`, `cd ${created.folder}`, start];
 }
@@ -111,4 +83,53 @@ export function downloadBase64(base64: string, filename: string, type = "applica
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+/** "1/2" slots in use, or just the task count when the node never reported its parallelism. */
+export function slotsLabel(machine: Pick<Machine, "currentTasks" | "capabilities">): string {
+  const max = machine.capabilities.maxParallel;
+  return max ? `${machine.currentTasks.length}/${max}` : String(machine.currentTasks.length);
+}
+
+export interface JoinTokenInfo {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly expiresAt: number | null;
+  readonly maxUses: number | null;
+  readonly uses: number;
+}
+
+export interface JoinStatus {
+  readonly token: JoinTokenInfo | null;
+  readonly panelUrl: string;
+  readonly requireApproval: boolean;
+}
+
+export interface GeneratedJoinToken {
+  readonly token: string;
+  readonly info: JoinTokenInfo;
+  readonly panelUrl: string;
+  readonly commands: JoinCommandPair;
+  /** Listener reachable by IP with its own certificate: `carbon join <ip>:<porta> --fingerprint …`. */
+  readonly direct: { readonly lan: readonly JoinCommandPair[]; readonly internet: JoinCommandPair; readonly fingerprint: string | null } | null;
+}
+
+export interface JoinCommandPair {
+  readonly cli: string;
+  readonly docker: string;
+}
+
+/** Validity choices offered in the UI (hours; null = no expiry, the Docker Swarm default). */
+export const JOIN_TTL_OPTIONS: readonly { readonly label: string; readonly hours: number | null }[] = [
+  { label: "sem validade", hours: null },
+  { label: "1 hora", hours: 1 },
+  { label: "24 horas", hours: 24 },
+  { label: "7 dias", hours: 24 * 7 },
+];
+
+/** "3 de 5 usos · expira em 06/11 18:00" style summary of the active join token. */
+export function joinTokenSummary(info: JoinTokenInfo): string {
+  const uses = info.maxUses ? `${info.uses} de ${info.maxUses} usos` : `${info.uses} ${info.uses === 1 ? "servidor entrou" : "servidores entraram"}`;
+  const expiry = info.expiresAt ? `expira ${new Date(info.expiresAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "sem validade";
+  return `${uses} · ${expiry}`;
 }

@@ -29,6 +29,8 @@ export const workersSettingsSchema = z.object({
   /** true → a task whose worker vanished goes back to the queue; false → it fails. */
   requeueOnLeaseLoss: z.boolean().default(false),
   maxBundleMb: z.number().int().min(1).max(2_000).default(200),
+  /** true → servers that join with the cluster token start as "pending" until an admin approves them. */
+  requireJoinApproval: z.boolean().optional(),
 });
 export type WorkersSettings = z.infer<typeof workersSettingsSchema>;
 const WORKERS_DEFAULTS: WorkersSettings = { leaseMs: 60_000, pollMs: 25_000, requeueOnLeaseLoss: false, maxBundleMb: 200 };

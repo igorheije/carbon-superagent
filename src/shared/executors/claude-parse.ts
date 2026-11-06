@@ -17,20 +17,94 @@ function todoItems(input: Record<string, unknown>): ExecutorEvent | null {
   return items.length ? { type: "plan", items } : null;
 }
 
+/** Claude Code's delegation tool: "Agent" in current versions, "Task" in older ones. */
+const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
+
+function subagentStart(id: string, input: Record<string, unknown>): ExecutorEvent {
+  return {
+    type: "subagent_start",
+    id,
+    description: clipSummary(str(input.description) || str(input.prompt) || "sub-agente"),
+    agentType: str(input.subagent_type) || "general-purpose",
+    isBackground: input.run_in_background === true,
+  };
+}
+
+function contentBlocks(message: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(message.content) ? message.content.filter(isRecord) : [];
+}
+
+/** Main agent: narration, thinking, tools, plan and delegations. */
 function assistantEvents(message: Record<string, unknown>): ExecutorEvent[] {
-  const content = Array.isArray(message.content) ? message.content.filter(isRecord) : [];
-  return content.flatMap((block): ExecutorEvent[] => {
+  return contentBlocks(message).flatMap((block): ExecutorEvent[] => {
     const kind = str(block.type);
     if (kind === "text" && str(block.text)) return [{ type: "text", text: str(block.text) }];
     if (kind === "thinking" && str(block.thinking)) return [{ type: "thinking", text: str(block.thinking) }];
     if (kind === "tool_use") {
       const name = str(block.name);
       const input = isRecord(block.input) ? block.input : {};
+      if (SUBAGENT_TOOLS.has(name) && str(block.id)) return [subagentStart(str(block.id), input)];
       const plan = name === "TodoWrite" ? todoItems(input) : null;
       return [{ type: "tool", name, ...toolSummary(name, input) }, ...(plan ? [plan] : [])];
     }
     return [];
   });
+}
+
+/**
+ * Sub-agent messages: only tool use, tagged with the sub-agent. Their text is never parsed for
+ * Carbon markers, so a sub-agent cannot move the pipeline, ask questions or record lessons.
+ */
+function subagentEvents(message: Record<string, unknown>, agentId: string): ExecutorEvent[] {
+  return contentBlocks(message)
+    .filter((block) => str(block.type) === "tool_use")
+    .map((block): ExecutorEvent => {
+      const name = str(block.name);
+      const input = isRecord(block.input) ? block.input : {};
+      return { type: "tool", name, ...toolSummary(name, input), agentId };
+    });
+}
+
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  return Array.isArray(content) ? content.filter(isRecord).map((c) => str(c.text)).join(" ") : "";
+}
+
+/**
+ * Tool results of the main agent; the runner only cares about the ones that end a sub-agent.
+ * An async launch ("Async agent launched…") returns at once: its end comes as task_notification.
+ */
+function toolResults(message: Record<string, unknown>): ExecutorEvent[] {
+  return contentBlocks(message)
+    .filter((block) => str(block.type) === "tool_result" && str(block.tool_use_id))
+    .filter((block) => !/^\s*async agent launched/i.test(resultText(block.content)))
+    .map((block) => ({ type: "tool_done", toolUseId: str(block.tool_use_id), isError: block.is_error === true }));
+}
+
+const AGENT_TASK_TYPES = new Set(["local_agent", "remote_agent"]);
+const OK_TASK_STATUSES = new Set(["completed", "success"]);
+
+/** Claude Code's background-task events (current versions run sub-agents this way). */
+function taskEvents(json: Record<string, unknown>): ExecutorEvent[] {
+  const subtype = str(json.subtype);
+  const id = str(json.tool_use_id);
+  if (!id) return [];
+  if (subtype === "task_started") {
+    if (str(json.task_type) && !AGENT_TASK_TYPES.has(str(json.task_type))) return [];
+    return [{
+      type: "subagent_start",
+      id,
+      description: clipSummary(str(json.description) || "sub-agente"),
+      agentType: str(json.subagent_type) || "general-purpose",
+      isBackground: json.is_backgrounded === true,
+    }];
+  }
+  if (subtype === "task_progress") {
+    const usage = isRecord(json.usage) ? json.usage : {};
+    return [{ type: "subagent_progress", id, toolCalls: num(usage.tool_uses), lastTool: str(json.last_tool_name) }];
+  }
+  if (subtype === "task_notification") return [{ type: "subagent_end", id, isError: !OK_TASK_STATUSES.has(str(json.status)) }];
+  return [];
 }
 
 function usageTokens(usage: unknown): number {
@@ -84,7 +158,10 @@ export function parseClaudeLine(line: string): readonly ExecutorEvent[] {
   if (type === "system" && str(json.subtype) === "init") {
     return [{ type: "session", sessionId: str(json.session_id), model: str(json.model) || null }];
   }
-  if (type === "assistant" && isRecord(json.message)) return assistantEvents(json.message);
+  if (type === "system" && str(json.subtype).startsWith("task_")) return taskEvents(json);
+  const parentId = str(json.parent_tool_use_id);
+  if (type === "assistant" && isRecord(json.message)) return parentId ? subagentEvents(json.message, parentId) : assistantEvents(json.message);
+  if (type === "user" && isRecord(json.message) && !parentId) return toolResults(json.message);
   if (type === "result") {
     const cost = typeof json.total_cost_usd === "number" ? json.total_cost_usd : null;
     return [

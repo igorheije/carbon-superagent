@@ -283,9 +283,10 @@ describe("worker proxy", () => {
 });
 
 describe("hasWorkerAuth", () => {
-  it("accepts cwk_/ctk_ bearer tokens only", () => {
+  it("accepts cwk_/ctk_/cjt_ bearer tokens only", () => {
     expect(hasWorkerAuth({ authorization: AUTH })).toBe(true);
     expect(hasWorkerAuth({ authorization: `Bearer ctk_${"x".repeat(20)}` })).toBe(true);
+    expect(hasWorkerAuth({ authorization: `Bearer cjt_${"x".repeat(20)}` })).toBe(true); // cluster join through the listener
     expect(hasWorkerAuth({ authorization: `bearer cwk_${"x".repeat(20)}` })).toBe(false);
     expect(hasWorkerAuth({})).toBe(false);
   });

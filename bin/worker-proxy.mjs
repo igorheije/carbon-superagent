@@ -5,7 +5,7 @@
  * Forwards ONLY `/api/worker/*` to the Next server on 127.0.0.1:CARBON_PORT; every other request
  * gets an empty 404. The UI and admin API never become reachable through this port.
  *
- * Hardening: requests without a `Bearer cwk_…`/`ctk_…` token get an empty 401 before reaching
+ * Hardening: requests without a `Bearer cwk_…`/`ctk_…`/`cjt_…` token get an empty 401 before reaching
  * Next; JSON routes are capped at 1 MB and 60 s (bundles: the large ceiling and 30 min); open
  * sockets are capped in total (CARBON_WORKER_MAX_CONNECTIONS, 256) and per client address
  * (CARBON_WORKER_MAX_CONNECTIONS_PER_IP, 32); only simple query strings pass.
@@ -30,8 +30,8 @@ export const BUNDLE_REQUEST_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_MAX_CONNECTIONS = 256;
 /** Open sockets per client address. */
 export const DEFAULT_MAX_CONNECTIONS_PER_IP = 32;
-/** Only worker/task tokens are forwarded; anything else never reaches Next. */
-const WORKER_AUTH = /^Bearer (cwk_|ctk_)[A-Za-z0-9_-]{20,200}$/;
+/** Only worker (cwk_), task (ctk_) and cluster join (cjt_, for /api/worker/join) tokens are forwarded. */
+const WORKER_AUTH = /^Bearer (cwk_|ctk_|cjt_)[A-Za-z0-9_-]{20,200}$/;
 const BUNDLE_ROUTE = /^\/api\/worker\/tasks\/[^/]+\/bundle$/;
 /** Worker routes only use simple query strings (?after=12). */
 const SAFE_QUERY = /^(\?[A-Za-z0-9\-._~=&%]{0,512})?$/;
@@ -133,7 +133,7 @@ function defaultLog(line) {
   console.log(line);
 }
 
-/** True when the request carries a well-formed worker (cwk_) or task (ctk_) bearer token. */
+/** True when the request carries a well-formed worker (cwk_), task (ctk_) or join (cjt_) bearer token. */
 export function hasWorkerAuth(headers) {
   const value = headers.authorization;
   return typeof value === "string" && WORKER_AUTH.test(value);

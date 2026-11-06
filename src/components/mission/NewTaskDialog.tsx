@@ -91,6 +91,8 @@ export function NewTaskDialog() {
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<TaskRuntime>("local");
+  const [multiAgent, setMultiAgent] = useState(false);
+  const [distributed, setDistributed] = useState(false);
 
   // Never send an executor that is not installed; fall back to the one that is.
   const chosen = installed.includes(executor) ? executor : (installed[0] ?? executor);
@@ -110,7 +112,7 @@ export function NewTaskDialog() {
     setIsSaving(true);
     setError(null);
     try {
-      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort, runtime: chosenRuntime } });
+      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort, runtime: distributed ? "local" : chosenRuntime, multiAgent: chosen === "claude" && multiAgent, distributed } });
       setTitle("");
       setDescription("");
       close();
@@ -153,7 +155,35 @@ export function NewTaskDialog() {
                       <p className="eyebrow">Modelo e esforço</p>
                       <ModelPicker key={chosen} executor={chosen} value={currentModel} onChange={setModel} effort={currentEffort} onEffortChange={setEffort} task={{ title, description }} />
                     </div>
-                    <RuntimePicker value={chosenRuntime} options={runtimeOptions} onChange={setRuntime} />
+                    {distributed ? (
+                      <p className="rounded-xl border border-line p-3 text-[12px] text-muted">
+                        Onde rodar: a tarefa principal planeja e integra <span className="text-ink">neste computador</span>; as partes vão para o cluster.
+                      </p>
+                    ) : (
+                      <RuntimePicker value={chosenRuntime} options={runtimeOptions} onChange={setRuntime} />
+                    )}
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${distributed ? "border-accent bg-accent-weak" : "border-line hover:border-line-strong"}`}>
+                      <input type="checkbox" checked={distributed} onChange={(e) => setDistributed(e.target.checked)} className="mt-1 accent-[var(--accent)]" />
+                      <span className="text-[13px]">
+                        Dividir entre os computadores do cluster
+                        <span className="block text-[12px] text-muted">
+                          {runtimeOptions.pool.available
+                            ? "Se a tarefa tiver partes independentes, o agente prepara a base, divide em até 4 partes e cada uma roda em outro computador. Depois ele junta tudo, roda os testes e abre um PR só."
+                            : "Nenhum computador no cluster agora: se a tarefa for dividida, as partes rodam aqui, uma por vez. Coloque computadores em Configurações → Máquinas → Entrar no cluster."}
+                        </span>
+                      </span>
+                    </label>
+                    <label className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${chosen !== "claude" ? "cursor-not-allowed border-line opacity-55" : multiAgent ? "cursor-pointer border-accent bg-accent-weak" : "cursor-pointer border-line hover:border-line-strong"}`}>
+                      <input type="checkbox" checked={chosen === "claude" && multiAgent} disabled={chosen !== "claude"} onChange={(e) => setMultiAgent(e.target.checked)} className="mt-1 accent-[var(--accent)]" />
+                      <span className="text-[13px]">
+                        Usar multi-agentes se necessário
+                        <span className="block text-[12px] text-muted">
+                          {chosen === "claude"
+                            ? "O agente pode dividir a tarefa em até 4 sub-agentes em paralelo quando houver partes independentes. Você acompanha cada um no painel. Costuma ser mais rápido em tarefas grandes, mas gasta mais tokens."
+                            : "Disponível só com Claude Code: o Codex não tem sub-agentes."}
+                        </span>
+                      </span>
+                    </label>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       {installed.length > 1 ? (
                         <div role="radiogroup" aria-label="Agente" className="flex gap-1 rounded-full border border-line p-0.5 font-mono text-[11px]">

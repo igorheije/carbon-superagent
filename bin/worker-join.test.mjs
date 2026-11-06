@@ -4,57 +4,45 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import tls from "node:tls";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { JoinError, normalizeFingerprint, parseJoinArgs, parseTarget, probeCertificate, resolvePin, workerEnv } from "./worker-join.mjs";
+import { JoinError, normalizeFingerprint, planJoin, probeCertificate, probeTarget, resolvePin } from "./worker-join.mjs";
 import { ensureWorkerCert } from "./worker-tls.mjs";
 
 const FP = "5c187335c8e23c6b89194fd73306ed950cc3993d39abf29455224c5806122a01";
 const OTHER = "ab".repeat(32);
-const TOKEN = `cwk_${"x".repeat(43)}`;
 
-describe("parseTarget", () => {
+describe("probeTarget", () => {
   it.each([
-    ["192.168.0.12:3418", "192.168.0.12", 3418, "https://192.168.0.12:3418"],
-    ["192.168.0.12", "192.168.0.12", 3418, "https://192.168.0.12:3418"],
-    ["https://203.0.113.7:9000/", "203.0.113.7", 9000, "https://203.0.113.7:9000"],
-    ["[fd00::5]:3418", "fd00::5", 3418, "https://[fd00::5]:3418"],
-    ["painel.casa.lan:3418", "painel.casa.lan", 3418, "https://painel.casa.lan:3418"],
-  ])("%s", (raw, host, port, url) => {
-    expect(parseTarget(raw)).toEqual({ host, port, url });
-  });
-
-  it.each([
-    ["", /informe/],
-    ["http://192.168.0.12:3418", /só usa https/],
-    ["https://u:p@1.2.3.4:3418", /usuário/],
-    ["1.2.3.4:3418/api", /sem caminho/],
-    ["ftp://1.2.3.4", /protocolo/],
-  ])("rejects %s", (raw, message) => {
-    expect(() => parseTarget(raw)).toThrow(message);
+    ["192.168.0.12:3418", { host: "192.168.0.12", port: 3418 }],
+    ["192.168.0.12", { host: "192.168.0.12", port: 3418 }],
+    ["https://203.0.113.7:9000/", { host: "203.0.113.7", port: 9000 }],
+    ["https://painel.exemplo.com", { host: "painel.exemplo.com", port: 443 }],
+    ["[fd00::5]:3418", { host: "fd00::5", port: 3418 }],
+    ["http://127.0.0.1:3418", null],
+    ["", null],
+  ])("%s", (raw, expected) => {
+    expect(probeTarget(raw)).toEqual(expected);
   });
 });
 
-describe("parseJoinArgs", () => {
-  it("reads every option", () => {
-    const opts = parseJoinArgs(["10.0.0.5:3418", "--fingerprint", FP.toUpperCase(), "--parallel", "2", "--executors", "codex,claude,codex", "--dir", "/tmp/w", "--token", TOKEN, "--yes"]);
-    expect(opts).toEqual({ target: { host: "10.0.0.5", port: 3418, url: "https://10.0.0.5:3418" }, fingerprint: FP, token: TOKEN, parallel: "2", executors: ["codex", "claude"], dir: "/tmp/w", yes: true });
+describe("planJoin", () => {
+  it("finds the address, normalizes --fingerprint and drops --yes from what goes to the worker", () => {
+    const plan = planJoin(["--token", "cjt_abc", "10.0.0.5:3418", "--fingerprint", FP.toUpperCase(), "--name", "gpu-1", "--yes"]);
+    expect(plan).toEqual({
+      target: { host: "10.0.0.5", port: 3418 },
+      fingerprint: FP,
+      yes: true,
+      forward: ["--token", "cjt_abc", "10.0.0.5:3418", "--fingerprint", FP, "--name", "gpu-1"],
+    });
   });
 
-  it.each([
-    [[], /informe/],
-    [["a:1", "b:2"], /inesperado/],
-    [["a:1", "--fingerprint", "zz"], /SHA-256/],
-    [["a:1", "--parallel", "x"], /inteiro/],
-    [["a:1", "--executors", "gpt"], /claude,codex/],
-    [["a:1", "--token", "abc"], /cwk_/],
-    [["a:1", "--nope"], /desconhecida/],
-    [["a:1", "--fingerprint"], /precisa de um valor/],
-  ])("rejects %j", (argv, message) => {
-    expect(() => parseJoinArgs(argv)).toThrow(message);
+  it("http (loopback) is not probed; a bad fingerprint fails early", () => {
+    expect(planJoin(["http://127.0.0.1:3418", "--token", "cjt_x"]).target).toBeNull();
+    expect(() => planJoin(["10.0.0.5", "--fingerprint", "zz"])).toThrow(/SHA-256/);
   });
 });
 
 describe("resolvePin", () => {
-  const opts = (extra = {}) => ({ ...parseJoinArgs(["10.0.0.5"]), ...extra });
+  const opts = (extra = {}) => ({ fingerprint: null, yes: false, ...extra });
 
   it("given fingerprint must match what the server presents", async () => {
     await expect(resolvePin(opts({ fingerprint: FP }), { fingerprint: FP, trusted: false }, null)).resolves.toBe(FP);
@@ -70,14 +58,6 @@ describe("resolvePin", () => {
     await expect(resolvePin(opts(), { fingerprint: FP, trusted: false }, async () => false)).rejects.toThrow(/não confirmado/);
     await expect(resolvePin(opts({ yes: true }), { fingerprint: FP, trusted: false }, null)).resolves.toBe(FP);
     await expect(resolvePin(opts(), { fingerprint: FP, trusted: false }, null)).rejects.toBeInstanceOf(JoinError);
-  });
-});
-
-describe("workerEnv", () => {
-  it("sets the panel URL, token, pin and options; drops a stale pin when none is used", () => {
-    const opts = parseJoinArgs(["10.0.0.5:3418", "--parallel", "3", "--executors", "claude"]);
-    expect(workerEnv({ PATH: "/bin" }, opts, TOKEN, FP)).toEqual({ PATH: "/bin", CARBON_PANEL_URL: "https://10.0.0.5:3418", CARBON_WORKER_TOKEN: TOKEN, CARBON_PANEL_FINGERPRINT: FP, CARBON_WORKER_PARALLEL: "3", CARBON_WORKER_EXECUTORS: "claude" });
-    expect(workerEnv({ CARBON_PANEL_FINGERPRINT: OTHER }, opts, TOKEN, null).CARBON_PANEL_FINGERPRINT).toBeUndefined();
   });
 
   it("normalizeFingerprint mirrors the TypeScript one", () => {

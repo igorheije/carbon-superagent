@@ -11,9 +11,6 @@ import { version } from "../../../../../../package.json";
 
 export const KIT_TARGETS = ["compose", "k8s"] as const;
 export type KitTarget = (typeof KIT_TARGETS)[number];
-/** "direct": no kit — the other computer runs `carbon join <ip>:<porta>` (src/server/direct-join.ts). */
-export const MACHINE_TARGETS = [...KIT_TARGETS, "direct"] as const;
-export type MachineTarget = (typeof MACHINE_TARGETS)[number];
 
 /** Image used when the admin does not name one: built locally from deploy/worker/Dockerfile. */
 export const DEFAULT_WORKER_IMAGE = `carbon-worker:${version}`;
@@ -24,7 +21,7 @@ const PROBE_TOKEN = `cwk_${"A".repeat(43)}`;
 
 export const newMachineSchema = z.object({
   name: z.string().trim().min(1, "informe o nome da máquina").max(80),
-  target: z.enum(MACHINE_TARGETS),
+  target: z.enum(KIT_TARGETS),
   replicas: z.number().int().min(1).max(MAX_REPLICAS).default(1),
   parallel: z.number().int().min(1).max(MAX_PARALLEL).default(1),
   executors: z.array(z.enum(EXECUTORS)).min(1, "escolha ao menos um executor").default(["claude"]),

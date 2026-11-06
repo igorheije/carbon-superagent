@@ -57,7 +57,7 @@
       p.classList.toggle("on", i === index);
       p.classList.toggle("done", i < index);
     });
-    const active = new Set(index >= 0 ? STAGES[index][1] : []);
+    const active = new Set(index >= 0 && index < STAGES.length ? STAGES[index][1] : []);
     for (const [skill, chip] of chips) {
       chip.classList.toggle("on", active.has(skill));
       chip.classList.toggle("used", used.has(skill) && !active.has(skill));

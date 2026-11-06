@@ -27,6 +27,8 @@ export interface WorkerLoopOptions {
   readonly signal: AbortSignal;
   readonly workerVersion?: string;
   readonly log?: (message: string) => void;
+  /** Called when the panel refuses the credential (401/403); may return a custom message/exit code (join: node removed). */
+  readonly onUnauthorized?: () => { readonly message: string; readonly code: number } | undefined;
   /** Test hooks. */
   readonly client?: WorkerClient;
   /** Transport for the default client (pinned TLS for `carbon join`). */
@@ -59,10 +61,12 @@ const abortableSleep: SleepFn = (ms, signal) =>
   });
 
 /** Errors that end the worker instead of being retried. */
-function fatalFrom(error: unknown): FatalStop | null {
+function fatalFrom(error: unknown, onUnauthorized?: WorkerLoopOptions["onUnauthorized"]): FatalStop | null {
   if (error instanceof ProtocolTooOld) return new FatalStop(`o painel exige um worker mais novo: ${error.message}`, EXIT_PROTOCOL);
   if (error instanceof WorkerClientError && !error.retryable) {
     const auth = error.status === 401 || error.status === 403;
+    const custom = auth ? onUnauthorized?.() : undefined;
+    if (custom) return new FatalStop(custom.message, custom.code);
     return new FatalStop(auth ? "o painel recusou o token do worker (revogado ou inválido)" : error.message, EXIT_FATAL);
   }
   if (!(error instanceof WorkerClientError)) return new FatalStop(describe(error), EXIT_FATAL);
@@ -96,9 +100,11 @@ export async function runWorkerLoop(options: WorkerLoopOptions): Promise<number>
     try {
       const hello = await client.hello({ executors: [...options.executors], git: Boolean(options.gitToken), maxParallel: options.parallel, workerVersion: options.workerVersion });
       log(`conectado ao painel (protocolo ${hello.protocol}, lease ${Math.round(hello.leaseMs / 1000)}s) · ${options.parallel} slot(s) · ${options.executors.join(", ")}`);
+      if (hello.availability === "pending") log("nó aguardando aprovação do admin (Configurações → Máquinas); nenhuma tarefa até lá");
+      if (hello.availability === "paused") log("nó pausado pelo admin: não pega tarefas novas até ser retomado");
       break;
     } catch (error) {
-      const fatalStop = fatalFrom(error);
+      const fatalStop = fatalFrom(error, options.onUnauthorized);
       if (fatalStop) {
         stop(fatalStop);
         break;
@@ -118,7 +124,7 @@ export async function runWorkerLoop(options: WorkerLoopOptions): Promise<number>
         task = await client.claim([...options.executors], stopClaims.signal);
         attempt = 0;
       } catch (error) {
-        const fatalStop = fatalFrom(error);
+        const fatalStop = fatalFrom(error, options.onUnauthorized);
         if (fatalStop) return stop(fatalStop);
         log(`slot ${index}: claim falhou (${describe(error)}); tentando de novo`);
         await sleep(backoffMs(attempt++, Math.random), stopClaims.signal);

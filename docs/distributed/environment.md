@@ -23,18 +23,16 @@ Lidas por `dist/worker.mjs` (Docker, Kubernetes ou `node bin/carbon.mjs worker`)
 
 `carbon worker --version` imprime `carbon-worker <versão>+p<protocolo>`.
 
-## `carbon join <ip>:<porta>`
+## `carbon join` por IP
 
-Atalho que sobe o worker apontando para um IP ([direct-join.md](direct-join.md)). Define `CARBON_PANEL_URL=https://<ip>:<porta>` e `CARBON_PANEL_FINGERPRINT` e repassa:
+O [`carbon join`](cluster-join.md) aceita `ip[:porta]` além de URL ([direct-join.md](direct-join.md)):
 
 | Opção | Variável que define | Padrão |
 | --- | --- | --- |
-| `<ip>[:porta]` | `CARBON_PANEL_URL` | porta `3418` |
-| `--fingerprint` | `CARBON_PANEL_FINGERPRINT` | perguntado no terminal (primeiro contato); obrigatório fora de terminal |
-| `--token` | `CARBON_WORKER_TOKEN` | `CARBON_WORKER_TOKEN` do ambiente, senão perguntado (entrada oculta) |
-| `--parallel` | `CARBON_WORKER_PARALLEL` | `1` |
-| `--executors` | `CARBON_WORKER_EXECUTORS` | detectado |
-| `--dir` | `CARBON_WORKER_DIR` | `<tmp do SO>/carbon-worker` |
+| `<ip>[:porta]` | `CARBON_PANEL_URL` (`https://<ip>:<porta>`) | porta `3418` |
+| `--token` | `CARBON_JOIN_TOKEN` | — (token de join `cjt_…`) |
+| `--fingerprint` | `CARBON_PANEL_FINGERPRINT` (salvo junto da credencial do nó) | perguntado no terminal (primeiro contato) quando o certificado não é de CA; obrigatório fora de terminal |
+| `--name` | `CARBON_WORKER_NAME` | hostname |
 | `--yes` | — | aceita o fingerprint apresentado sem perguntar |
 
 ## Container AgentCore (`dist/agentcore.mjs`)
@@ -79,7 +77,7 @@ O token de tarefa vem no payload da invocação, não em variável de ambiente.
 | `CARBON_WORKER_MAX_CONNECTIONS` | não | `256` | Conexões abertas no total (1–100000) |
 | `CARBON_WORKER_MAX_CONNECTIONS_PER_IP` | não | `32` | Conexões abertas por IP de cliente (1–100000) |
 
-Em `carbon start`, o ambiente do processo vence o `.env.local`. Depois de abrir o listener, `carbon start` exporta para o painel `CARBON_WORKER_JOIN_PORT`, `CARBON_WORKER_JOIN_HOST`, `CARBON_WORKER_JOIN_TLS` (`self-signed`, `custom` ou `off`) e `CARBON_WORKER_JOIN_FINGERPRINT` (uso interno: alimentam *Configurações → Máquinas → Direto*). O certificado autoassinado exige o `openssl` no computador do painel.
+Em `carbon start`, o ambiente do processo vence o `.env.local`. Depois de abrir o listener, `carbon start` exporta para o painel `CARBON_WORKER_JOIN_PORT`, `CARBON_WORKER_JOIN_HOST`, `CARBON_WORKER_JOIN_TLS` (`self-signed`, `custom` ou `off`) e `CARBON_WORKER_JOIN_FINGERPRINT` (uso interno: alimentam os comandos de *Configurações → Máquinas → Entrar no cluster*). O certificado autoassinado exige o `openssl` no computador do painel.
 
 ## Painel
 

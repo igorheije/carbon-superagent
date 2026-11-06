@@ -27,6 +27,26 @@ async function startLeaseSweeper(): Promise<void> {
   }, LEASE_SWEEP_MS);
   timer.unref();
   globalForSweeper.carbonLeaseSweeper = timer;
+  await startSplitReconciler();
+}
+
+const SPLIT_RECONCILE_MS = 3_000;
+
+/** Distributed tasks: queue a parent to integrate as soon as all its parts are final (also after a restart). */
+async function startSplitReconciler(): Promise<void> {
+  const globalForSplits = globalThis as unknown as { carbonSplitReconciler?: ReturnType<typeof setInterval> };
+  if (globalForSplits.carbonSplitReconciler) return;
+  const { reconcileSplits } = await import("./server/runner/split");
+  const { kick } = await import("./server/runner/runner");
+  const timer = setInterval(() => {
+    try {
+      if (reconcileSplits().length > 0) kick();
+    } catch (error) {
+      console.error("[carbon] reconciliação de tarefas distribuídas:", error instanceof Error ? error.message : String(error));
+    }
+  }, SPLIT_RECONCILE_MS);
+  timer.unref();
+  globalForSplits.carbonSplitReconciler = timer;
 }
 
 /** Boot hook: mark tasks interrupted by a restart as failed, then resume the queue. */

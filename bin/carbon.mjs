@@ -231,11 +231,11 @@ async function printJoinHints(proxy) {
   const example = hosts[0] ?? "<ip-deste-computador>";
   p.note(
     [
-      "Em Configurações → Máquinas → Adicionar máquina → Direto você gera o token.",
+      "Gere o token de join em Configurações → Máquinas → Entrar no cluster (ou `carbon join-token --rotate`).",
       "Na outra máquina (rede local):",
-      `  ${pc.cyan(`carbon join ${example}:${proxy.port} --fingerprint ${fp}`)}`,
+      `  ${pc.cyan(`carbon join ${example}:${proxy.port} --token cjt_… --fingerprint ${fp}`)}`,
       "Pela internet: libere a porta " + proxy.port + " no roteador (port forwarding) e use",
-      `  ${pc.cyan(`carbon join <ip-público>:${proxy.port} --fingerprint ${fp}`)}`,
+      `  ${pc.cyan(`carbon join <ip-público>:${proxy.port} --token cjt_… --fingerprint ${fp}`)}`,
     ].join("\n"),
     "Conectar outro computador",
   );
@@ -261,7 +261,7 @@ async function startWorkerListener(port) {
       },
       { tlsDir: path.join(dataDirectory(), "worker-tls") },
     );
-    // The panel (next start, spawned next) shows the same data in Configurações → Máquinas → Direto.
+    // The panel (next start, spawned next) puts IP, port and fingerprint in the "Entrar no cluster" commands.
     process.env.CARBON_WORKER_JOIN_PORT = String(proxy.port);
     process.env.CARBON_WORKER_JOIN_HOST = proxy.host;
     process.env.CARBON_WORKER_JOIN_TLS = proxy.tlsMode;
@@ -372,11 +372,47 @@ const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
 async function worker() {
   const args = process.argv.slice(3);
   if (args[0] === "init") return workerInit(args.slice(1));
-  process.exit(await runWorkerBundle(args, process.env));
+  process.exit(await runWorkerBundle(args));
+}
+
+/** `carbon leave`: removes this server from the cluster and forgets its saved credential. */
+async function leave() {
+  process.exit(await runWorkerBundle(["leave", ...process.argv.slice(3)]));
+}
+
+/** `carbon join-token [--rotate|--disable] [--ttl 24h] [--max-uses N]`: on the panel host. */
+async function joinToken() {
+  const { JOIN_TOKEN_USAGE, JoinTokenError, parseJoinTokenArgs, runJoinToken } = await import("./join-token.mjs");
+  let opts;
+  try {
+    opts = parseJoinTokenArgs(process.argv.slice(3));
+  } catch (error) {
+    if (!(error instanceof JoinTokenError)) throw error;
+    console.error(`${pc.red(error.message)}\n\n${JOIN_TOKEN_USAGE}`);
+    process.exit(1);
+  }
+  const file = databaseFile();
+  if (!existsSync(file)) {
+    console.error(pc.red(`banco não encontrado em ${file}: rode o setup e inicie o painel primeiro`));
+    process.exit(1);
+  }
+  const { DatabaseSync } = await import("node:sqlite");
+  const { version } = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const db = new DatabaseSync(file);
+  try {
+    const { lines } = runJoinToken(db, opts, { version });
+    console.log(lines.join("\n"));
+  } catch (error) {
+    if (!(error instanceof JoinTokenError)) throw error;
+    console.error(pc.red(error.message));
+    process.exit(1);
+  } finally {
+    db.close();
+  }
 }
 
 /** Runs dist/worker.mjs (building it first if missing) with `env`; resolves with its exit code. */
-async function runWorkerBundle(args, env) {
+async function runWorkerBundle(args, env = process.env) {
   if (!existsSync(WORKER_BUNDLE)) {
     console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
     const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
@@ -401,96 +437,46 @@ async function runWorkerBundle(args, env) {
 }
 
 /**
- * `carbon join <ip>:<porta>`: this computer becomes a worker of the panel at that address
- * (LAN or public IP, no domain). Pins the listener's self-signed certificate, then runs the worker.
+ * `carbon join <url | ip[:porta]> --token cjt_… [--fingerprint <sha256>] [--name n]`: enters the
+ * cluster (Docker Swarm style) and starts working. For an https panel whose certificate is not
+ * trusted by a CA (the listener's self-signed one, reached by IP), it pins the certificate: checks
+ * --fingerprint against what the panel presents, or shows the fingerprint and asks (first contact).
  */
 async function join() {
-  const { JOIN_USAGE, JoinError, parseJoinArgs, probeCertificate, resolvePin, workerEnv } = await import("./worker-join.mjs");
+  const { JOIN_HELP, JoinError, planJoin, probeCertificate, resolvePin } = await import("./worker-join.mjs");
   const { formatFingerprint } = await import("./worker-tls.mjs");
   const argv = process.argv.slice(3);
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(JOIN_USAGE);
+    console.log(JOIN_HELP);
     return;
   }
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  let forward;
   try {
-    const opts = parseJoinArgs(argv);
-    p.intro(pc.inverse(" join "));
-    const s = p.spinner();
-    s.start(`Conectando em ${opts.target.host}:${opts.target.port}`);
-    let probe;
-    try {
-      probe = await probeCertificate(opts.target.host, opts.target.port);
-      s.stop("Certificado recebido");
-    } catch (error) {
-      s.stop("Sem conexão");
-      throw error;
+    const plan = planJoin(argv);
+    forward = plan.forward;
+    if (plan.target) {
+      const probe = await probeCertificate(plan.target.host, plan.target.port);
+      const confirm = interactive
+        ? async (fp) => {
+            p.note(`${pc.bold(formatFingerprint(fp))}\n\nCompare com o fingerprint mostrado no painel (Configurações → Máquinas → Entrar no cluster,\nou no terminal do \`carbon start\`). Só aceite se forem iguais.`, "Primeiro contato com este painel");
+            const answer = await p.confirm({ message: "O fingerprint confere?", initialValue: false });
+            return !p.isCancel(answer) && answer === true;
+          }
+        : null;
+      const pin = await resolvePin(plan, probe, confirm);
+      if (pin && !plan.fingerprint) forward = [...forward, "--fingerprint", pin];
+      if (pin) p.log.info(`Certificado do painel fixado: ${pc.dim(formatFingerprint(pin))}`);
     }
-    const confirm = interactive
-      ? async (fp) => {
-          p.note(`${pc.bold(formatFingerprint(fp))}\n\nCompare com o fingerprint mostrado no painel (Configurações → Máquinas → Direto,\nou no terminal do \`carbon start\`). Só aceite se forem iguais.`, "Primeiro contato com este painel");
-          const answer = await p.confirm({ message: "O fingerprint confere?", initialValue: false });
-          return !p.isCancel(answer) && answer === true;
-        }
-      : null;
-    const pin = await resolvePin(opts, probe, confirm);
-    p.log.info(pin ? `Certificado fixado: ${pc.dim(formatFingerprint(pin))}` : "Certificado válido por uma CA pública: sem fixar.");
-
-    let token = opts.token ?? process.env.CARBON_WORKER_TOKEN?.trim() ?? null;
-    if (!token) {
-      if (!interactive) throw new JoinError("token ausente: defina CARBON_WORKER_TOKEN (gerado em Configurações → Máquinas)");
-      const typed = await p.password({ message: "Token da máquina (cwk_…)", validate: (v) => (/^cwk_[A-Za-z0-9_-]{20,200}$/.test(String(v ?? "").trim()) ? undefined : "deve começar com cwk_") });
-      if (p.isCancel(typed)) return p.cancel("Cancelado.");
-      token = typed.trim();
-    }
-    p.outro(`${pc.green("●")} Worker ligado em ${pc.bold(opts.target.url)} ${pc.dim("(Ctrl+C para parar)")}`);
-    process.exit(await runWorkerBundle([], workerEnv(process.env, opts, token, pin)));
   } catch (error) {
     if (!(error instanceof JoinError)) throw error;
-    console.error(`${pc.red(error.message)}`);
-    if (/endereço|opção|argumento|precisa/.test(error.message)) console.error(`\n${JOIN_USAGE}`);
-    process.exit(1);
-  }
-}
-
-/**
- * `carbon worker init`: writes the setup kit to --out. For compose/k8s the worker is created in
- * the panel database here (this runs on the panel host) and its token is printed once.
- */
-async function workerInit(argv) {
-  const { INIT_USAGE, InitError, parseInitArgs, runWorkerInit } = await import("./worker-init.mjs");
-  let opts;
-  try {
-    opts = parseInitArgs(argv);
-  } catch (error) {
-    if (!(error instanceof InitError)) throw error;
-    console.error(`${pc.red(error.message)}\n\n${INIT_USAGE}`);
-    process.exit(1);
-  }
-  const { DatabaseSync } = await import("node:sqlite");
-  const { version } = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
-  const openDb = () => {
-    const file = databaseFile();
-    if (!existsSync(file)) throw new InitError(`banco não encontrado em ${file}: rode o setup e inicie o painel primeiro`);
-    return new DatabaseSync(file);
-  };
-  try {
-    const result = await runWorkerInit(opts, { root: ROOT, version, openDb });
-    console.log(`${pc.green("✔")} kit ${opts.target} em ${result.out}: ${result.files.join(", ")}`);
-    if (result.token) {
-      console.log(`\nMáquina "${result.worker.name}" criada. Token (mostrado só agora; já está no ${opts.target === "compose" ? ".env" : "secret.yaml"}):\n${pc.bold(result.token)}\n`);
-      console.log(opts.target === "compose" ? `cd ${result.out} && docker compose up -d` : `kubectl apply -k ${result.out}`);
-    } else {
-      console.log(`Siga ${path.join(result.out, "README.md")} (experimental).`);
-    }
-  } catch (error) {
-    if (!(error instanceof InitError)) throw error;
     console.error(pc.red(error.message));
     process.exit(1);
   }
+  process.exit(await runWorkerBundle(["join", ...forward]));
 }
 
-const commands = { setup, doctor, start, "reset-password": resetPassword, worker, join };
+const commands = { setup, doctor, start, "reset-password": resetPassword, worker, join, leave, "join-token": joinToken };
 const name = process.argv[2] ?? "setup";
 if (!commands[name]) {
   console.log(`uso: carbon <${Object.keys(commands).join("|")}>`);

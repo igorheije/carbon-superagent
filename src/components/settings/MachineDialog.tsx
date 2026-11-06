@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Download, KeyRound, ShieldCheck, X } from "lucide-react";
+import { Download, KeyRound, X } from "lucide-react";
 import { Button, CopyCommand, Field } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import { version } from "../../../package.json";
-import { downloadBase64, joinCommands, nextCommands, TARGET_LABEL, type CreatedDirectMachine, type CreatedKitMachine, type CreatedMachine, type MachineExecutor, type MachineTarget } from "./machines-model";
+import { downloadBase64, nextCommands, TARGET_LABEL, type CreatedMachine, type MachineExecutor, type MachineTarget } from "./machines-model";
 
 interface MachineDialogProps {
   readonly isOpen: boolean;
@@ -15,7 +15,7 @@ interface MachineDialogProps {
   readonly onCreated: () => void;
 }
 
-const TARGETS: readonly MachineTarget[] = ["direct", "compose", "k8s"];
+const TARGETS: readonly MachineTarget[] = ["compose", "k8s"];
 const EXECUTORS: readonly MachineExecutor[] = ["claude", "codex"];
 /** Same default as the kit route: built locally from deploy/worker/Dockerfile, not published anywhere. */
 const DEFAULT_IMAGE = `carbon-worker:${version}`;
@@ -44,7 +44,7 @@ function ChipGroup<T extends string>({ label, options, isSelected, onToggle, lab
 }
 
 /** The image is never pulled from a public registry: build it (and push it when more than one machine/cluster uses it). */
-function ImageSteps({ image, target }: { readonly image: string; readonly target: CreatedKitMachine["target"] }) {
+function ImageSteps({ image, target }: { readonly image: string; readonly target: MachineTarget }) {
   const hasRegistry = image.includes("/");
   const pushed = hasRegistry ? image : `<registry>/${image}`;
   const command =
@@ -69,45 +69,14 @@ function ImageSteps({ image, target }: { readonly image: string; readonly target
   );
 }
 
-function TokenBox({ created, children }: { readonly created: CreatedMachine; readonly children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-accent/50 bg-accent-weak p-4">
-      <p className="flex items-center gap-2 text-[13px]"><KeyRound className="size-4" /> Token de <span className="font-mono">{created.worker.name}</span> (mostrado só agora):</p>
-      <div className="mt-2"><CopyCommand command={created.token} /></div>
-      <p className="mt-2 text-[12px] text-muted">{children}</p>
-    </div>
-  );
-}
-
-/** "Direto": another computer joins by IP:porta with `carbon join`; the listener certificate is pinned. */
-function CreatedDirect({ created, parallel, executors }: { readonly created: CreatedDirectMachine; readonly parallel: number; readonly executors: readonly MachineExecutor[] }) {
-  const { lan, internet } = joinCommands(created.direct, parallel, executors);
+function CreatedKit({ created, image }: { readonly created: CreatedMachine; readonly image: string }) {
   return (
     <div className="flex flex-col gap-4">
-      <TokenBox created={created}>O <span className="font-mono">carbon join</span> pede esse token ao rodar (ou use a variável CARBON_WORKER_TOKEN). Perdeu? Revogue e crie outra máquina.</TokenBox>
-      <div className="flex flex-col gap-1.5">
-        <p className="eyebrow">Na outra máquina, na mesma rede (com o Carbon instalado)</p>
-        {lan.map((command) => <CopyCommand key={command} command={command} />)}
+      <div className="rounded-xl border border-accent/50 bg-accent-weak p-4">
+        <p className="flex items-center gap-2 text-[13px]"><KeyRound className="size-4" /> Token de <span className="font-mono">{created.worker.name}</span> (mostrado só agora):</p>
+        <div className="mt-2"><CopyCommand command={created.token} /></div>
+        <p className="mt-2 text-[12px] text-muted">Ele já está no kit ({created.target === "compose" ? ".env" : "secret.yaml"}). Não versione nem compartilhe esse arquivo. Perdeu? Revogue e crie outra máquina.</p>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <p className="eyebrow">Pela internet (IP público)</p>
-        <CopyCommand command={internet} />
-        <p className="text-[12px] text-subtle">Libere a porta <span className="font-mono">{created.direct.port}</span> (TCP) no roteador/firewall apontando para este computador. Só a rota <span className="font-mono">/api/worker/*</span> fica exposta; a UI continua em 127.0.0.1.</p>
-      </div>
-      {created.direct.fingerprint && (
-        <p className="flex items-start gap-2 text-[12px] text-muted">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-          <span>O tráfego é cifrado com o certificado deste painel. O worker só conversa com quem apresentar esse fingerprint, então um endereço trocado ou interceptado não recebe o token.</span>
-        </p>
-      )}
-    </div>
-  );
-}
-
-function CreatedKit({ created, image }: { readonly created: CreatedKitMachine; readonly image: string }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <TokenBox created={created}>Ele já está no kit ({created.target === "compose" ? ".env" : "secret.yaml"}). Não versione nem compartilhe esse arquivo. Perdeu? Revogue e crie outra máquina.</TokenBox>
       <Button variant="accent" onClick={() => downloadBase64(created.kitBase64, created.filename)} className="self-start">
         <Download className="size-4" /> Baixar kit (.tar.gz)
       </Button>
@@ -121,10 +90,10 @@ function CreatedKit({ created, image }: { readonly created: CreatedKitMachine; r
   );
 }
 
-/** "Adicionar máquina": generates a pool worker + its Compose/Kubernetes kit or `carbon join` line; shows the token once. */
+/** "Adicionar máquina": generates a pool worker + its Compose/Kubernetes kit; shows the token once. */
 export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps) {
   const [name, setName] = useState("");
-  const [target, setTarget] = useState<MachineTarget>("direct");
+  const [target, setTarget] = useState<MachineTarget>("compose");
   const [replicas, setReplicas] = useState("1");
   const [parallel, setParallel] = useState("1");
   const [image, setImage] = useState("");
@@ -156,14 +125,10 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     setIsSaving(true);
     setError(null);
     try {
-      const body = { name, target, replicas: Number(replicas), parallel: Number(parallel), executors, image: image.trim() || undefined };
-      if (target === "direct") {
-        const data = await api<Omit<CreatedDirectMachine, "target">>("/api/admin/workers", { body });
-        setCreated({ ...data, target });
-      } else {
-        const data = await api<Omit<CreatedKitMachine, "target">>("/api/admin/workers", { body });
-        setCreated({ ...data, target });
-      }
+      const data = await api<Omit<CreatedMachine, "target">>("/api/admin/workers", {
+        body: { name, target, replicas: Number(replicas), parallel: Number(parallel), executors, image: image.trim() || undefined },
+      });
+      setCreated({ ...data, target });
       onCreated();
     } catch (e) {
       setError(e instanceof Error ? e.message : "falha ao criar a máquina");
@@ -180,39 +145,26 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
             <header className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Pool de workers</p>
-                <h2 className="mt-1 text-[18px] font-medium tracking-[-0.01em]">{created ? (created.target === "direct" ? "Pronto para conectar" : "Kit pronto") : "Adicionar máquina"}</h2>
+                <h2 className="mt-1 text-[18px] font-medium tracking-[-0.01em]">{created ? "Kit pronto" : "Adicionar máquina"}</h2>
               </div>
               <button type="button" onClick={close} aria-label="Fechar" className="rounded-full p-1.5 text-muted hover:text-ink"><X className="size-4" /></button>
             </header>
             {created ? (
-              created.target === "direct" ? (
-                <CreatedDirect created={created} parallel={Number(parallel)} executors={executors} />
-              ) : (
-                <CreatedKit created={created} image={image.trim() || DEFAULT_IMAGE} />
-              )
+              <CreatedKit created={created} image={image.trim() || DEFAULT_IMAGE} />
             ) : (
               <div className="flex flex-col gap-4">
                 <Field label="Nome da máquina" placeholder="servidor-sp-01" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} hint="Aparece no painel e nas tarefas; vira o nome dos recursos (minúsculas e hífens)" />
                 <ChipGroup label="Onde vai rodar" options={TARGETS} isSelected={(t) => t === target} onToggle={setTarget} labelOf={(t) => TARGET_LABEL[t]} />
-                {target === "direct" ? (
-                  <>
-                    <p className="text-[12px] text-muted">Sem servidor, domínio ou Docker: a outra máquina roda <span className="font-mono">carbon join &lt;ip&gt;:&lt;porta&gt;</span> apontando para este computador, pela rede local ou pelo IP público.</p>
-                    <Field label="Tarefas em paralelo" type="number" min={1} max={64} value={parallel} onChange={(e) => setParallel(e.target.value)} hint="Na outra máquina" />
-                  </>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Réplicas" type="number" min={1} max={100} value={replicas} onChange={(e) => setReplicas(e.target.value)} hint="Processos de worker" />
-                      <Field label="Tarefas em paralelo" type="number" min={1} max={64} value={parallel} onChange={(e) => setParallel(e.target.value)} hint="Por réplica" />
-                    </div>
-                    <Field label="Imagem (opcional)" placeholder={DEFAULT_IMAGE} value={image} onChange={(e) => setImage(e.target.value)} maxLength={255} hint="Vazio = imagem gerada localmente. Várias máquinas ou Kubernetes: use a do seu registry (ex.: ghcr.io/sua-org/carbon-worker)" />
-                  </>
-                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Réplicas" type="number" min={1} max={100} value={replicas} onChange={(e) => setReplicas(e.target.value)} hint="Processos de worker" />
+                  <Field label="Tarefas em paralelo" type="number" min={1} max={64} value={parallel} onChange={(e) => setParallel(e.target.value)} hint="Por réplica" />
+                </div>
+                <Field label="Imagem (opcional)" placeholder={DEFAULT_IMAGE} value={image} onChange={(e) => setImage(e.target.value)} maxLength={255} hint="Vazio = imagem gerada localmente. Várias máquinas ou Kubernetes: use a do seu registry (ex.: ghcr.io/sua-org/carbon-worker)" />
                 <ChipGroup label="Executores" options={EXECUTORS} isSelected={(e) => executors.includes(e)} onToggle={toggleExecutor} labelOf={(e) => EXECUTOR_LABEL[e]} />
                 {error && <p role="alert" className="font-mono text-[12px] text-danger">{error}</p>}
                 <div className="flex justify-end gap-2">
                   <Button variant="ghost" onClick={close}>Cancelar</Button>
-                  <Button onClick={() => void submit()} isLoading={isSaving} disabled={!name.trim() || executors.length === 0}>{target === "direct" ? "Gerar token" : "Gerar kit"}</Button>
+                  <Button onClick={() => void submit()} isLoading={isSaving} disabled={!name.trim() || executors.length === 0}>Gerar kit</Button>
                 </div>
               </div>
             )}

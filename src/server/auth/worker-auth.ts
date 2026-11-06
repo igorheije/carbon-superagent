@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { getDb } from "../db";
 import { HttpError } from "../http";
-import { createWorkerRecord, findWorkerByTokenHash, revokeWorkerRecord, touchLastSeen, type Worker, type WorkerKind } from "../repo/workers";
+import { createWorkerRecord, findWorkerByTokenHash, revokeWorkerRecord, touchLastSeen, type Worker, type WorkerAvailability, type WorkerKind, type WorkerOrigin } from "../repo/workers";
 import { agentcoreSessionId, agentcoreWorkerId } from "../runtimes/session";
 import { hashToken } from "./password";
 import { createLimiter, isRateLimited, MAX_TRACKED_KEYS, recordFailure } from "./rate-limit";
@@ -65,11 +65,11 @@ export function taskTokenTtlMs(maxRunMinutes: number): number {
   return (minutes + TASK_TOKEN_SLACK_MINUTES) * 60_000;
 }
 
-function newToken(prefix: string): string {
+export function newToken(prefix: string): string {
   return `${prefix}${randomBytes(TOKEN_BYTES).toString("base64url")}`;
 }
 
-function looksLike(token: string, prefix: string): boolean {
+export function looksLike(token: string, prefix: string): boolean {
   return token.startsWith(prefix) && token.length === prefix.length + TOKEN_BODY_LENGTH;
 }
 
@@ -79,12 +79,28 @@ export interface CreatedWorker {
   readonly token: string;
 }
 
-export function createWorker(name: string, kind: WorkerKind, createdBy: string): CreatedWorker {
+export interface CreateWorkerOptions {
+  readonly joinedVia?: WorkerOrigin;
+  readonly hostname?: string | null;
+  readonly availability?: WorkerAvailability;
+}
+
+export function createWorker(name: string, kind: WorkerKind, createdBy: string, options: CreateWorkerOptions = {}): CreatedWorker {
   const trimmed = name.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_NAME_LENGTH) throw new HttpError(400, `nome da máquina com 1 a ${MAX_NAME_LENGTH} caracteres`);
   const token = newToken(WORKER_TOKEN_PREFIX);
-  const worker = createWorkerRecord({ name: trimmed, kind, tokenHash: hashToken(token), createdBy });
+  const worker = createWorkerRecord({ name: trimmed, kind, tokenHash: hashToken(token), createdBy, ...options });
   return { worker, token };
+}
+
+/** Throws 429 when this client IP already failed too many worker authentications (join reuses it). */
+export function guardWorkerIp(request: Request, now = Date.now()): void {
+  guardIp(request, now);
+}
+
+/** Generic 401 for a worker route, counted against the client IP (join reuses it). */
+export function rejectWorkerAuth(request: Request, now = Date.now()): never {
+  unauthorized(request, now);
 }
 
 export function revokeWorker(id: string): boolean {
@@ -105,7 +121,7 @@ function overRequestLimit(workerId: string, now: number): boolean {
   return window.count > WORKER_REQUESTS_PER_WINDOW;
 }
 
-function bearerToken(request: Request): string | null {
+export function bearerToken(request: Request): string | null {
   const header = request.headers.get("authorization");
   if (!header) return null;
   const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
@@ -173,6 +189,9 @@ function agentcoreWorker(taskId: string, now: number): Worker {
     lastSeenAt: now,
     version: null,
     capabilities: {},
+    availability: "active",
+    joinedVia: "manual",
+    hostname: null,
   };
 }
 
