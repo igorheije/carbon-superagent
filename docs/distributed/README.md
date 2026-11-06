@@ -8,6 +8,7 @@ Por padrão o Carbon roda **uma tarefa por vez, na máquina do painel**. A execu
 
 | Documento | Para quê |
 | --- | --- |
+| [distributed-task.md](distributed-task.md) | Uma tarefa dividida em partes que rodam em vários computadores e voltam num PR só |
 | [cluster-join.md](cluster-join.md) | Colocar servidores no cluster com um comando (estilo Docker Swarm), pausar e remover nós |
 | [quickstart.md](quickstart.md) | Do zero a 2 workers rodando: na mesma máquina e em outra |
 | [docker-compose.md](docker-compose.md) | Kit Compose: arquivos, variáveis, escala, atualização, logs, revogação |

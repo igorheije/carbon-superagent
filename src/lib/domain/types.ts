@@ -202,8 +202,42 @@ export interface Ticket {
   readonly multiAgent?: boolean;
   /** Sub-agents started during the runs of this task, oldest first. */
   readonly subagents?: readonly SubagentRun[];
+  /** The person allowed splitting this task into subtasks that run on other cluster machines. */
+  readonly distributed?: boolean;
+  /** Parent of a distributed task: the subtasks it was split into and where the fan-in stands. */
+  readonly split?: SplitState;
+  /** Subtask: the task it belongs to. */
+  readonly parent?: { readonly id: string; readonly key: string; readonly title: string };
+  /** Subtask: its brief and the files it owns. */
+  readonly subtask?: SubtaskSpec;
+  /** Branch a subtask starts from (its parent's branch) instead of the project base. */
+  readonly baseBranch?: string;
   readonly startedAtTick: number | null;
   readonly endedAtTick: number | null;
+}
+
+/** One part of a distributed task, as declared by the agent with CARBON_SUBTASK. */
+export interface SubtaskSpec {
+  readonly title: string;
+  readonly files: readonly string[];
+  readonly brief: string;
+}
+
+export type MergeResult = "merged" | "conflict" | "failed" | "empty";
+
+export interface SplitChild {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string;
+  readonly files: readonly string[];
+  readonly merge?: MergeResult;
+}
+
+export interface SplitState {
+  /** running: subtasks working · integrating: parent queued to merge them · done: integration ran. */
+  readonly phase: "running" | "integrating" | "done";
+  readonly children: readonly SplitChild[];
+  readonly createdAt: string;
 }
 
 export type LessonStatus = "candidate" | "promoted" | "discarded";

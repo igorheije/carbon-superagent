@@ -92,6 +92,15 @@ function SubagentBadge({ ticket }: { ticket: Ticket }) {
   return <span className="rounded-full border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-subtle" title="multi-agentes liberado">multi</span>;
 }
 
+/** Distributed task: "⇉ N" on the parent, "↳ KEY" on each part. */
+function SplitBadge({ ticket }: { ticket: Ticket }) {
+  const chip = "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-px font-mono text-[9.5px]";
+  if (ticket.parent) return <span className={`${chip} border-line text-subtle`} title={`parte de ${ticket.parent.key}: ${ticket.parent.title}`}>↳ {ticket.parent.key}</span>;
+  if (ticket.split) return <span className={`${chip} border-accent/50 bg-accent-weak text-accent`} title={`${ticket.split.children.length} partes em outros computadores`}>⇉ {ticket.split.children.length}</span>;
+  if (ticket.distributed) return <span className={`${chip} border-line uppercase tracking-[0.08em] text-subtle`} title="pode dividir entre os computadores do cluster">cluster</span>;
+  return null;
+}
+
 function TicketRow({ ticket }: { ticket: Ticket }) {
   const { dispatch, mode } = useEngine();
   const stageProgress = ticket.stage ? (STAGES.indexOf(ticket.stage) + 1) / STAGES.length : 0;
@@ -110,6 +119,7 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
           {ticket.source}
         </span>
         <SubagentBadge ticket={ticket} />
+        <SplitBadge ticket={ticket} />
         <span className={`ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.08em] ${isRunning ? "text-accent" : "text-subtle"}`}>
           {STATUS_LABEL[ticket.status]}
         </span>
