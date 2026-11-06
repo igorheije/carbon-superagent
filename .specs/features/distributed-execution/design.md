@@ -233,7 +233,7 @@ Logs de evento do agente podem conter código e segredos do repo: mesma polític
 | SQLite com `BEGIN IMMEDIATE` para claim | sem Postgres | Suficiente para dezenas de workers [Provável] |
 | Imagem multi-arch | amd64 + arm64 | arm64 obrigatório no AgentCore [Certo]; amd64 para PCs |
 
-## Riscos e validações antes de implementar
+## Riscos e validações (não bloqueiam — viram avisos na documentação, decisão U5)
 
 1. **[Incerto]** Egress de internet no modo de rede público do AgentCore (clone/push, API do modelo) — validar com runtime de teste.
 2. **[Incerto]** Login do Claude Code em container sem browser: usar `ANTHROPIC_API_KEY` ou Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`) dentro do AgentCore — custo e termos a validar.

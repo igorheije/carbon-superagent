@@ -16,14 +16,14 @@
 
 ## Execution Plan
 
-### Fase 0 — Preparação (sequencial)
+### Fase 0 — Preparação
 ```
-T1 → T2
+T1   (T2 cancelado — U5)
 ```
 ### Fase 1 — Fundação no painel (paralelo após T2)
 ```
       ┌→ T3 (migração+repo) → T4 (scheduler) ─┐
-T2 ───┼→ T5 [P] (auth de worker) ──────────────┼→ T7 (rotas /api/worker)
+T1 ───┼→ T5 [P] (auth de worker) ──────────────┼→ T7 (rotas /api/worker)
       └→ T6 [P] (extrair executors shared) ────┘
 ```
 ### Fase 2 — Worker e transporte (paralelo após T7)
@@ -57,17 +57,13 @@ T19 → T21 (UI placement na tarefa) → T22 (permissões remotas) → T23 (perg
 **Depends on:** None · **Requirement:** — · **Tools:** Skill `tlc-spec-driven`
 **Done when:** [ ] arquivos criados com gates acima · **Tests:** none · **Gate:** —
 
-### T2: Validar premissas incertas do AgentCore (spike, sem código de produto)
-**What:** Com conta AWS de teste em sa-east-1, subir o sample `claude-sdk` do `awslabs/agentcore-samples` e confirmar: egress para GitHub/API do modelo, `HealthyBusy`, `StopRuntimeSession`, formato do stream no SDK JS. Registrar em `design.md` (trocar [Incerto] por [Certo] ou ajustar).
-**Where:** `.specs/features/distributed-execution/design.md` (seção Riscos)
-**Depends on:** None (paralelo a T1) · **Requirement:** AGC-01, AGC-02
-**Done when:** [ ] 4 riscos de "Riscos e validações" respondidos com evidência · **Tests:** none · **Gate:** —
-**Nota:** precisa da sua conta/credenciais AWS — eu não executo nada na AWS sem sua autorização explícita.
+### T2: ~~Spike na AWS~~ — CANCELADO (decisão U5)
+Nada é implantado na AWS. As premissas [Incerto] do design viram **avisos na documentação** (T24) em vez de bloqueios; o código do AgentCore é testado com SDK mockado e entrypoint rodando localmente.
 
 ### T3: Migração + repositório de leases e workers
 **What:** Migração (colunas `runtime`, `lease_*`, `cancel_requested`; tabelas `workers`, `task_tokens`) e funções de repo.
 **Where:** `src/server/db.ts`, `src/server/repo/workers.ts` (novo), `src/server/repo/tasks.ts`, `src/lib/domain/types.ts`
-**Depends on:** T2 (só para fixar campos AgentCore) · **Reuses:** padrão de migração `user_version` · **Requirement:** WRK-01
+**Depends on:** T1 · **Reuses:** padrão de migração `user_version` · **Requirement:** WRK-01
 **Done when:** [ ] migração aplica em banco existente sem perder dados · [ ] `recoverInterruptedTasks` só afeta `runtime='local'` · [ ] `db.test.ts` + `workers.test.ts` passam
 **Tests:** unit · **Gate:** quick
 
@@ -88,7 +84,7 @@ T19 → T21 (UI placement na tarefa) → T22 (permissões remotas) → T23 (perg
 ### T6: Extrair executores para módulo compartilhado [P]
 **What:** Mover `spawn.ts`, parsers, `events.ts`, `protocol.ts` para `src/shared/executors/` sem `server-only`; manter re-exports em `src/server/executors/`.
 **Where:** `src/shared/executors/*`, `src/server/executors/*`
-**Depends on:** T2 · **Requirement:** WRK-06 (pré-requisito)
+**Depends on:** T1 · **Requirement:** WRK-06 (pré-requisito)
 **Done when:** [ ] testes existentes de spawn/parsers passam sem alteração · [ ] `npm run build` verde
 **Tests:** unit (existentes) · **Gate:** build
 
@@ -209,7 +205,7 @@ T19 → T21 (UI placement na tarefa) → T22 (permissões remotas) → T23 (perg
 **Done when:** [ ] teste: pergunta → resposta → nova execução recebe decisões · **Tests:** unit · **Gate:** full
 
 ### T24: E2E, docs e revisão de segurança
-**What:** Roteiro E2E (painel + 2 workers Compose + 1 tarefa AgentCore), README (seções Workers e AgentCore, atualizar "Segurança" e "Limites"), revisão com agente `security-reviewer`.
+**What:** Roteiro E2E (painel + 2 workers Compose; AgentCore via entrypoint local + SDK mockado), README (seções Workers e AgentCore — esta marcada **experimental, não validada em AWS real**, listando as premissas incertas do design como avisos), atualizar "Segurança" e "Limites", revisão com agente `security-reviewer`.
 **Where:** `README.md`, `docs/`, `.specs/features/distributed-execution/`
 **Depends on:** T23, T16, T20 · **Requirement:** todos (verificação)
 **Done when:** [ ] Success Criteria do spec checados com evidência · [ ] nenhum achado CRITICAL/HIGH aberto
@@ -232,10 +228,10 @@ T19 → T21 (UI placement na tarefa) → T22 (permissões remotas) → T23 (perg
 ### Check 2 — Diagrama × Depends on
 | Task | Depends on (definição) | Diagrama | OK |
 |---|---|---|---|
-| T3 | T2 | T2→T3 | ✅ |
+| T3 | T1 | T1→T3 | ✅ |
 | T4 | T3 | T3→T4 | ✅ |
 | T5 | T3 | (fase 1, após migração) | ✅ |
-| T6 | T2 | T2→T6 | ✅ |
+| T6 | T1 | T1→T6 | ✅ |
 | T7 | T4,T5,T6 | T4/T5/T6→T7 | ✅ |
 | T8,T9,T10 | T7 | T7→T8/T9/T10 | ✅ |
 | T11 | T8,T9,T10 | →T11 | ✅ |
@@ -267,7 +263,7 @@ Nota: no diagrama da fase 1, T5 sai de T2 por legibilidade; a dependência real 
 | Tasks | Executor | Skills/MCP |
 |---|---|---|
 | T1 | eu (coordenador) | `tlc-spec-driven` |
-| T2 | você + eu (credenciais AWS suas) | WebFetch/docs AWS |
+| T2 | cancelado (U5) | — |
 | T3–T7 | workers Orca (`claude`), fase 1: T5 e T6 em paralelo | `tdd-guide`, `database-reviewer` em T3 |
 | T8–T10 | 3 workers Orca em paralelo | — |
 | T11–T15 | worker Orca sequencial; T13/T14 em paralelo | `security-reviewer` em T5/T14 |

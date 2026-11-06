@@ -16,11 +16,12 @@ Hoje o Carbon executa **uma tarefa por vez, na mesma máquina do painel**: o run
 | U2 | Setup de workers em **Docker Compose e Kubernetes**. |
 | U3 | Código chega no worker por **git remoto quando houver**, e por **bundle via painel** quando não houver (ex.: repo sem remoto/sem commits). |
 | U4 | **Worker puxa** (HTTPS de saída para o painel). O painel precisa de URL alcançável (pública ou túnel/VPN). |
+| U5 | **AgentCore fica pronto, não implantado.** Nada é criado na AWS neste trabalho: o código, os testes (SDK mockado), o kit de deploy e a documentação ficam prontos para quem quiser usar. Marcado como "experimental — não validado em conta AWS real". |
 
 ## Goals
 
 - [ ] Rodar N tarefas em paralelo em M máquinas, com o painel mostrando todas ao vivo, sem mudar a experiência de quem cria/acompanha tarefas.
-- [ ] Rodar uma tarefa no AgentCore Runtime (sa-east-1) do início à entrega (branch no repo central), com logs no painel.
+- [ ] Deixar o runtime AgentCore implementado e testado com SDK mockado, com kit de deploy e documentação para quem quiser rodar na própria conta AWS (sem implantar nada neste trabalho).
 - [ ] Gerar, pelo painel ou CLI, arquivos de setup prontos (Compose e Kubernetes) para subir workers em outra máquina em < 10 min.
 - [ ] Zero regressão no modo local atual (padrão continua "local", 1 por vez).
 
@@ -90,7 +91,7 @@ Hoje o Carbon executa **uma tarefa por vez, na mesma máquina do painel**: o run
 5. WHEN as credenciais AWS ou o ARN não estão configurados THEN "AgentCore" SHALL aparecer desabilitado no seletor com o motivo.
 6. O painel SHALL limitar o número de sessões AgentCore simultâneas (padrão 3) para controlar custo.
 
-**Independent Test:** Com runtime implantado em sa-east-1, criar tarefa AgentCore num repo com remoto → ver log ao vivo → branch `agent/*` no repo → abrir PR.
+**Independent Test:** Teste de integração com o cliente do SDK mockado: dispatch chama Invoke com sessão ≥ 33 caracteres e token de uso único; o entrypoint do container (rodando localmente, sem AWS) executa a tarefa pelo protocolo de worker e a tarefa chega a `done` com branch importado. Validação em conta AWS real fica para quem implantar.
 
 ### P2: Gerador de setup (Compose + Kubernetes + AgentCore)
 
@@ -167,7 +168,7 @@ Endpoint de métrica (`/api/worker/metrics`: tarefas na fila por runtime) para K
 ## Success Criteria
 
 - [ ] 3 tarefas pool rodando em paralelo em 2 máquinas, todas visíveis ao vivo no painel.
-- [ ] Tarefa AgentCore em sa-east-1 do clique à branch no repo central, sem passo manual.
+- [ ] Fluxo AgentCore completo coberto por teste com SDK mockado + entrypoint local; README explica como implantar e quais pontos não foram validados em AWS real.
 - [ ] Máquina nova operando como worker em < 10 min a partir do zip gerado.
 - [ ] `npm run check` verde; nenhum teste existente alterado para passar (exceto onde o contrato mudou de propósito).
 - [ ] Com `runtime=local` (padrão), comportamento idêntico ao atual.
