@@ -266,10 +266,15 @@ function flag(name) {
  * Local recovery: whoever can run this on the machine already owns the database file,
  * so no e-mail round-trip is needed. Sessions of the account are revoked.
  */
+/** Panel database file, same lookup as the server (CARBON_DATA_DIR, legacy .leonidas-data). */
+function databaseFile() {
+  const dataDir = path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
+  return [path.join(dataDir, "carbon.db"), path.join(dataDir, "leonidas.db")].find((f) => existsSync(f)) ?? path.join(dataDir, "carbon.db");
+}
+
 async function resetPassword() {
   const { DatabaseSync } = await import("node:sqlite");
-  const dataDir = path.resolve(ROOT, readEnv().CARBON_DATA_DIR ?? process.env.CARBON_DATA_DIR ?? (existsSync(path.join(ROOT, ".leonidas-data")) ? "./.leonidas-data" : "./.carbon-data"));
-  const file = [path.join(dataDir, "carbon.db"), path.join(dataDir, "leonidas.db")].find((f) => existsSync(f)) ?? path.join(dataDir, "carbon.db");
+  const file = databaseFile();
   if (!existsSync(file)) {
     p.cancel(`Banco não encontrado em ${file}. Rode o setup primeiro.`);
     process.exit(1);
@@ -324,6 +329,7 @@ const WORKER_BUNDLE = path.join(ROOT, "dist", "worker.mjs");
  */
 async function worker() {
   const args = process.argv.slice(3);
+  if (args[0] === "init") return workerInit(args.slice(1));
   if (!existsSync(WORKER_BUNDLE)) {
     console.error(pc.yellow("dist/worker.mjs não encontrado: gerando agora com `npm run build:worker` (precisa das devDependencies)…"));
     const built = spawnSync(process.execPath, [path.join(ROOT, "bin", "build-worker.mjs")], { cwd: ROOT, stdio: "inherit" });
@@ -346,6 +352,43 @@ async function worker() {
     child.on("exit", (exitCode, signal) => resolve(exitCode ?? (signal ? 1 : 0)));
   });
   process.exit(code);
+}
+
+/**
+ * `carbon worker init`: writes the setup kit to --out. For compose/k8s the worker is created in
+ * the panel database here (this runs on the panel host) and its token is printed once.
+ */
+async function workerInit(argv) {
+  const { INIT_USAGE, InitError, parseInitArgs, runWorkerInit } = await import("./worker-init.mjs");
+  let opts;
+  try {
+    opts = parseInitArgs(argv);
+  } catch (error) {
+    if (!(error instanceof InitError)) throw error;
+    console.error(`${pc.red(error.message)}\n\n${INIT_USAGE}`);
+    process.exit(1);
+  }
+  const { DatabaseSync } = await import("node:sqlite");
+  const { version } = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const openDb = () => {
+    const file = databaseFile();
+    if (!existsSync(file)) throw new InitError(`banco não encontrado em ${file}: rode o setup e inicie o painel primeiro`);
+    return new DatabaseSync(file);
+  };
+  try {
+    const result = await runWorkerInit(opts, { root: ROOT, version, openDb });
+    console.log(`${pc.green("✔")} kit ${opts.target} em ${result.out}: ${result.files.join(", ")}`);
+    if (result.token) {
+      console.log(`\nMáquina "${result.worker.name}" criada. Token (mostrado só agora; já está no ${opts.target === "compose" ? ".env" : "secret.yaml"}):\n${pc.bold(result.token)}\n`);
+      console.log(opts.target === "compose" ? `cd ${result.out} && docker compose up -d` : `kubectl apply -k ${result.out}`);
+    } else {
+      console.log(`Siga ${path.join(result.out, "README.md")} (experimental; nada é executado na AWS).`);
+    }
+  } catch (error) {
+    if (!(error instanceof InitError)) throw error;
+    console.error(pc.red(error.message));
+    process.exit(1);
+  }
 }
 
 const commands = { setup, doctor, start, "reset-password": resetPassword, worker };
