@@ -205,6 +205,42 @@ Em todos os perfis `git push`, `git commit` e `rm -rf` ficam bloqueados para o a
 
 **Isolamento:** por padrão as execuções do Claude ignoram suas configurações pessoais, hooks e MCPs (`--setting-sources project,local --strict-mcp-config`); as do projeto continuam valendo. Isso garante que o perfil acima seja o que vale e reduziu o contexto de uma tarefa de teste de ~92k para ~30k tokens. Dá para desligar em *Configurações → Execução*.
 
+## Expor o painel para workers
+
+Workers remotos (`carbon worker` em outra máquina) só precisam alcançar `/api/worker/*`. Para isso existe um listener separado; a UI e o resto da API continuam presos em `127.0.0.1`.
+
+```bash
+# .env.local (ou variável de ambiente)
+CARBON_WORKER_LISTEN=127.0.0.1:3418   # 0.0.0.0:3418 só dentro de LAN/VPN
+# opcional: TLS direto no listener
+CARBON_WORKER_TLS_CERT=/caminho/cert.pem
+CARBON_WORKER_TLS_KEY=/caminho/key.pem
+```
+
+Com isso, `npm start` sobe o listener junto com o painel e para junto com ele. O listener:
+
+- encaminha **apenas** caminhos `/api/worker/...` para o painel local; qualquer outro caminho recebe `404` sem corpo;
+- recusa `..`, `.` e barras duplas (também codificados, como `%2e%2e` e `%2f`), forma absoluta (`GET http://...`), `CONNECT` e upgrades;
+- remove cabeçalhos hop-by-hop, define `X-Forwarded-For`/`X-Forwarded-Proto` e transmite os corpos em streaming (teto absoluto de 1 GB; o limite real do bundle é `workers.maxBundleMb` no painel);
+- timeouts: 30 s para receber os cabeçalhos e 120 s de inatividade (cobre o long-poll de claim);
+- registra uma linha por requisição, sem `Authorization` e sem query string.
+
+Para rodar só o listener (debug): `CARBON_WORKER_LISTEN=127.0.0.1:3418 CARBON_PORT=3417 node bin/worker-proxy.mjs`.
+
+**Como expor, em ordem de preferência:**
+
+1. **Tailscale** (ou outra VPN): deixe `CARBON_WORKER_LISTEN=<ip-do-tailscale>:3418` e use `http://<host>.<tailnet>.ts.net:3418` nos workers. O tráfego já vai cifrado pela VPN. Para HTTPS com certificado válido, `tailscale serve --https=443 http://127.0.0.1:3418`.
+2. **Cloudflare Tunnel** apontando **só para a porta do listener**, nunca para a do painel (3417):
+   ```bash
+   cloudflared tunnel --url http://127.0.0.1:3418
+   ```
+   Num túnel nomeado, o `ingress` deve ter um único serviço `http://127.0.0.1:3418` e terminar em `http_status:404`.
+3. Reverse proxy próprio com TLS (Caddy, nginx) encaminhando para `127.0.0.1:3418`.
+
+**Nunca** exponha o listener por HTTP puro fora de LAN/VPN: o token do worker trafega no cabeçalho `Authorization`. Sem TLS, `carbon start` mostra um aviso.
+
+Depois de expor, defina `panelPublicUrl` em *Configurações* com a URL pública (ex. `https://carbon-workers.exemplo.com.br`). É ela que entra nos comandos de instalação dos workers. Revogue tokens de workers que você não usa mais.
+
 ## Segurança
 
 - O painel escuta só em `127.0.0.1`. **Não exponha a porta na internet sem necessidade**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).
