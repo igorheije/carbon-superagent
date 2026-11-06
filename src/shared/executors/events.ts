@@ -6,7 +6,16 @@ export type ExecutorEvent =
   | { readonly type: "session"; readonly sessionId: string; readonly model: string | null }
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "thinking"; readonly text: string }
-  | { readonly type: "tool"; readonly name: string; readonly summary: string; readonly path: string | null }
+  /** `agentId` is set when a sub-agent (not the main agent) used the tool: the id of the call that started it. */
+  | { readonly type: "tool"; readonly name: string; readonly summary: string; readonly path: string | null; readonly agentId?: string }
+  /** The main agent delegated work to a sub-agent (Claude Code Agent/Task tool). */
+  | { readonly type: "subagent_start"; readonly id: string; readonly description: string; readonly agentType: string; readonly isBackground: boolean }
+  /** Progress reported by Claude Code for a running sub-agent (system task_progress). */
+  | { readonly type: "subagent_progress"; readonly id: string; readonly toolCalls: number; readonly lastTool: string }
+  /** A sub-agent finished (system task_notification). */
+  | { readonly type: "subagent_end"; readonly id: string; readonly isError: boolean }
+  /** A main-agent tool call returned synchronously; ends a sub-agent on CLIs without task events. */
+  | { readonly type: "tool_done"; readonly toolUseId: string; readonly isError: boolean }
   | { readonly type: "plan"; readonly items: readonly { readonly text: string; readonly done: boolean }[] }
   | { readonly type: "usage"; readonly tokens: number; readonly costUsd: number | null }
   | { readonly type: "result"; readonly isError: boolean; readonly text: string }

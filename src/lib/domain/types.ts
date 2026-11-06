@@ -141,6 +141,23 @@ export interface AgentQuestion {
   readonly answeredAt: string | null;
 }
 
+export type SubagentStatus = "running" | "done" | "failed";
+
+/** A sub-agent the main agent delegated part of the task to (Claude Code Agent tool). */
+export interface SubagentRun {
+  readonly id: string;
+  /** Short description the main agent gave the delegation. */
+  readonly label: string;
+  /** Sub-agent type (e.g. "general-purpose", "Explore"). */
+  readonly agentType: string;
+  readonly status: SubagentStatus;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly toolCalls: number;
+  /** Last tool the sub-agent used, for the live panel. */
+  readonly lastActivity: string | null;
+}
+
 export interface Ticket {
   readonly id: string;
   readonly key: string;
@@ -181,6 +198,10 @@ export interface Ticket {
   readonly sessionId?: string | null;
   /** Set when a human answered the pending questions: the next run continues instead of starting over. */
   readonly resume?: boolean;
+  /** The person allowed the agent to split the task across parallel sub-agents (Claude Code only). */
+  readonly multiAgent?: boolean;
+  /** Sub-agents started during the runs of this task, oldest first. */
+  readonly subagents?: readonly SubagentRun[];
   readonly startedAtTick: number | null;
   readonly endedAtTick: number | null;
 }

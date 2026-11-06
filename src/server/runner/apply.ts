@@ -1,7 +1,8 @@
-import { STAGES, type StageId, type Ticket } from "@/lib/domain/types";
+import { STAGES, type StageId, type SubagentRun, type Ticket } from "@/lib/domain/types";
 import { clipSummary, type ExecutorEvent } from "../executors/events";
 import { parseMarkers, stripMarkers, type Marker } from "../executors/protocol";
 import { addOption, addQuestion } from "./questions";
+import { closeRunningSubagents, endSubagent, finishSubagent, recordSubagentActivity, recordSubagentProgress, startSubagent } from "./subagents";
 import { appendLog } from "./ticket-log";
 
 export { appendLog, MAX_LOGS } from "./ticket-log";
@@ -83,6 +84,12 @@ function addHit(ticket: Ticket, path: string): Ticket {
   return { ...ticket, hits: [...ticket.hits, hit] };
 }
 
+function logSubagentEnd({ ticket, finished }: { ticket: Ticket; finished: SubagentRun | null }): Ticket {
+  if (!finished) return ticket;
+  const isFailed = finished.status === "failed";
+  return appendLog(ticket, currentStage(ticket), isFailed ? "warn" : "ok", `sub-agente ${isFailed ? "falhou" : "concluiu"}: ${finished.label}`);
+}
+
 /** Pure reducer: folds one normalized executor event into the ticket and run context. */
 export function applyExecutorEvent(ticket: Ticket, ctx: RunContext, event: ExecutorEvent): { ticket: Ticket; ctx: RunContext } {
   switch (event.type) {
@@ -95,7 +102,22 @@ export function applyExecutorEvent(ticket: Ticket, ctx: RunContext, event: Execu
       return applyText(ticket, ctx, event.text);
     case "thinking":
       return { ticket: appendLog(ticket, currentStage(ticket), "think", clipSummary(event.text)), ctx };
+    case "subagent_start": {
+      const started = startSubagent(ticket, event, new Date().toISOString());
+      const label = `sub-agente${event.agentType !== "general-purpose" ? ` ${event.agentType}` : ""}: ${event.description}`;
+      return { ticket: appendLog(started, currentStage(started), "tool", `⟁ ${label}`), ctx };
+    }
+    case "subagent_progress":
+      return { ticket: recordSubagentProgress(ticket, event.id, event.toolCalls, event.lastTool), ctx };
+    case "subagent_end":
+      return { ticket: logSubagentEnd(endSubagent(ticket, event.id, event.isError, new Date().toISOString())), ctx };
+    case "tool_done":
+      return { ticket: logSubagentEnd(finishSubagent(ticket, event.toolUseId, event.isError, new Date().toISOString())), ctx };
     case "tool": {
+      if (event.agentId) {
+        const active = recordSubagentActivity(ticket, event.agentId, `${event.name} ${event.summary}`.trim());
+        return { ticket: appendLog(active, currentStage(active), "tool", `  ↳ ${event.name} ${event.summary}`.trim()), ctx };
+      }
       const logged = appendLog(ticket, currentStage(ticket), "tool", `${event.name} ${event.summary}`.trim());
       const withHit = event.path && RESEARCH_TOOLS.has(event.name) ? addHit(logged, event.path) : logged;
       return { ticket: withHit, ctx };
@@ -108,11 +130,13 @@ export function applyExecutorEvent(ticket: Ticket, ctx: RunContext, event: Execu
         ticket: { ...ticket, tokens: ticket.tokens + event.tokens, costUsd: (ticket.costUsd ?? 0) + (event.costUsd ?? 0) },
         ctx: { ...ctx, costUsd: ctx.costUsd + (event.costUsd ?? 0) },
       };
-    case "result":
+    case "result": {
+      const closed = closeRunningSubagents(ticket, event.isError ? "failed" : "done", new Date().toISOString());
       return {
-        ticket: event.isError ? appendLog(ticket, currentStage(ticket), "warn", `agente terminou com erro: ${clipSummary(event.text)}`) : ticket,
+        ticket: event.isError ? appendLog(closed, currentStage(closed), "warn", `agente terminou com erro: ${clipSummary(event.text)}`) : closed,
         ctx: { ...ctx, isError: ctx.isError || event.isError },
       };
+    }
     case "error":
       return { ticket: appendLog(ticket, currentStage(ticket), "warn", clipSummary(event.message)), ctx: { ...ctx, isError: true } };
     case "permission_request": {
