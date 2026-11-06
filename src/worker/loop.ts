@@ -22,6 +22,7 @@ export interface WorkerLoopOptions {
   readonly parallel: number;
   readonly workDir: string;
   readonly gitToken?: string;
+  readonly gitHosts?: readonly string[];
   readonly graceSeconds: number;
   readonly signal: AbortSignal;
   readonly workerVersion?: string;
@@ -123,7 +124,7 @@ export async function runWorkerLoop(options: WorkerLoopOptions): Promise<number>
       }
       if (!task) continue;
       log(`slot ${index}: tarefa ${task.key} recebida`);
-      const run = runTask(task, { client, workDir: options.workDir, gitToken: options.gitToken, signal: cancelTasks.signal, log }).catch((error: unknown): RunOutcome => {
+      const run = runTask(task, { client, workDir: options.workDir, gitToken: options.gitToken, gitHosts: options.gitHosts, signal: cancelTasks.signal, log }).catch((error: unknown): RunOutcome => {
         log(`slot ${index}: erro inesperado em ${task.key}: ${describe(error)}`);
         return "failed";
       });

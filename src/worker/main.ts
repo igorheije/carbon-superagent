@@ -1,6 +1,6 @@
 import { version } from "../../package.json";
 import { PROTOCOL_VERSION } from "../shared/worker-protocol";
-import { readWorkerConfig } from "./config";
+import { readWorkerConfig, scrubSecretEnv } from "./config";
 import { EXIT_FATAL, runWorkerLoop } from "./loop";
 
 /**
@@ -20,6 +20,8 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
   const parsed = readWorkerConfig(process.env);
+  // Read once, then gone: nothing spawned later (git, the agent, its tools) inherits the tokens.
+  scrubSecretEnv(process.env);
   if (!parsed.ok) {
     for (const error of parsed.errors) log(`configuração inválida: ${error}`);
     return EXIT_FATAL;
@@ -39,6 +41,7 @@ async function main(argv: readonly string[]): Promise<number> {
   process.on("SIGTERM", onSignal);
   process.on("SIGINT", onSignal);
 
+  if (config.gitToken && config.gitHosts.length === 0) log("CARBON_GIT_TOKEN definido sem CARBON_GIT_HOSTS: o token não será enviado a nenhum remoto");
   log(`carbon-worker ${WORKER_VERSION} · painel ${config.panelUrl} · pasta ${config.workDir}`);
   return runWorkerLoop({
     panelUrl: config.panelUrl,
@@ -47,6 +50,7 @@ async function main(argv: readonly string[]): Promise<number> {
     parallel: config.parallel,
     workDir: config.workDir,
     gitToken: config.gitToken,
+    gitHosts: config.gitHosts,
     graceSeconds: config.graceSeconds,
     signal: controller.signal,
     workerVersion: WORKER_VERSION,

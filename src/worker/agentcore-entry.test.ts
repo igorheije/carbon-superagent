@@ -45,6 +45,7 @@ const running: AgentCoreServer[] = [];
 async function start(overrides: Partial<AgentCoreDeps> = {}) {
   const app = createAgentCoreServer({
     workDir: "/tmp/carbon-agentcore-test",
+    allowedPanelOrigin: "https://painel.exemplo.test",
     claim: async (inv) => claimed(inv.taskId),
     createClient: () => fakeClient,
     ...overrides,
@@ -177,7 +178,7 @@ describe("agentcore entry: /invocations and /ping", () => {
     if (res) expect(res.status).toBe(413);
   });
 
-  it("refuses invocations for another panel origin when CARBON_PANEL_URL pins one", async () => {
+  it("refuses invocations for another panel origin (CARBON_PANEL_URL is always pinned)", async () => {
     const run = controllableRun();
     const { app, invoke } = await start({ runTask: run.runTask, allowedPanelOrigin: "https://painel.exemplo.test" });
 
@@ -292,13 +293,41 @@ describe("claimAgentCoreTask", () => {
 });
 
 describe("readEntryConfig", () => {
-  it("defaults to port 8080 with no pinned panel", () => {
+  it("refuses to start without CARBON_PANEL_URL", () => {
     const parsed = readEntryConfig({});
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) {
-      expect(parsed.config.port).toBe(8080);
-      expect(parsed.config.allowedPanelOrigin).toBeUndefined();
-    }
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.errors.join(" ")).toMatch(/CARBON_PANEL_URL é obrigatório/);
+  });
+
+  it("defaults to port 8080", () => {
+    const parsed = readEntryConfig({ CARBON_PANEL_URL: "https://painel.exemplo.test" });
+    expect(parsed.ok && parsed.config.port).toBe(8080);
+  });
+
+  it.each([
+    ["http://painel.exemplo.test", /https/],
+    ["https://10.0.0.5", /privado/],
+    ["https://169.254.169.254", /privado/],
+    ["https://[::ffff:192.168.0.1]", /privado/],
+    ["https://[fd00::1]", /privado/],
+  ])("rejects CARBON_PANEL_URL=%s (SSRF / plain http)", (url, message) => {
+    const parsed = readEntryConfig({ CARBON_PANEL_URL: url });
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.errors.join(" ")).toMatch(message);
+  });
+
+  it("accepts loopback http for local development", () => {
+    expect(readEntryConfig({ CARBON_PANEL_URL: "http://127.0.0.1:3000" }).ok).toBe(true);
+    expect(readEntryConfig({ CARBON_PANEL_URL: "http://localhost:3000" }).ok).toBe(true);
+  });
+
+  it("reads CARBON_GIT_HOSTS and removes the tokens from the environment at startup (scrubSecretEnv)", async () => {
+    const parsed = readEntryConfig({ CARBON_PANEL_URL: "https://p.test", CARBON_GIT_HOSTS: "GitHub.com, gitlab.example.com:8443" });
+    expect(parsed.ok && parsed.config.gitHosts).toEqual(["github.com", "gitlab.example.com:8443"]);
+    const { scrubSecretEnv } = await import("./config");
+    const env: NodeJS.ProcessEnv = { CARBON_GIT_TOKEN: "g", CARBON_WORKER_TOKEN: "cwk_x", PATH: "/bin" } as NodeJS.ProcessEnv;
+    scrubSecretEnv(env);
+    expect(env).toEqual({ PATH: "/bin" });
   });
 
   it("reads PORT, grace and pins the panel origin", () => {
