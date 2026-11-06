@@ -92,7 +92,7 @@ export function SplitPanel() {
     <Panel
       eyebrow={`Tarefa distribuída · ${parent.key}`}
       title={PHASE_TEXT[split.phase]}
-      aside={<span className="font-mono text-[11px] text-muted">{finished}/{children.length} partes · {machines} computador{machines === 1 ? "" : "es"}</span>}
+      aside={<span className="font-mono text-[11px] text-muted">{finished}/{children.length} partes · {machines === 0 ? "neste computador" : `${machines} computador${machines === 1 ? "" : "es"}`}</span>}
     >
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-live="polite">
         <AnimatePresence initial={false}>
