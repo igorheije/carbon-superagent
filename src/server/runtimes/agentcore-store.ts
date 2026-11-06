@@ -23,9 +23,16 @@ interface Row {
 const logged = (snapshot: Ticket, status: Ticket["status"], level: LogLevel, text: string): Ticket =>
   appendLog({ ...snapshot, status }, snapshot.stage ?? "intake", level, text);
 
-/** Running AgentCore tasks: each one holds (or is about to hold) a session. */
-export function countActiveSessions(): number {
-  const row = getDb().prepare("SELECT COUNT(*) AS n FROM tasks WHERE runtime = 'agentcore' AND status = 'running'").get() as { n: number };
+/**
+ * A session is live while its task runs, or while it waits for a permission answer under a live
+ * lease (the container is still up, blocked on the long-poll). A task parked on a question has
+ * already reported its result and released the lease, so its session is gone.
+ */
+const LIVE_SESSION_SQL = `runtime = 'agentcore' AND (status = 'running' OR (status = 'waiting' AND lease_worker IS NOT NULL AND lease_expires_at >= :now))`;
+
+/** AgentCore tasks holding (or about to hold) a session: what maxConcurrent caps. */
+export function countActiveSessions(now = Date.now()): number {
+  const row = getDb().prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${LIVE_SESSION_SQL}`).get({ now }) as { n: number };
   return row.n;
 }
 
@@ -35,8 +42,9 @@ export function queuedAgentCoreTasks(limit: number): readonly string[] {
   return rows.map((r) => r.id);
 }
 
-export function runningAgentCoreTasks(): readonly string[] {
-  const rows = getDb().prepare("SELECT id FROM tasks WHERE runtime = 'agentcore' AND status = 'running'").all() as unknown as { id: string }[];
+/** Tasks whose session may be alive (seeds the dispatcher after a panel restart). */
+export function runningAgentCoreTasks(now = Date.now()): readonly string[] {
+  const rows = getDb().prepare(`SELECT id FROM tasks WHERE ${LIVE_SESSION_SQL}`).all({ now }) as unknown as { id: string }[];
   return rows.map((r) => r.id);
 }
 
