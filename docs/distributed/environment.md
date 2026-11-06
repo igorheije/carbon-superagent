@@ -8,14 +8,14 @@ Lidas por `dist/worker.mjs` (Docker, Kubernetes ou `node bin/carbon.mjs worker`)
 
 | Variável | Obrigatória | Padrão | Regra / efeito |
 | --- | --- | --- | --- |
-| `CARBON_PANEL_URL` | sim | — | URL do painel. `https://` obrigatório fora de loopback; sem usuário/senha na URL |
+| `CARBON_PANEL_URL` | sim | — | URL do painel. `https://` obrigatório fora de loopback (`127.x`, `localhost`, `*.localhost`, `::1`); sem usuário/senha na URL |
 | `CARBON_WORKER_TOKEN` | sim | — | Token da máquina, `cwk_…`. Removido do ambiente antes de iniciar o agente |
 | `CARBON_WORKER_PARALLEL` | não | `1` | Tarefas simultâneas por processo, 1–64 |
 | `CARBON_WORKER_EXECUTORS` | não | detectado (`claude --version`, `codex --version`) | `claude`, `codex` ou `claude,codex` |
 | `CARBON_WORKER_DIR` | não | `<tmp do SO>/carbon-worker` (imagem: `/home/carbon/work`) | Pasta dos clones e bundles |
 | `CARBON_WORKER_GRACE_SECONDS` | não | `120` (kit K8s: `540`) | Espera pelas tarefas no SIGTERM, 0–3600 |
 | `CARBON_GIT_TOKEN` | não | — | Token para clone/push via `https://`. Removido do ambiente do agente |
-| `CARBON_GIT_HOSTS` | não | nenhum | Hosts (vírgula) para os quais `CARBON_GIT_TOKEN` pode ser enviado |
+| `CARBON_GIT_HOSTS` | não | vazio (token nunca enviado) | Hosts (vírgula, opcional `:porta`) para os quais `CARBON_GIT_TOKEN` pode ser enviado, só via `https://` |
 | `ANTHROPIC_API_KEY` ou `CLAUDE_CODE_OAUTH_TOKEN` | para Claude Code | — | Login do Claude Code sem navegador (`claude setup-token` gera o OAuth token) |
 | `OPENAI_API_KEY` | para Codex | — | Login do Codex |
 | `NODE_EXTRA_CA_CERTS` | não | — | Variável do Node: CA extra para confiar num certificado próprio do listener |
@@ -26,7 +26,7 @@ Lidas por `dist/worker.mjs` (Docker, Kubernetes ou `node bin/carbon.mjs worker`)
 
 | Variável | Obrigatória | Padrão | Regra / efeito |
 | --- | --- | --- | --- |
-| `CARBON_PANEL_URL` | sim | — | `https://` do painel; invocações com outro `panelUrl` recebem `403` |
+| `CARBON_PANEL_URL` | sim | — | `https://` do painel, sem IP privado/link-local literal; invocações com outro `panelUrl` recebem `403` |
 | `PORT` | não | `8080` | Porta HTTP (1–65535); o AgentCore exige 8080 |
 | `CARBON_WORKER_DIR` | não | `<tmp>/carbon-agentcore` (imagem do kit: `/home/node/work`) | Pasta dos clones |
 | `CARBON_WORKER_GRACE_SECONDS` | não | `120` (imagem do kit: `60`) | Espera pela tarefa no SIGTERM, 0–3600 |
@@ -60,6 +60,8 @@ O token de tarefa vem no payload da invocação, não em variável de ambiente.
 | `CARBON_WORKER_TLS_CERT` | não | — | Caminho do certificado PEM; exige `CARBON_WORKER_TLS_KEY` |
 | `CARBON_WORKER_TLS_KEY` | não | — | Caminho da chave PEM; exige `CARBON_WORKER_TLS_CERT` |
 | `CARBON_PORT` | não | `3417` | Porta do painel para onde o listener encaminha |
+| `CARBON_WORKER_MAX_CONNECTIONS` | não | `256` | Conexões abertas no total (1–100000) |
+| `CARBON_WORKER_MAX_CONNECTIONS_PER_IP` | não | `32` | Conexões abertas por IP de cliente (1–100000) |
 
 Em `carbon start`, o ambiente do processo vence o `.env.local`.
 

@@ -32,7 +32,7 @@ Cada tarefa tem um **runtime** (onde roda), escolhido no seletor **Onde rodar** 
 | `pool` | Pool de workers | Qualquer processo `carbon worker` cadastrado que pegar a tarefa | Existe ao menos uma máquina não revogada em *Configurações → Máquinas* |
 | `agentcore` | AgentCore (experimental) | Um container do AgentCore Runtime invocado pelo painel, uma sessão por tarefa | AgentCore ativado, ARN do runtime, URL pública do painel e credenciais AWS na máquina do painel |
 
-Quando um runtime não está disponível, a opção aparece desabilitada no seletor com o motivo (ex.: "nenhuma máquina worker cadastrada (Admin → Máquinas)").
+Quando um runtime não está disponível, a opção aparece desabilitada no seletor com o motivo (ex.: "nenhuma máquina worker cadastrada (Configurações → Máquinas)").
 
 Com `runtime = local`, o comportamento é o mesmo de antes da execução distribuída.
 

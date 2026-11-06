@@ -88,7 +88,7 @@ Para Codex na imagem: `--build-arg WITH_CODEX=true`. Mais de uma máquina: publi
 tar xzf carbon-worker-servidor-sp-01.tar.gz && cd carbon-worker-servidor-sp-01
 # edite .env: descomente UMA credencial do Claude Code
 #   ANTHROPIC_API_KEY=...   ou   CLAUDE_CODE_OAUTH_TOKEN=... (gerado com `claude setup-token`)
-# se usar push via https: CARBON_GIT_TOKEN=... e CARBON_GIT_HOSTS=github.com
+# se usar push via https: CARBON_GIT_TOKEN=... e CARBON_GIT_HOSTS=github.com (sem a lista, o token não é enviado)
 ```
 
 **6. Suba e escale:**

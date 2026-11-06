@@ -8,8 +8,10 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 | --- | --- | --- |
 | `configuração inválida: CARBON_PANEL_URL é obrigatório (ex.: https://carbon.minha-rede.local)` | Variável ausente | Defina no `.env`/Secret |
 | `configuração inválida: CARBON_PANEL_URL precisa ser uma URL http(s) válida` / `não pode conter usuário/senha` | URL malformada ou com credenciais | Use `https://host[:porta]` sem `user:pass@` |
-| Worker recusa URL `http://` | `https://` é obrigatório fora de loopback | Exponha por HTTPS ([exposing-the-panel.md](exposing-the-panel.md)) |
-| `CARBON_WORKER_TOKEN é obrigatório (gere em Admin → Máquinas)` / `inválido (deve começar com cwk_)` | Token ausente ou colado errado (espaço, aspas) | Copie o token do kit; ele é `cwk_` + 43 caracteres |
+| `configuração inválida: CARBON_PANEL_URL precisa usar https (http só para 127.0.0.1/localhost)` | `http://` fora de loopback | Exponha por HTTPS ([exposing-the-panel.md](exposing-the-panel.md)) |
+| `configuração inválida: CARBON_GIT_HOSTS aceita apenas nomes de host separados por vírgula (ex.: github.com,gitlab.com)` | Valor com esquema, caminho ou espaço | `github.com,gitlab.empresa.com` |
+| `CARBON_GIT_TOKEN definido sem CARBON_GIT_HOSTS: o token não será enviado a nenhum remoto` (aviso) | Falta a lista de hosts | Defina `CARBON_GIT_HOSTS` |
+| `CARBON_WORKER_TOKEN é obrigatório (gere em Configurações → Máquinas)` / `inválido (deve começar com cwk_)` | Token ausente ou colado errado (espaço, aspas) | Copie o token do kit; ele é `cwk_` + 43 caracteres |
 | `nenhum executor encontrado (instale claude ou codex) — ou defina CARBON_WORKER_EXECUTORS` | CLI não está no PATH | Instale a CLI ou use a imagem do Carbon |
 | `CARBON_WORKER_EXECUTORS aceita apenas claude, codex (separados por vírgula)` | Valor inválido | `claude`, `codex` ou `claude,codex` |
 | `CARBON_WORKER_PARALLEL precisa ser um inteiro entre 1 e 64` | Valor fora da faixa | Ajuste |
@@ -24,13 +26,16 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 | `o painel exige um worker mais novo: protocolo N desatualizado…`, código 2 | Worker de versão anterior ao painel | Reconstrua a imagem na versão do painel |
 | `429 muitas tentativas; aguarde 15 minutos` | Muitas falhas de autenticação com o mesmo token | Corrija o token; espere 15 min ou reinicie o painel |
 | `429 muitas requisições; reduza a frequência` | > 600 requisições/min com o mesmo token (muitas réplicas com o mesmo token) | Use um token por máquina; reduza réplicas × paralelismo por token |
+| `429 muitas consultas simultâneas deste worker; aguarde as anteriores` | Mais long-polls abertos que `max(parallel, 1) + 1` (réplicas com o mesmo token, ou worker próprio sem esperar a resposta anterior) | Um token por máquina com poucas réplicas, ou declare `maxParallel` correto no `hello` |
+| `401` vindo do listener sem corpo | Falta `Authorization: Bearer cwk_…`/`ctk_…` (proxy/túnel removendo o cabeçalho?) | Confira se o túnel repassa `Authorization` |
+| `408` em uploads de bundle | Upload levou mais de 30 min | Rede lenta; reduza o tamanho da tarefa |
 | Requisições chegam como `404` | Túnel apontando para o painel (3417) em vez do listener, ou caminho errado | O túnel deve ir para a porta de `CARBON_WORKER_LISTEN` |
 
 ## Tarefas não andam
 
 | Sintoma | Causa | Correção |
 | --- | --- | --- |
-| "Pool de workers" desabilitado: `nenhuma máquina worker cadastrada (Admin → Máquinas)` | Sem máquina não revogada | *Configurações → Máquinas → Adicionar máquina* |
+| "Pool de workers" desabilitado: `nenhuma máquina worker cadastrada (Configurações → Máquinas)` | Sem máquina não revogada | *Configurações → Máquinas → Adicionar máquina* |
 | Tarefa pool fica em fila com worker ocioso | Executor da tarefa não está nos executores do worker | Ajuste `CARBON_WORKER_EXECUTORS` ou o executor da tarefa |
 | `não foi possível preparar a tarefa para o worker: …` | Erro no painel ao montar o claim | Veja o motivo; repita com "rodar de novo" |
 | `o projeto desta tarefa não existe mais` | Projeto removido | — |
@@ -41,7 +46,7 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 
 | Sintoma | Causa | Correção |
 | --- | --- | --- |
-| `não consegui preparar o código: git clone falhou: …` | Repositório privado sem token, host fora de `CARBON_GIT_HOSTS`, rede | `CARBON_GIT_TOKEN` + `CARBON_GIT_HOSTS`, ou remova o `origin` para usar bundle |
+| `não consegui preparar o código: git clone falhou: …` (log anterior: `remoto fora de CARBON_GIT_HOSTS (ou não https): token git não será enviado`) | Repositório privado sem token, host fora de `CARBON_GIT_HOSTS`, remoto não https, rede | `CARBON_GIT_TOKEN` + `CARBON_GIT_HOSTS`, ou remova o `origin` para usar bundle |
 | `não consegui baixar o código do painel: …` | Falha no `GET bundle` | Veja o log do painel; repita |
 | `422` no bundle: `o repositório do projeto não é um repositório git: …` / `git bundle create falhou: …` | Caminho do projeto inválido ou git com problema no painel | Corrija o projeto em *Configurações → Projetos* |
 | `o bundle não contém a base "<ref>"` | Base mudou entre o claim e o download | Rode de novo |
@@ -54,6 +59,7 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 | `o branch <b> está em uso numa pasta (worktree); nada foi alterado` | Branch com checkout num worktree | Remova o worktree (`git worktree list`) |
 | `o worker entregou o branch "<x>", mas esta tarefa usa "<y>"; nada foi importado` | Worker próprio mudou o nome do branch | Use o `branch` do claim |
 | `o agente não alterou arquivos — nada a entregar` | Execução sem mudanças | — |
+| `413 estado da tarefa grande demais` / `mais de 50 pedidos de permissão pendentes` | Saída do agente enorme ou pedidos de permissão sem resposta acumulados | Responda os pedidos; quebre a tarefa |
 
 ## Execução
 
@@ -76,6 +82,8 @@ Mensagens entre aspas são as que o Carbon imprime (log do worker, log da tarefa
 | Tarefa fica `running` sem log | Container não alcança o painel (egress, URL, TLS) | Logs do runtime no CloudWatch (`/aws/bedrock-agentcore/runtimes/*`) |
 | Container responde `403 panelUrl não autorizada neste container` | `CARBON_PANEL_URL` do runtime ≠ `panelPublicUrl` do painel | Alinhe as duas URLs e refaça o deploy |
 | `409 tarefa indisponível para esta sessão` | Tarefa cancelada/já pega antes do claim do container | — |
+| Container não sobe: `CARBON_PANEL_URL é obrigatório (URL pública do painel, https)` / `… não pode apontar para IP privado ou link-local` | Variável ausente ou IP privado literal | Defina a URL pública `https://` no `deploy.sh` |
+| `409 container ocupado com outra tarefa` | Invocação de outra tarefa na mesma sessão | — (o painel usa uma sessão por tarefa) |
 | `deploy.sh: dist/agentcore.mjs não encontrado…` | Entrypoint não foi gerado | `npm run build:worker` na raiz do Carbon |
 
 ## Listener

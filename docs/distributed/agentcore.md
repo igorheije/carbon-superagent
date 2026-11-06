@@ -27,11 +27,11 @@ sequenceDiagram
 
 - `runtimeSessionId` é determinístico: `carbon-task-<id da tarefa>`, completado com `0` até 33 caracteres (mínimo do AgentCore).
 - O painel **não lê** o stream de resposta do Invoke (ele fecha em 60 min; o Invoke síncrono em 15 min). Todo progresso vem pelo protocolo HTTPS de saída do container.
-- O token de tarefa é queimado no claim e depois só autentica as rotas `/api/worker/tasks/<essa tarefa>/*`, enquanto a tarefa roda ou espera sob o lease do AgentCore. Validade: o tempo máximo da tarefa (`maxRunMinutes`) + 30 min.
+- O token de tarefa é queimado no claim e depois só autentica as rotas `/api/worker/tasks/<essa tarefa>/*`, enquanto a tarefa roda ou espera sob o lease do AgentCore. Validade: o tempo máximo da tarefa (`maxRunMinutes`) + 30 min, limitada a 8 h.
 - Invoke que falha é tentado mais 3 vezes (backoff 1 s, 2 s, 4 s). Depois disso a tarefa falha com `AgentCore: falha ao invocar o runtime após 4 tentativas — <erro resumido do SDK>`.
 - Ao terminar (done, failed, canceled), o painel revoga os tokens da tarefa e chama `StopRuntimeSession`. Se o Stop falhar, a sessão cai sozinha pelo timeout de ociosidade (15 min por padrão).
 - Cancelar uma tarefa AgentCore antes do claim encerra a sessão na hora.
-- Um container atende uma tarefa: outra tarefa recebe `409`; a mesma tarefa de novo recebe `202` (o AgentCore pode repetir a invocação).
+- Um container atende uma tarefa: outra tarefa recebe `409 container ocupado com outra tarefa`; a mesma tarefa de novo recebe `202` (o AgentCore pode repetir a invocação).
 
 ## Pré-requisitos
 
@@ -86,7 +86,7 @@ Gere de um destes jeitos (nenhum executa nada na AWS; o kit não contém token):
 
 | Variável | Obrigatória | Padrão | Efeito |
 | --- | --- | --- | --- |
-| `CARBON_PANEL_URL` | sim | — | URL `https://` do painel. O container recusa invocações cujo `panelUrl` tenha outra origem |
+| `CARBON_PANEL_URL` | sim | — | URL `https://` do painel (IP privado literal é recusado). O container não sobe sem ela e recusa invocações cujo `panelUrl` tenha outra origem (`403`) |
 | `PORT` | não | `8080` | Porta HTTP (contrato do AgentCore: 8080) |
 | `CARBON_WORKER_DIR` | não | `/home/node/work` (imagem) | Pasta dos clones |
 | `CARBON_WORKER_GRACE_SECONDS` | não | `60` (imagem) | Espera pela tarefa ao receber SIGTERM |

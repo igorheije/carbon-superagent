@@ -58,7 +58,7 @@ kubectl -n carbon-<nome> set image deployment/carbon-worker worker=ghcr.io/sua-o
 
 **Parada e rollout.** Ao remover um pod, o worker para de pegar tarefas e espera as atuais por até 540 s. Passado isso, cancela e reporta `canceled`. Em tarefas longas, prefira escalar para zero quando a fila estiver vazia antes de atualizar.
 
-**Capacidade.** Réplicas × `CARBON_WORKER_PARALLEL` tarefas simultâneas. Todas as réplicas usam o mesmo token e aparecem como **uma** máquina na frota; a coluna "Tarefa atual" lista as tarefas de todas.
+**Capacidade.** Réplicas × `CARBON_WORKER_PARALLEL` tarefas simultâneas. Para isolar tarefas entre si, mantenha `CARBON_WORKER_PARALLEL=1` e escale por réplicas (o `HOME` é compartilhado entre tarefas do mesmo pod). Todas as réplicas usam o mesmo token e aparecem como **uma** máquina na frota; a coluna "Tarefa atual" lista as tarefas de todas.
 
 **Autoscaling.** Não há métrica de fila exposta (fora do escopo); HPA por CPU não reflete a fila. Escale manualmente.
 

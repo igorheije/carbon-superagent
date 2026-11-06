@@ -91,7 +91,7 @@ docker compose down -v                   # parar e apagar o volume de trabalho
 
 **Atualizar.** Construa/puxe a nova imagem (mesma versão do painel), troque `image:` se mudou a tag e rode `docker compose up -d`. Tarefas em andamento recebem a parada com espera acima. Se o painel subir a versão do protocolo, workers antigos saem com código 2 e a mensagem `o painel exige um worker mais novo`.
 
-**Escala.** Capacidade da máquina = réplicas × `CARBON_WORKER_PARALLEL`. Cada tarefa roda uma CLI do agente e um clone do repositório; dimensione CPU, memória e disco do volume por isso.
+**Escala.** Capacidade da máquina = réplicas × `CARBON_WORKER_PARALLEL`. Prefira **escalar por réplicas com `CARBON_WORKER_PARALLEL=1`**: tarefas no mesmo processo compartilham `HOME` e usuário (só clone e `TMPDIR` são separados por tarefa), então isolamento real é uma tarefa por container ([security.md](security.md#isolamento-de-ambiente-do-agente)). Cada tarefa roda uma CLI do agente e um clone do repositório; dimensione CPU, memória e disco do volume por isso.
 
 ## Revogar
 

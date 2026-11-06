@@ -9,15 +9,16 @@ Ligar workers remotos muda o modelo de ameaça do Carbon: o painel deixa de ser 
 | Ativo | Ameaça | Controle |
 | --- | --- | --- |
 | UI e API administrativa do painel | Acesso pela internet | A UI continua em `127.0.0.1`. O listener `CARBON_WORKER_LISTEN` encaminha **só** `/api/worker/*`; o resto recebe `404`. Path traversal, forma absoluta, `CONNECT` e upgrades são recusados |
-| `/api/worker/*` | Chamadas sem token / força bruta | Bearer obrigatório (formato checado no listener e no painel), mesmo `401` genérico para token inexistente, malformado ou revogado; falhas repetidas com o mesmo token → `429` por 15 min |
-| `/api/worker/*` | Worker legítimo inundando o painel | Rate limit por token (600 requisições/min), corpo JSON ≤ 1 MB, limite de conexões no listener, bundle ≤ `maxBundleMb` |
+| `/api/worker/*` | Chamadas sem token / força bruta | O listener responde `401` sem encaminhar quando falta `Authorization: Bearer cwk_…`/`ctk_…`; no painel, mesmo `401` genérico para token inexistente, malformado ou revogado; falhas repetidas com o mesmo token → `429` por 15 min; 50 falhas por IP em 15 min → `429` |
+| `/api/worker/*` | Worker legítimo inundando o painel | Rate limit por token (600 requisições/min); long-polls simultâneos (claim, permissões) limitados a `max(parallel, 1) + 1` por worker → `429`; corpo JSON ≤ 1 MB; estado da tarefa ≤ 4 MB e ≤ 50 pedidos de permissão pendentes → `413`; bundle ≤ `maxBundleMb` |
+| Listener público | Esgotar conexões / requisições lentas | 256 conexões no total (`CARBON_WORKER_MAX_CONNECTIONS`) e 32 por IP (`CARBON_WORKER_MAX_CONNECTIONS_PER_IP`); tempo total 60 s por requisição (30 min nas rotas de bundle) → `408`; query string só com caracteres simples → `400` |
 | Tarefas de outros | Worker lendo/alterando tarefa que não é dele | Toda rota de tarefa exige ser dono do lease; senão `409 lease_lost` (não revela se a tarefa existe) |
 | Token de worker | Vazamento | Gerado com 32 bytes aleatórios, mostrado uma vez, guardado só como sha256; revogável; nunca em log, snapshot ou mensagem de erro |
 | Token de tarefa AgentCore | Reuso / uso em outra tarefa | Uso único no claim, ligado a uma tarefa, válido por `maxRunMinutes` + 30 min, revogado quando a sessão termina |
 | Credenciais do modelo e do git | Agente lendo e exfiltrando | Isolamento de ambiente: o agente recebe só variáveis permitidas; tokens do Carbon são removidos do ambiente do processo |
 | Token git | Envio para host errado (remoto malicioso) | `CARBON_GIT_HOSTS`: o token só vai para hosts listados (padrão: nenhum) |
 | Código do repositório | Sai da máquina do painel | Inerente à funcionalidade. Só vai para máquinas que você cadastrou ou para a sua conta AWS |
-| Permissões remotas | "Permitir sempre" virar porta aberta para shell arbitrário | Em execução remota, o painel recusa "sempre neste repositório" para comandos de shell/interpretador |
+| Permissões | "Sempre neste repositório" virar porta aberta para shell arbitrário | Para comandos cujo primeiro termo é shell, interpretador ou ferramenta de rede (`sh`, `bash`, `python`, `node`, `curl`, `ssh`, `sudo`, `env`, `xargs`…), a resposta "sempre" é rebaixada para "permitir uma vez" e nenhuma regra é salva |
 
 Fora do escopo do Carbon: segurança do host worker (quem tem root lá lê o clone e as credenciais do modelo), do cluster Kubernetes, da conta AWS e do provedor de túnel.
 
@@ -51,22 +52,34 @@ O que **sai**: o prompt da tarefa (descrição, contexto da base de conhecimento
 
 ## Isolamento de ambiente do agente
 
-O processo do worker lê `CARBON_WORKER_TOKEN` e `CARBON_GIT_TOKEN` e os **remove do `process.env`** antes de iniciar qualquer agente. A CLI do agente roda com um ambiente montado por **allowlist** (variáveis do sistema necessárias e as credenciais do modelo); tokens do Carbon não estão nela. O token git só aparece para o processo `git` do próprio worker, via um `GIT_ASKPASS` temporário por chamada, com `credential.helper` vazio para não ser gravado.
+O processo do worker lê `CARBON_WORKER_TOKEN` e `CARBON_GIT_TOKEN` e os **remove do `process.env`** logo depois de ler a configuração. A CLI do agente roda com um ambiente montado por **allowlist** (`src/shared/executors/spawn.ts`):
 
-Consequência: um repositório malicioso ou um prompt injetado não consegue ler o token da máquina pelo ambiente do agente. Ele ainda pode ler a credencial do modelo, que o agente precisa para funcionar — por isso use chaves dedicadas e com limite de gasto nas máquinas worker.
+- passam: `PATH`, `HOME`, `USER`, `SHELL`, `LANG`, `TERM`, `TZ`, `TMPDIR`, `XDG_*`, proxies (`HTTP_PROXY`…), certificados (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_*`), toolchains (`JAVA_HOME`, `GOPATH`, `CARGO_HOME`, `NVM_DIR`, `VIRTUAL_ENV`…) e os prefixos `LC_`, `ANTHROPIC_`, `CLAUDE_CODE_`, `AWS_`, `OPENAI_`, `CODEX_`;
+- nunca passam: qualquer `CARBON_*`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `GH_TOKEN`, `GITHUB_TOKEN`.
+
+O token git só aparece para o processo `git` do próprio worker, via um `GIT_ASKPASS` temporário por chamada, com `credential.helper` vazio para não ser gravado.
+
+Consequência: um repositório malicioso ou um prompt injetado não consegue ler o token da máquina pelo ambiente do agente. Ele ainda pode ler a credencial do modelo (e, com `AWS_*`, credenciais AWS presentes no ambiente), que o agente precisa para funcionar — use chaves dedicadas e com limite de gasto nas máquinas worker.
+
+**Limite do isolamento entre tarefas:** cada tarefa tem o próprio clone e o próprio `TMPDIR`, mas o `HOME` **não** é isolado por tarefa. Com `CARBON_WORKER_PARALLEL` > 1, tarefas no mesmo processo compartilham `HOME` (config da CLI, caches) e o mesmo usuário do sistema, e uma pode ler o clone da outra. Isolamento real = **uma tarefa por container** (`CARBON_WORKER_PARALLEL=1`, o padrão) e escalar por réplicas.
 
 ## Token git e `CARBON_GIT_HOSTS`
 
-- `CARBON_GIT_HOSTS` é a lista de hosts (separados por vírgula, ex.: `github.com,gitlab.empresa.com`) para os quais o worker pode enviar `CARBON_GIT_TOKEN`. **Padrão: nenhum** — sem a variável, o token não é usado.
-- O token só é usado em remotos `https://`. `protocol.ext.allow=never` e assinatura GPG desligada nas chamadas git do worker.
+- `CARBON_GIT_HOSTS` é a lista de hosts (separados por vírgula, opcionalmente `host:porta`, ex.: `github.com,gitlab.empresa.com`) para os quais o worker pode enviar `CARBON_GIT_TOKEN`. **Padrão: vazio = o token nunca é enviado.** Com token e sem hosts, o worker avisa na partida: `CARBON_GIT_TOKEN definido sem CARBON_GIT_HOSTS: o token não será enviado a nenhum remoto`; numa tarefa cujo remoto não está na lista, loga `remoto fora de CARBON_GIT_HOSTS (ou não https): token git não será enviado`.
+- O token só é usado em remotos `https://` cujo host está na lista. `protocol.ext.allow=never` e assinatura GPG desligada nas chamadas git do worker.
 - Sem token aplicável: o clone de repositório público funciona; o push falha e o worker entrega por **bundle** (o painel importa o branch e faz o push/PR com as credenciais dele, se `autoPush` estiver ligado).
 - Prefira tokens de escopo mínimo: só os repositórios necessários, só `contents: write` (GitHub fine-grained) ou equivalente, com expiração.
 
 ## HTTPS
 
-- O worker exige `https://` para `CARBON_PANEL_URL` fora de loopback (`127.0.0.1`, `localhost`, `::1`).
+- O worker exige `https://` para `CARBON_PANEL_URL` fora de loopback (`127.x.x.x`, `localhost`, `*.localhost`, `::1`).
 - `panelPublicUrl` só aceita `https://`.
-- O container AgentCore exige `CARBON_PANEL_URL` `https://` e recusa invocações para outro painel (`403`).
+- O container AgentCore exige `CARBON_PANEL_URL` (`https://`, sem IP privado/link-local literal), e recusa invocações para outro painel (`403`).
+- **Não há resolução de DNS** nessas checagens: um nome de host que resolve para IP privado não é bloqueado. Só IPs literais privados são recusados (no AgentCore).
+
+## Confiança em `X-Forwarded-For`
+
+O limite de falhas por IP usa o último valor de `X-Forwarded-For`, que o listener sobrescreve com o IP real do socket. Isso só é seguro porque o Next escuta em `127.0.0.1` e só o listener chega até ele. **Nunca exponha a porta do painel (3417) diretamente** — nem por túnel: além da UI ficar exposta, um cliente poderia forjar `X-Forwarded-For` e driblar o limite por IP.
 
 ## Revogação
 

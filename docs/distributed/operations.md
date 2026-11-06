@@ -70,9 +70,10 @@ Funciona como localmente (Claude Code em `guarded`/`auto`):
 
 1. O worker responde sozinho o que a política de aprovação e as regras do repositório permitem (mesma lógica do painel).
 2. O resto vira `permission_request` no painel: card no Mission Control e aviso no topo, com ferramenta e comando/arquivo exatos.
-3. O worker espera a resposta por long-poll. **Permitir**, **Negar**, **Liberar tudo nesta tarefa** e **Sempre neste repositório** funcionam; "sempre neste repositório" é recusado para comandos de shell/interpretador em tarefas remotas (permita uma vez ou libere a tarefa).
-4. Sem resposta em `permissionTimeoutMinutes` (padrão 15): negado, com `permissão expirou após N min sem resposta` no log.
-5. Se o painel ficar inalcançável enquanto o agente espera, o worker nega com: `O painel do Carbon não respondeu a este pedido de permissão; siga sem essa ação ou pare e explique.`
+3. O worker espera a resposta por long-poll. **Permitir**, **Negar**, **Liberar tudo nesta tarefa** e **Sempre neste repositório** funcionam; para comandos de shell, interpretador ou rede (`bash`, `python`, `node`, `curl`, `ssh`, `sudo`, `env`…), "sempre neste repositório" vira "permitir uma vez" e nenhuma regra é salva.
+4. Uma tarefa remota pode ter no máximo 50 pedidos pendentes; acima disso o lote de eventos é recusado (`413`) e a tarefa falha.
+5. Sem resposta em `permissionTimeoutMinutes` (padrão 15): negado, com `permissão expirou após N min sem resposta` no log.
+6. Se o painel ficar inalcançável enquanto o agente espera, o worker nega com: `O painel do Carbon não respondeu a este pedido de permissão; siga sem essa ação ou pare e explique.`
 
 Uma sessão AgentCore esperando permissão continua ativa e contando no limite de sessões simultâneas (e no custo).
 
@@ -99,6 +100,10 @@ Implicação: o trabalho feito antes da pergunta é refeito. Para tarefas longas
 | Buffer de eventos não confirmados (worker) | 5 MB por tarefa |
 | Bundle de resultado | `maxBundleMb` (padrão 200 MB) |
 | Requisições por token | 600 por minuto |
+| Long-polls simultâneos por worker | `max(CARBON_WORKER_PARALLEL, 1) + 1` |
+| Estado da tarefa remota (snapshot) | 4 MB; até 50 pedidos de permissão pendentes |
+| Conexões no listener | 256 no total, 32 por IP |
+| Tempo total por requisição no listener | 60 s (30 min nas rotas de bundle) |
 | Long-poll (claim, permissões) | 25 s |
 | Sessões AgentCore simultâneas | 1–20 (padrão 3) |
 | Sessão AgentCore | até 8 h (teto da AWS) |

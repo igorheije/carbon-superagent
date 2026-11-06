@@ -19,14 +19,15 @@ Referência para quem quer escrever um worker próprio. A fonte da verdade são 
 | --- | --- | --- |
 | `200` | OK | — |
 | `204` | Claim sem tarefa dentro do long-poll | Chamar claim de novo |
-| `400` | JSON inválido, campo fora do schema (`<campo>: <motivo>`), `after` inválido, bundle vazio | Erro de programação: não repetir igual |
-| `401` | Token ausente, malformado, desconhecido, revogado, expirado ou fora do escopo. Mensagem sempre `não autenticado` | Parar (o oficial sai com código 1) |
+| `400` | JSON inválido, campo fora do schema (`<campo>: <motivo>`), `after` inválido, bundle vazio; no listener, query string fora do padrão simples | Erro de programação: não repetir igual |
+| `408` | Listener: requisição passou de 60 s (30 min nas rotas de bundle) | Repetir |
+| `401` | Token ausente, malformado, desconhecido, revogado, expirado ou fora do escopo. Mensagem sempre `não autenticado` (no listener, sem corpo) | Parar (o oficial sai com código 1) |
 | `403` | Container AgentCore: `panelUrl` da invocação diferente do `CARBON_PANEL_URL` fixado (`panelUrl não autorizada neste container`) | Parar |
 | `409` | `error = "lease_lost"`: o worker não é mais dono da tarefa (lease vencido, tarefa reatribuída, cancelada, inexistente). No claim do AgentCore: `tarefa indisponível para esta sessão` | Matar o agente e descartar a tarefa, sem reportar |
-| `413` | Corpo JSON > 1 MB, ou bundle > `workers.maxBundleMb` (`resultado maior que N MB`) | Não repetir; reportar `failed` |
+| `413` | Corpo JSON > 1 MB; bundle > `workers.maxBundleMb` (`resultado maior que N MB`); eventos que deixariam o estado da tarefa > 4 MB (`estado da tarefa grande demais`) ou com mais de 50 pedidos de permissão pendentes (`mais de 50 pedidos de permissão pendentes`) | Não repetir; reportar `failed` |
 | `422` | `GET bundle`: não foi possível gerar o bundle da base. `POST result` com `done`: o painel não conseguiu importar o branch (a tarefa já foi marcada `failed` com o motivo) | Não repetir |
 | `426` | `hello` com `version` menor que o protocolo do painel | Atualizar o worker (o oficial sai com código 2) |
-| `429` | Rate limit: `muitas requisições; reduza a frequência` (por token) ou `muitas tentativas; aguarde 15 minutos` (falhas repetidas de autenticação) | Backoff e repetir |
+| `429` | Rate limit: `muitas requisições; reduza a frequência` (600/min por token); `muitas consultas simultâneas deste worker; aguarde as anteriores` (mais de `max(maxParallel, 1) + 1` long-polls de claim ou de permissões abertos ao mesmo tempo); `muitas tentativas; aguarde 15 minutos` (falhas de autenticação repetidas com o mesmo token, ou 50 por IP) | Backoff e repetir |
 | `5xx`, `408`, erro de rede | Painel indisponível | Backoff exponencial com jitter e repetir (o oficial: base 500 ms, teto 30 s) |
 
 ## Lease, heartbeat e `seq`
@@ -100,7 +101,7 @@ Resposta `200`: `{ "protocol": 1, "leaseMs": 60000, "pollMs": 25000 }`.
 
 ### `POST /api/worker/claim`
 
-Long-poll (até 25 s) pela próxima tarefa `pool` em fila, na ordem da fila, cujo executor esteja em `executors`. Claim é atômico (`UPDATE … WHERE status = 'queued'` sob `BEGIN IMMEDIATE`): duas chamadas concorrentes nunca recebem a mesma tarefa. Se a conexão cair, a espera termina.
+Long-poll (até 25 s) pela próxima tarefa `pool` em fila. Cada worker pode ter no máximo `max(maxParallel, 1) + 1` claims abertos ao mesmo tempo (`maxParallel` do `hello`), na ordem da fila, cujo executor esteja em `executors`. Claim é atômico (`UPDATE … WHERE status = 'queued'` sob `BEGIN IMMEDIATE`): duas chamadas concorrentes nunca recebem a mesma tarefa. Se a conexão cair, a espera termina.
 
 Corpo: `{ "executors": ["claude"] }` (1 a 2 itens). Resposta `204` sem tarefa, ou `200` com `ClaimedTask`:
 
@@ -150,7 +151,7 @@ Corpo vazio. `200 {"cancel": false}` renova o lease. `409 lease_lost` se não é
 { "seq": 3, "events": [ { "type": "text", "text": "Lendo o módulo de paginação…" } ] }
 ```
 
-Até 500 eventos por lote e 1 MB por corpo. Resposta: `{ "acceptedSeq": 3 }`. Tipos de evento (`ExecutorEvent`, textos até 64 000 caracteres):
+Até 500 eventos por lote e 1 MB por corpo. O painel recusa (`413`) lotes que deixariam o estado da tarefa acima de 4 MB ou com mais de 50 pedidos de permissão pendentes. Resposta: `{ "acceptedSeq": 3 }`. Tipos de evento (`ExecutorEvent`, textos até 64 000 caracteres):
 
 | `type` | Campos |
 | --- | --- |
@@ -186,7 +187,7 @@ Long-poll (até 25 s) das respostas humanas aos `permission_request` que o worke
 
 - `behavior`: `allow` ou `deny` (com `message` para o agente).
 - `allowTask: true`: "liberar tudo nesta tarefa" — aprove sozinho os próximos pedidos.
-- `rule`: "sempre neste repositório" — acrescente às regras locais. Para comandos de shell/interpretador o painel recusa essa opção em execução remota.
+- `rule`: "sempre neste repositório" — acrescente às regras locais. Para comandos de shell, interpretador ou rede (`bash`, `python`, `node`, `curl`, `ssh`, `sudo`…) o painel rebaixa a resposta para "permitir uma vez" e manda `rule: null`.
 - Pedido sem resposta além de `permissionTimeoutMinutes` (padrão 15) é negado pelo próprio painel e aparece aqui como `deny`.
 
 ### `POST /api/worker/tasks/:id/result`

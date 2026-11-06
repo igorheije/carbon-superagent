@@ -15,6 +15,9 @@ CARBON_WORKER_LISTEN=127.0.0.1:3418     # host:porta, [ipv6]:porta ou só a port
 # opcional: TLS direto no listener (os dois juntos, ou nenhum)
 CARBON_WORKER_TLS_CERT=/caminho/cert.pem
 CARBON_WORKER_TLS_KEY=/caminho/key.pem
+# opcional: limites de conexão (padrões 256 e 32)
+CARBON_WORKER_MAX_CONNECTIONS=256
+CARBON_WORKER_MAX_CONNECTIONS_PER_IP=32
 ```
 
 `npm start` (`carbon start`) sobe o listener junto com o painel e o encerra junto. Na saída:
@@ -31,12 +34,15 @@ Só o listener, para depuração: `CARBON_WORKER_LISTEN=127.0.0.1:3418 CARBON_PO
 
 - Encaminha **apenas** caminhos canônicos `/api/worker/<algo>`; qualquer outro caminho recebe `404` sem corpo.
 - Recusa `.`/`..`, segmentos vazios, barra invertida e as versões codificadas (`%2e`, `%2f`, `%5c`, `%00`, `%25`), forma absoluta (`GET http://…`), `CONNECT` e upgrades (WebSocket/h2c).
-- Exige `Authorization: Bearer <token>` em formato válido antes de encaminhar; limita conexões e o corpo das requisições a 1 MB fora das rotas de bundle (o bundle tem teto absoluto de 1 GB; o limite real é `workers.maxBundleMb` no painel, padrão 200 MB).
+- Exige `Authorization: Bearer cwk_…` ou `Bearer ctk_…` em formato válido; sem isso responde `401` sem encaminhar.
+- Aceita só query strings simples (ex.: `?after=12`); o resto → `400`.
+- Corpo ≤ 1 MB fora das rotas de bundle; nas de bundle, teto absoluto de 1 GB (o limite real é `workers.maxBundleMb` no painel, padrão 200 MB). Acima → `413`.
+- Conexões: 256 no total (`CARBON_WORKER_MAX_CONNECTIONS`) e 32 por IP (`CARBON_WORKER_MAX_CONNECTIONS_PER_IP`); conexões acima do limite são fechadas.
 - Remove cabeçalhos hop-by-hop e os `X-Forwarded-*` enviados pelo cliente; define `X-Forwarded-For`, `X-Forwarded-Proto` e `X-Forwarded-Host` ele mesmo.
-- Timeouts: 30 s para receber os cabeçalhos, 120 s de inatividade (acima do long-poll de 25 s).
+- Timeouts: 30 s para receber os cabeçalhos, 120 s de inatividade, e tempo total de 60 s por requisição (30 min nas rotas de bundle) → `408`.
 - Registra uma linha por requisição — IP, método, caminho, status, duração — sem `Authorization` e sem query string.
 
-O painel ainda valida o token, aplica rate limit por token e limita o corpo JSON em 1 MB em todas as rotas `/api/worker/*` ([security.md](security.md)).
+O painel ainda valida o token, aplica rate limit por token e por IP (pelo `X-Forwarded-For` que o listener define) e limita o corpo JSON em 1 MB em todas as rotas `/api/worker/*` ([security.md](security.md)). Por isso **nunca exponha a porta 3417** diretamente: o limite por IP só é confiável atrás do listener.
 
 ## Como expor (ordem de preferência)
 
@@ -100,6 +106,6 @@ Trocar a URL não atualiza kits já gerados: edite `CARBON_PANEL_URL` nas máqui
 
 - [ ] `CARBON_WORKER_LISTEN` em `127.0.0.1` (ou IP da VPN) e o túnel/proxy apontando para essa porta, não para 3417.
 - [ ] HTTPS de ponta a ponta para tudo que não é loopback.
-- [ ] `curl -s -o /dev/null -w '%{http_code}' https://workers.exemplo.com/` → `404`; `https://workers.exemplo.com/api/worker/hello` sem token → `401`.
+- [ ] `curl -s -o /dev/null -w '%{http_code}' https://workers.exemplo.com/` → `404`; `curl -s -o /dev/null -w '%{http_code}' -X POST https://workers.exemplo.com/api/worker/hello` (sem token) → `401`.
 - [ ] `panelPublicUrl` configurada.
 - [ ] Máquinas sem uso revogadas.
