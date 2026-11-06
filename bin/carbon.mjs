@@ -215,10 +215,36 @@ async function doctor() {
   p.outro(pc.green("Pronto para rodar."));
 }
 
+/** Starts the public worker listener when CARBON_WORKER_LISTEN is set (process env wins over .env.local). */
+async function startWorkerListener(port) {
+  const fileEnv = readEnv();
+  const pick = (name) => process.env[name] ?? fileEnv[name];
+  const listen = pick("CARBON_WORKER_LISTEN");
+  if (!listen) return;
+  const { startWorkerProxy } = await import("./worker-proxy.mjs");
+  try {
+    const proxy = await startWorkerProxy({
+      CARBON_WORKER_LISTEN: listen,
+      CARBON_PORT: String(port),
+      CARBON_WORKER_TLS_CERT: pick("CARBON_WORKER_TLS_CERT"),
+      CARBON_WORKER_TLS_KEY: pick("CARBON_WORKER_TLS_KEY"),
+    });
+    p.log.info(`Workers remotos: ${pc.cyan(`${proxy.url}/api/worker/`)} ${pc.dim("(só /api/worker/*; a UI segue em 127.0.0.1)")}`);
+    p.log.info(`Configure ${pc.cyan("panelPublicUrl")} nas configurações com a URL pública (túnel/VPN) que aponta para essa porta.`);
+    if (!proxy.tls) p.log.warn("Listener sem TLS: use só em LAN/VPN ou atrás de um túnel HTTPS (Cloudflare Tunnel, Tailscale).");
+    for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void proxy.close());
+  } catch (err) {
+    p.cancel(`Não consegui abrir o listener de workers: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 async function start() {
   console.log(BANNER);
   await ensureBuilt(false);
-  startServer(Number(readEnv().CARBON_PORT ?? DEFAULT_PORT), "/");
+  const port = Number(readEnv().CARBON_PORT ?? DEFAULT_PORT);
+  await startWorkerListener(port);
+  startServer(port, "/");
 }
 
 /** Same format as src/server/auth/password.ts: scrypt$<salt b64>$<hash b64>. */
