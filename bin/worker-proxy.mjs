@@ -4,6 +4,11 @@
  *
  * Forwards ONLY `/api/worker/*` to the Next server on 127.0.0.1:CARBON_PORT; every other request
  * gets an empty 404. The UI and admin API never become reachable through this port.
+ *
+ * Hardening: requests without a `Bearer cwk_…`/`ctk_…` token get an empty 401 before reaching
+ * Next; JSON routes are capped at 1 MB and 60 s (bundles: the large ceiling and 30 min); open
+ * sockets are capped in total (CARBON_WORKER_MAX_CONNECTIONS, 256) and per client address
+ * (CARBON_WORKER_MAX_CONNECTIONS_PER_IP, 32); only simple query strings pass.
  * Plain Node ESM, no dependencies: imported by `bin/carbon.mjs start` and runnable on its own.
  */
 import http from "node:http";
@@ -12,8 +17,23 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const WORKER_PREFIX = "/api/worker/";
-/** Absolute ceiling; the panel enforces the real limit (settings.workers.maxBundleMb). */
+/** Absolute ceiling for bundle uploads; the panel enforces the real limit (settings.workers.maxBundleMb). */
 export const MAX_BODY_BYTES = 1024 * 1024 * 1024;
+/** Every other worker route carries JSON (panel limit: 1 MB). */
+export const MAX_JSON_BODY_BYTES = 1024 * 1024;
+/** Whole request (upload + long-poll answer) for non-bundle routes; claim/permissions polls take ≤ 25 s. */
+export const REQUEST_TIMEOUT_MS = 60_000;
+/** Bundle download/upload. */
+export const BUNDLE_REQUEST_TIMEOUT_MS = 30 * 60_000;
+/** Open sockets on the public port (CARBON_WORKER_MAX_CONNECTIONS). */
+export const DEFAULT_MAX_CONNECTIONS = 256;
+/** Open sockets per client address. */
+export const DEFAULT_MAX_CONNECTIONS_PER_IP = 32;
+/** Only worker/task tokens are forwarded; anything else never reaches Next. */
+const WORKER_AUTH = /^Bearer (cwk_|ctk_)[A-Za-z0-9_-]{20,200}$/;
+const BUNDLE_ROUTE = /^\/api\/worker\/tasks\/[^/]+\/bundle$/;
+/** Worker routes only use simple query strings (?after=12). */
+const SAFE_QUERY = /^(\?[A-Za-z0-9\-._~=&%]{0,512})?$/;
 export const HEADERS_TIMEOUT_MS = 30_000;
 /** Socket inactivity limit. Must stay above the claim long-poll (25 s) plus slack. */
 export const IDLE_TIMEOUT_MS = 120_000;
@@ -112,15 +132,45 @@ function defaultLog(line) {
   console.log(line);
 }
 
+/** True when the request carries a well-formed worker (cwk_) or task (ctk_) bearer token. */
+export function hasWorkerAuth(headers) {
+  const value = headers.authorization;
+  return typeof value === "string" && WORKER_AUTH.test(value);
+}
+
+/** Counts open sockets per address; refuses (destroys) above the cap. */
+function limitPerIp(server, maxPerIp) {
+  const open = new Map();
+  server.on("connection", (socket) => {
+    const ip = socket.remoteAddress ?? "?";
+    const count = (open.get(ip) ?? 0) + 1;
+    if (count > maxPerIp) {
+      socket.destroy();
+      return;
+    }
+    open.set(ip, count);
+    socket.once("close", () => {
+      const left = (open.get(ip) ?? 1) - 1;
+      if (left <= 0) open.delete(ip);
+      else open.set(ip, left);
+    });
+  });
+}
+
 /**
  * Builds the proxy server (not listening yet).
  * @param {{ upstreamPort?: number, upstreamHost?: string, tls?: { cert: string|Buffer, key: string|Buffer },
- *   maxBodyBytes?: number, headersTimeoutMs?: number, idleTimeoutMs?: number, log?: (line: string) => void }} [options]
+ *   maxBodyBytes?: number, maxJsonBodyBytes?: number, headersTimeoutMs?: number, idleTimeoutMs?: number,
+ *   requestTimeoutMs?: number, bundleRequestTimeoutMs?: number, maxConnections?: number, maxConnectionsPerIp?: number,
+ *   log?: (line: string) => void }} [options]
  */
 export function createWorkerProxy(options = {}) {
   const upstreamHost = options.upstreamHost ?? "127.0.0.1";
   const upstreamPort = options.upstreamPort ?? DEFAULT_UPSTREAM_PORT;
-  const maxBodyBytes = options.maxBodyBytes ?? MAX_BODY_BYTES;
+  const maxBundleBytes = options.maxBodyBytes ?? MAX_BODY_BYTES;
+  const maxJsonBodyBytes = options.maxJsonBodyBytes ?? MAX_JSON_BODY_BYTES;
+  const requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+  const bundleRequestTimeoutMs = options.bundleRequestTimeoutMs ?? BUNDLE_REQUEST_TIMEOUT_MS;
   const idleTimeoutMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
   const log = options.log ?? defaultLog;
   const isTls = Boolean(options.tls);
@@ -139,6 +189,19 @@ export function createWorkerProxy(options = {}) {
       sendEmpty(res, 404);
       return;
     }
+    const query = req.url.slice(target.length);
+    if (!SAFE_QUERY.test(query)) {
+      req.resume();
+      sendEmpty(res, 400);
+      return;
+    }
+    if (!hasWorkerAuth(req.headers)) {
+      req.resume();
+      sendEmpty(res, 401);
+      return;
+    }
+    const isBundle = BUNDLE_ROUTE.test(target);
+    const maxBodyBytes = isBundle ? maxBundleBytes : maxJsonBodyBytes;
     const declared = Number(req.headers["content-length"]);
     if (Number.isFinite(declared) && declared > maxBodyBytes) {
       req.resume();
@@ -146,14 +209,28 @@ export function createWorkerProxy(options = {}) {
       return;
     }
 
-    const query = req.url.slice(target.length);
-    const upstreamReq = http.request({
-      host: upstreamHost,
-      port: upstreamPort,
-      method: req.method,
-      path: target + query,
-      headers: forwardHeaders(req, isTls),
-    });
+    let upstreamReq;
+    try {
+      upstreamReq = http.request({
+        host: upstreamHost,
+        port: upstreamPort,
+        method: req.method,
+        path: target + query,
+        headers: forwardHeaders(req, isTls),
+      });
+    } catch {
+      req.resume();
+      sendEmpty(res, 502);
+      return;
+    }
+    // Total time for this request, not just inactivity: a slow-drip client cannot hold a slot forever.
+    const deadline = setTimeout(() => {
+      upstreamReq.destroy();
+      req.resume();
+      sendEmpty(res, 408);
+    }, isBundle ? bundleRequestTimeoutMs : requestTimeoutMs);
+    deadline.unref();
+    res.on("close", () => clearTimeout(deadline));
     upstreamReq.setTimeout(idleTimeoutMs, () => upstreamReq.destroy(new Error("upstream idle timeout")));
     upstreamReq.on("response", (upstream) => {
       if (res.headersSent) {
@@ -187,7 +264,9 @@ export function createWorkerProxy(options = {}) {
 
   const server = isTls ? https.createServer({ cert: options.tls.cert, key: options.tls.key }, handler) : http.createServer(handler);
   server.headersTimeout = options.headersTimeoutMs ?? HEADERS_TIMEOUT_MS;
-  // Uploads may legitimately take longer than any fixed total; inactivity is what we bound.
+  server.maxConnections = options.maxConnections ?? DEFAULT_MAX_CONNECTIONS;
+  limitPerIp(server, options.maxConnectionsPerIp ?? DEFAULT_MAX_CONNECTIONS_PER_IP);
+  // Per-route totals are enforced in the handler (60 s, 30 min for bundles); here only inactivity.
   server.requestTimeout = 0;
   server.setTimeout(idleTimeoutMs, (socket) => socket.destroy());
   // No WebSocket/h2c upgrades through this port.
@@ -202,6 +281,13 @@ export function createWorkerProxy(options = {}) {
   return server;
 }
 
+function positiveInt(raw, fallback, name) {
+  if (raw === undefined || String(raw).trim() === "") return fallback;
+  const value = Number(String(raw).trim());
+  if (!Number.isInteger(value) || value < 1 || value > 100_000) throw new Error(`${name} precisa ser um inteiro entre 1 e 100000`);
+  return value;
+}
+
 /**
  * Starts the proxy from env (CARBON_WORKER_LISTEN, CARBON_PORT, CARBON_WORKER_TLS_CERT/KEY).
  * Resolves with `{ server, url, close }` once listening; rejects on bad config or bind failure.
@@ -214,7 +300,9 @@ export async function startWorkerProxy(env = process.env, options = {}) {
     throw new Error("Defina CARBON_WORKER_TLS_CERT e CARBON_WORKER_TLS_KEY juntos (ou nenhum).");
   }
   const tls = certPath ? { cert: readFileSync(certPath), key: readFileSync(keyPath) } : undefined;
-  const server = createWorkerProxy({ ...options, tls, upstreamPort: Number(env.CARBON_PORT ?? DEFAULT_UPSTREAM_PORT) });
+  const maxConnections = positiveInt(env.CARBON_WORKER_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS, "CARBON_WORKER_MAX_CONNECTIONS");
+  const maxConnectionsPerIp = positiveInt(env.CARBON_WORKER_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_CONNECTIONS_PER_IP, "CARBON_WORKER_MAX_CONNECTIONS_PER_IP");
+  const server = createWorkerProxy({ maxConnections, maxConnectionsPerIp, ...options, tls, upstreamPort: Number(env.CARBON_PORT ?? DEFAULT_UPSTREAM_PORT) });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
