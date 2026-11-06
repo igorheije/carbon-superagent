@@ -5,6 +5,7 @@
     "dev": "next dev --turbopack -H 127.0.0.1 -p 3417",
     "build": "next build --turbopack",
     "build:worker": "node bin/build-worker.mjs",
+    "e2e:distributed": "node scripts/e2e-distributed.mjs",
     "start": "node bin/carbon.mjs start",
     "lint": "eslint",
     "test": "vitest run",
