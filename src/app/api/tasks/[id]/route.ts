@@ -2,6 +2,7 @@ import { z } from "zod";
 import { handle, HttpError, ok, parseBody, requireUser } from "@/server/http";
 import { deleteTask, findTask, moveToFront } from "@/server/repo/tasks";
 import { cancelActive, kick, notifyChange, retryTask, runnerStatus } from "@/server/runner/runner";
+import { requestCancel } from "@/server/runner/scheduler";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export function POST(request: Request, { params }: Params) {
       kick();
     } else if (action === "retry") {
       if (!retryTask(id)) throw new HttpError(409, "só tarefas concluídas, com falha ou aguardando podem ser reexecutadas");
+    } else if (task.runtime !== "local") {
+      // Remote task: the worker sees the flag on its next heartbeat (leaseMs/3) and stops the agent.
+      if (!requestCancel(id)) throw new HttpError(409, "esta tarefa não está executando");
+      notifyChange();
     } else if (runnerStatus().activeTaskId !== id || !cancelActive()) {
       throw new HttpError(409, "esta tarefa não está executando");
     }
