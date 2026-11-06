@@ -1,9 +1,10 @@
 import type { Ticket, TicketStatus, TaskRuntime } from "@/lib/domain/types";
 
 /**
- * Where a task ran (FLT-01 §2), derived from what the ticket snapshot already carries: the runtime
- * and the claim log line written by prepare-claim ("worker <nome> assumiu a tarefa"). AgentCore
- * containers claim as "AgentCore <sessão>". When the line is gone (log truncated), only the kind shows.
+ * Where a task ran (FLT-01 §2). Source of truth is `ticket.placement`, recorded by prepare-claim
+ * on every remote claim. Tasks claimed before that field existed fall back to the claim log line
+ * ("worker <nome> assumiu a tarefa"; AgentCore containers claim as "AgentCore <sessão>"); when
+ * that line is gone too (log truncated), only the kind shows.
  */
 export interface Placement {
   readonly runtime: TaskRuntime;
@@ -42,9 +43,19 @@ function target(runtime: TaskRuntime, who: string | null): { readonly short: str
   return who ? { short: who, full: `worker ${who}` } : { short: "pool", full: "pool de workers" };
 }
 
-export function placementOf(ticket: Pick<Ticket, "runtime" | "status" | "logs">): Placement {
+type PlacementSource = Pick<Ticket, "runtime" | "status" | "logs" | "placement">;
+
+/** Worker label from the persisted placement, in the same shape the claim log line carries. */
+function persistedWho(ticket: PlacementSource): string | null {
+  const placement = ticket.placement;
+  if (!placement || placement.runtime !== (ticket.runtime ?? "local")) return null;
+  if (placement.agentcoreSessionId) return `AgentCore ${placement.agentcoreSessionId}`;
+  return placement.workerName;
+}
+
+export function placementOf(ticket: PlacementSource): Placement {
   const runtime = ticket.runtime ?? "local";
-  const who = ticket.status === "queued" ? null : claimedBy(ticket);
+  const who = ticket.status === "queued" ? null : (persistedWho(ticket) ?? claimedBy(ticket));
   const { short, full } = target(runtime, who);
   return { runtime, short, label: `${verbOf(ticket.status)}: ${full}` };
 }

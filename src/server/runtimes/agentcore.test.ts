@@ -278,6 +278,13 @@ describe("claim + task-token auth", { timeout: 30_000 }, () => {
     expect(body.data.taskId).toBe(task.id);
     const row = m.db.getDb().prepare("SELECT lease_worker FROM tasks WHERE id = ?").get(task.id) as { lease_worker: string };
     expect(row.lease_worker).toBe(m.session.agentcoreWorkerId(task.id));
+    expect(body.data.title).toBe("Corrigir rodapé");
+    expect(m.tasks.findTask(task.id)?.snapshot.placement).toEqual({
+      runtime: "agentcore",
+      workerId: m.session.agentcoreWorkerId(task.id),
+      workerName: null,
+      agentcoreSessionId: m.session.agentcoreSessionId(task.id),
+    });
   });
 
   it("reused token → 401", async () => {

@@ -88,6 +88,11 @@ export type RunSettings = z.infer<typeof runSettingsSchema>;
 export const claimedTaskSchema = z.object({
   taskId: z.string(),
   key: z.string(),
+  /**
+   * Additive (T24a): task title, so remote commits read "feat: <título> (<KEY>)" like local ones.
+   * Optional: a panel that predates it still produces valid claims (worker falls back to the key).
+   */
+  title: z.string().max(500).optional(),
   leaseMs: z.number().int().positive(),
   executor: executorId,
   model: modelChoiceSchema,
