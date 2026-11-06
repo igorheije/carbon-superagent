@@ -67,6 +67,8 @@ function renderEnv(opts: WorkerKitOptions): string {
     "",
     "# Git: token com permissão de clone e push nos repositórios (usado só via https).",
     "# CARBON_GIT_TOKEN=",
+    "# Hosts que podem receber o token (vírgula). Sem esta linha o token nunca é enviado.",
+    "# CARBON_GIT_HOSTS=github.com",
     "",
   ].join("\n");
 }

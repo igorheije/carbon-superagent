@@ -42,6 +42,8 @@ function renderSecret(opts: WorkerKitOptions): string {
     '  # OPENAI_API_KEY: ""',
     "  # Git: token com permissão de clone e push (https).",
     '  # CARBON_GIT_TOKEN: ""',
+    "  # Hosts que podem receber o token (vírgula). Sem esta linha o token nunca é enviado.",
+    '  # CARBON_GIT_HOSTS: "github.com"',
     "",
   ].join("\n");
 }

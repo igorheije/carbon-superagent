@@ -97,6 +97,7 @@ describe("renderAgentCore", () => {
     [{ claudeCodeVersion: "latest" }, /claudeCodeVersion/],
     [{ panelUrl: 'https://x.test/"$(id)"' }, /panelUrl/],
     [{ panelUrl: "ftp://x.test" }, /panelUrl/],
+    [{ panelUrl: "http://carbon.acme.test" }, /https/],
     [{ maxLifetimeSeconds: 28_801 }, /maxLifetimeSeconds/],
     [{ idleTimeoutSeconds: 10 }, /idleTimeoutSeconds/],
     [{ idleTimeoutSeconds: 3600, maxLifetimeSeconds: 1800 }, /idleTimeoutSeconds/],
@@ -119,6 +120,22 @@ describe("deploy.sh syntax", () => {
     const result = spawnSync("shellcheck", ["-s", "bash", writeScript(renderAgentCore()["deploy.sh"])], { encoding: "utf8" });
     expect(result.stdout).toBe("");
     expect(result.status).toBe(0);
+  });
+
+  it.skipIf(!hasBash)("refuses a non-https or placeholder CARBON_PANEL_URL and an invalid CARBON_GIT_HOSTS (H2)", () => {
+    const script = writeScript(renderAgentCore()["deploy.sh"]);
+    const base = { NODE_ENV: "test" as const, PATH: "/usr/bin:/bin", ACCOUNT_ID: "123456789012", ROLE_ARN: "arn:aws:iam::123456789012:role/x" };
+    const run = (env: Record<string, string>) => spawnSync("bash", [script], { encoding: "utf8", env: { ...base, ...env }, cwd: dir });
+    expect(run({}).stderr).toContain("defina CARBON_PANEL_URL");
+    expect(run({ CARBON_PANEL_URL: "http://carbon.acme.test" }).stderr).toContain("precisa ser https");
+    expect(run({ CARBON_PANEL_URL: "https://carbon.acme.test", CARBON_GIT_HOSTS: "github.com;id" }).stderr).toContain("CARBON_GIT_HOSTS");
+  });
+
+  it("deploy.sh passes CARBON_GIT_HOSTS to the runtime and the README documents it", () => {
+    const files = renderAgentCore();
+    expect(files["deploy.sh"]).toContain("CARBON_GIT_HOSTS: $gitHosts");
+    expect(files["README.md"]).toMatch(/CARBON_GIT_HOSTS/);
+    expect(files["README.md"]).toMatch(/\*\*obrigatório\*\*/);
   });
 
   it.skipIf(!hasBash)("fails fast without ACCOUNT_ID and never reaches AWS", () => {

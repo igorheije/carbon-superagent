@@ -40,7 +40,7 @@ export interface WorkerConfig {
 export const SECRET_ENV_NAMES = ["CARBON_WORKER_TOKEN", "CARBON_GIT_TOKEN"] as const;
 
 /** Deletes the worker/git tokens from `env` (process.env at startup) after the config is read. */
-export function scrubSecretEnv(env: NodeJS.ProcessEnv): void {
+export function scrubSecretEnv(env: Record<string, string | undefined>): void {
   for (const name of SECRET_ENV_NAMES) delete env[name];
 }
 

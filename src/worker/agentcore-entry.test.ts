@@ -325,7 +325,7 @@ describe("readEntryConfig", () => {
     const parsed = readEntryConfig({ CARBON_PANEL_URL: "https://p.test", CARBON_GIT_HOSTS: "GitHub.com, gitlab.example.com:8443" });
     expect(parsed.ok && parsed.config.gitHosts).toEqual(["github.com", "gitlab.example.com:8443"]);
     const { scrubSecretEnv } = await import("./config");
-    const env: NodeJS.ProcessEnv = { CARBON_GIT_TOKEN: "g", CARBON_WORKER_TOKEN: "cwk_x", PATH: "/bin" } as NodeJS.ProcessEnv;
+    const env: Record<string, string | undefined> = { CARBON_GIT_TOKEN: "g", CARBON_WORKER_TOKEN: "cwk_x", PATH: "/bin" };
     scrubSecretEnv(env);
     expect(env).toEqual({ PATH: "/bin" });
   });
