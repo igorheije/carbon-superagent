@@ -27,9 +27,8 @@ Cada worker roda até 3 tarefa(s) ao mesmo tempo com: claude, codex.
 ## Antes de subir
 
 1. Abra o \`.env\` e preencha as credenciais do modelo e o \`CARBON_GIT_TOKEN\` (descomente as linhas).
-2. Garanta que esta máquina consegue baixar a imagem \`ghcr.io/acme/carbon-worker:0.2.0\`.
-   Para gerar a imagem a partir do repositório do Carbon:
-   \`docker build -f deploy/worker/Dockerfile -t ghcr.io/acme/carbon-worker:0.2.0 .\`
+2. Publique a imagem \`ghcr.io/acme/carbon-worker:0.2.0\` (ela não vem pronta). No repositório do Carbon, na mesma versão do painel:
+   \`docker build -f deploy/worker/Dockerfile -t ghcr.io/acme/carbon-worker:0.2.0 . && docker push ghcr.io/acme/carbon-worker:0.2.0\`
 3. O \`.env\` contém o token da máquina: não versione e não compartilhe.
 
 ## Subir

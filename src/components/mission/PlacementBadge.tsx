@@ -7,7 +7,7 @@ import { placementOf } from "./placement";
 const ICONS: Readonly<Record<TaskRuntime, typeof Monitor>> = { local: Monitor, pool: Server, agentcore: Cloud };
 
 interface PlacementBadgeProps {
-  readonly ticket: Pick<Ticket, "runtime" | "status" | "logs">;
+  readonly ticket: Pick<Ticket, "runtime" | "status" | "logs" | "placement">;
   /** "compact": icon + short name (queue row); "full": "rodou em: worker x" (task detail). */
   readonly variant?: "compact" | "full";
 }

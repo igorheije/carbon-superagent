@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import { answerFromOption, optionsOf, pendingQuestionsOf } from "@/lib/domain/questions";
 import type { AgentQuestion, QuestionOption, Ticket } from "@/lib/domain/types";
+import { resumeHint } from "./pending";
+import { PlacementBadge } from "./PlacementBadge";
 
 const MAX_ANSWER = 4_000;
 const QUICK_APPROVE = "Aprovado. Pode seguir com o que você propôs.";
@@ -94,7 +96,10 @@ function QuestionCard({ ticket, question }: { ticket: Ticket; question: AgentQue
           <p id={`${fieldId}-title`} className="eyebrow">
             {ticket.key} · o agente precisa de uma decisão · etapa {question.stage}
           </p>
-          <p className="mt-1 text-[15px] font-medium">{ticket.title}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[15px] font-medium">
+            <span>{ticket.title}</span>
+            {ticket.runtime && ticket.runtime !== "local" && <PlacementBadge ticket={ticket} />}
+          </p>
         </div>
         {question.askedAt && <span className="font-mono text-[10px] text-subtle">{new Date(question.askedAt).toLocaleTimeString("pt-BR")}</span>}
       </div>
@@ -150,7 +155,7 @@ function QuestionCard({ ticket, question }: { ticket: Ticket; question: AgentQue
       </AnimatePresence>
 
       <p className="mt-3 text-[12px] text-muted">
-        {hasOptions ? "Um clique responde e a tarefa continua de onde parou, no mesmo worktree." : "A tarefa continua de onde parou, no mesmo worktree. ⌘/Ctrl + Enter envia."}
+        {resumeHint(ticket.runtime, hasOptions)}
       </p>
       {error && <p role="alert" className="mt-2 font-mono text-[12px] text-danger">{error}</p>}
     </motion.article>

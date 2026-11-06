@@ -71,6 +71,24 @@ function renderEnv(opts: WorkerKitOptions): string {
   ].join("\n");
 }
 
+/**
+ * The worker image is not published anywhere: it is built from the Carbon repo (same version as
+ * the panel). A bare name (`carbon-worker:<v>`) only exists on the machine that built it; with a
+ * registry in the name, the step is build + push so every machine can pull it.
+ */
+export function composeImageStep(image: string): string {
+  const build = `docker build -f deploy/worker/Dockerfile -t ${image} .`;
+  if (image.includes("/")) {
+    return `Publique a imagem \`${image}\` (ela não vem pronta). No repositório do Carbon, na mesma versão do painel:
+   \`${build} && docker push ${image}\``;
+  }
+  return `Gere a imagem \`${image}\` (ela não é publicada em nenhum registry). No repositório do Carbon, na mesma versão do painel:
+   \`${build}\`
+   Mais de uma máquina? Envie para um registry — \`docker tag ${image} <registry>/${image} && docker push <registry>/${image}\` —
+   e troque \`image:\` no \`docker-compose.yml\` (ou gere o kit já com a imagem: campo "Imagem" em Admin → Máquinas
+   ou \`carbon worker init --image <registry>/${image}\`).`;
+}
+
 function renderReadme(opts: WorkerKitOptions): string {
   return `# Carbon worker — ${opts.workerName} (Docker Compose)
 
@@ -80,9 +98,7 @@ Cada worker roda até ${opts.parallel} tarefa(s) ao mesmo tempo com: ${opts.exec
 ## Antes de subir
 
 1. Abra o \`.env\` e preencha as credenciais do modelo e o \`CARBON_GIT_TOKEN\` (descomente as linhas).
-2. Garanta que esta máquina consegue baixar a imagem \`${opts.image}\`.
-   Para gerar a imagem a partir do repositório do Carbon:
-   \`docker build -f deploy/worker/Dockerfile -t ${opts.image} .\`
+2. ${composeImageStep(opts.image)}
 3. O \`.env\` contém o token da máquina: não versione e não compartilhe.
 
 ## Subir

@@ -1,5 +1,5 @@
 import "server-only";
-import type { AgentQuestion, Ticket } from "@/lib/domain/types";
+import type { AgentQuestion, TaskPlacement, Ticket } from "@/lib/domain/types";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
 import { NO_COMMITS_REF, type ClaimedTask, type CodeSource } from "@/shared/worker-protocol";
 import { memoryPromptSection, readRepoMemory, type RepoMemory } from "../knowledge/claude-memory";
@@ -12,6 +12,7 @@ import { getSettings } from "../repo/settings";
 import { skillsForPersona } from "../repo/skills";
 import { promotedLessons, saveSnapshot, type Task } from "../repo/tasks";
 import type { Worker } from "../repo/workers";
+import { agentcoreSessionId } from "../runtimes/session";
 import { appendLog } from "./apply";
 import { notifyLive, resetRemoteContext } from "./live";
 import { buildPrompt } from "./prompt";
@@ -130,6 +131,17 @@ function startTicket(ticket: Ticket, resuming: boolean): Ticket {
   return { ...ticket, status: "running", stage: "intake", logs: [], plan: [], hits: [], diff: [], findings: [], tests: null, pr: null, questions: answeredQuestions(ticket), sessionId: null, resume: false };
 }
 
+/** Placement recorded on claim, so the UI does not depend on the claim log line surviving truncation. */
+export function placementFor(task: Pick<Task, "id" | "runtime">, worker: Pick<Worker, "id" | "name">): TaskPlacement {
+  const isAgentCore = task.runtime === "agentcore";
+  return {
+    runtime: task.runtime,
+    workerId: worker.id,
+    workerName: isAgentCore ? null : worker.name,
+    agentcoreSessionId: isAgentCore ? agentcoreSessionId(task.id) : null,
+  };
+}
+
 const formatDecision = (q: AgentQuestion): string => `Question: ${q.text}\nAnswer from ${q.answeredBy ?? "the human"}: ${q.answer ?? ""}`;
 
 /** Marks a claimed task that cannot be prepared as failed and gives the lease back. */
@@ -176,6 +188,7 @@ export async function prepareClaim(lease: Lease, worker: Pick<Worker, "id" | "na
       model: executionLabel(task.executor, choice),
       repo: project.name,
       workspace: { path: "", branch: plan.code.branch, base: plan.code.baseRef, prBase: plan.prBase, commit: previousCommit, isActive: false },
+      placement: placementFor(task, worker),
     };
     saveSnapshot(task.id, ticket);
     resetRemoteContext(task.id);
@@ -184,6 +197,7 @@ export async function prepareClaim(lease: Lease, worker: Pick<Worker, "id" | "na
     return {
       taskId: task.id,
       key: task.key,
+      title: task.title,
       leaseMs,
       executor: task.executor,
       model: choice,

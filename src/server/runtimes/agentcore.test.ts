@@ -157,6 +157,27 @@ describe("dispatcher", () => {
     expect(m.tasks.listTasks(null).filter((t) => t.status === "queued")).toHaveLength(1);
   });
 
+  it("counts a session waiting on a permission (live lease) toward maxConcurrent, but not one parked on a question", async () => {
+    const [a, b] = ["AC-1", "AC-2"].map((key) => agentcoreTask(key));
+    agentcoreTask("AC-3");
+    const sdk = fakeSdk();
+    const dispatcher = newDispatcher(sdk.send);
+    await dispatcher.tick();
+    const db = m.db.getDb();
+    // A: blocked on a permission prompt — container alive under its lease.
+    db.prepare("UPDATE tasks SET status = 'waiting', lease_worker = 'agentcore:x', lease_expires_at = ? WHERE id = ?").run(Date.now() + 60_000, a?.id ?? "");
+    // B: still running.
+    await dispatcher.tick();
+    expect(m.store.countActiveSessions()).toBe(2);
+    expect(sdk.sent.filter((s) => s.kind === "invoke")).toHaveLength(2);
+    // A parks on a question: result reported, lease released → the session slot frees up.
+    db.prepare("UPDATE tasks SET lease_worker = NULL, lease_expires_at = NULL WHERE id = ?").run(a?.id ?? "");
+    expect(m.store.countActiveSessions()).toBe(1);
+    await dispatcher.tick();
+    expect(sdk.sent.filter((s) => s.kind === "invoke")).toHaveLength(3);
+    expect(b?.id).toBeTruthy();
+  });
+
   it("does nothing when AgentCore is unavailable (no credentials)", async () => {
     agentcoreTask("AC-1");
     const sdk = fakeSdk();
@@ -257,6 +278,13 @@ describe("claim + task-token auth", { timeout: 30_000 }, () => {
     expect(body.data.taskId).toBe(task.id);
     const row = m.db.getDb().prepare("SELECT lease_worker FROM tasks WHERE id = ?").get(task.id) as { lease_worker: string };
     expect(row.lease_worker).toBe(m.session.agentcoreWorkerId(task.id));
+    expect(body.data.title).toBe("Corrigir rodapé");
+    expect(m.tasks.findTask(task.id)?.snapshot.placement).toEqual({
+      runtime: "agentcore",
+      workerId: m.session.agentcoreWorkerId(task.id),
+      workerName: null,
+      agentcoreSessionId: m.session.agentcoreSessionId(task.id),
+    });
   });
 
   it("reused token → 401", async () => {

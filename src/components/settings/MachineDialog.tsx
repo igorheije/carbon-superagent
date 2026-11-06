@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Download, KeyRound, X } from "lucide-react";
 import { Button, CopyCommand, Field } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
+import { version } from "../../../package.json";
 import { downloadBase64, nextCommands, TARGET_LABEL, type CreatedMachine, type MachineExecutor, type MachineTarget } from "./machines-model";
 
 interface MachineDialogProps {
@@ -16,6 +17,9 @@ interface MachineDialogProps {
 
 const TARGETS: readonly MachineTarget[] = ["compose", "k8s"];
 const EXECUTORS: readonly MachineExecutor[] = ["claude", "codex"];
+/** Same default as the kit route: built locally from deploy/worker/Dockerfile, not published anywhere. */
+const DEFAULT_IMAGE = `carbon-worker:${version}`;
+
 const EXECUTOR_LABEL: Readonly<Record<MachineExecutor, string>> = { claude: "Claude Code", codex: "Codex" };
 
 function ChipGroup<T extends string>({ label, options, isSelected, onToggle, labelOf }: {
@@ -39,7 +43,33 @@ function ChipGroup<T extends string>({ label, options, isSelected, onToggle, lab
   );
 }
 
-function CreatedKit({ created }: { readonly created: CreatedMachine }) {
+/** The image is never pulled from a public registry: build it (and push it when more than one machine/cluster uses it). */
+function ImageSteps({ image, target }: { readonly image: string; readonly target: MachineTarget }) {
+  const hasRegistry = image.includes("/");
+  const pushed = hasRegistry ? image : `<registry>/${image}`;
+  const command =
+    target === "k8s"
+      ? `docker buildx build -f deploy/worker/Dockerfile --platform linux/amd64,linux/arm64 -t ${pushed} --push .`
+      : hasRegistry
+        ? `docker build -f deploy/worker/Dockerfile -t ${image} . && docker push ${image}`
+        : `docker build -f deploy/worker/Dockerfile -t ${image} .`;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="eyebrow">Imagem do worker (não vem pronta)</p>
+      <p className="text-[12px] text-muted">No repositório do Carbon, na mesma versão do painel:</p>
+      <CopyCommand command={command} />
+      {!hasRegistry && (
+        <p className="text-[12px] text-subtle">
+          {target === "k8s"
+            ? <>O cluster precisa baixar a imagem: publique num registry seu e troque <span className="font-mono">image:</span> no deployment.yaml (ou gere o kit com o campo Imagem preenchido).</>
+            : <>Mais de uma máquina? Envie para um registry (<span className="font-mono">docker push</span>) e troque <span className="font-mono">image:</span> no docker-compose.yml (ou gere o kit com o campo Imagem preenchido).</>}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CreatedKit({ created, image }: { readonly created: CreatedMachine; readonly image: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl border border-accent/50 bg-accent-weak p-4">
@@ -50,6 +80,7 @@ function CreatedKit({ created }: { readonly created: CreatedMachine }) {
       <Button variant="accent" onClick={() => downloadBase64(created.kitBase64, created.filename)} className="self-start">
         <Download className="size-4" /> Baixar kit (.tar.gz)
       </Button>
+      <ImageSteps image={image} target={created.target} />
       <div className="flex flex-col gap-1.5">
         <p className="eyebrow">Na máquina de destino</p>
         {nextCommands(created).map((command) => <CopyCommand key={command} command={command} />)}
@@ -65,6 +96,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
   const [target, setTarget] = useState<MachineTarget>("compose");
   const [replicas, setReplicas] = useState("1");
   const [parallel, setParallel] = useState("1");
+  const [image, setImage] = useState("");
   const [executors, setExecutors] = useState<readonly MachineExecutor[]>(["claude"]);
   const [created, setCreated] = useState<CreatedMachine | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +107,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     setCreated(null);
     setError(null);
     setName("");
+    setImage("");
     onClose();
   }, [onClose]);
 
@@ -93,7 +126,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     setError(null);
     try {
       const data = await api<Omit<CreatedMachine, "target">>("/api/admin/workers", {
-        body: { name, target, replicas: Number(replicas), parallel: Number(parallel), executors },
+        body: { name, target, replicas: Number(replicas), parallel: Number(parallel), executors, image: image.trim() || undefined },
       });
       setCreated({ ...data, target });
       onCreated();
@@ -117,7 +150,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
               <button type="button" onClick={close} aria-label="Fechar" className="rounded-full p-1.5 text-muted hover:text-ink"><X className="size-4" /></button>
             </header>
             {created ? (
-              <CreatedKit created={created} />
+              <CreatedKit created={created} image={image.trim() || DEFAULT_IMAGE} />
             ) : (
               <div className="flex flex-col gap-4">
                 <Field label="Nome da máquina" placeholder="servidor-sp-01" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} hint="Aparece no painel e nas tarefas; vira o nome dos recursos (minúsculas e hífens)" />
@@ -126,6 +159,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
                   <Field label="Réplicas" type="number" min={1} max={100} value={replicas} onChange={(e) => setReplicas(e.target.value)} hint="Processos de worker" />
                   <Field label="Tarefas em paralelo" type="number" min={1} max={64} value={parallel} onChange={(e) => setParallel(e.target.value)} hint="Por réplica" />
                 </div>
+                <Field label="Imagem (opcional)" placeholder={DEFAULT_IMAGE} value={image} onChange={(e) => setImage(e.target.value)} maxLength={255} hint="Vazio = imagem gerada localmente. Várias máquinas ou Kubernetes: use a do seu registry (ex.: ghcr.io/sua-org/carbon-worker)" />
                 <ChipGroup label="Executores" options={EXECUTORS} isSelected={(e) => executors.includes(e)} onToggle={toggleExecutor} labelOf={(e) => EXECUTOR_LABEL[e]} />
                 {error && <p role="alert" className="font-mono text-[12px] text-danger">{error}</p>}
                 <div className="flex justify-end gap-2">

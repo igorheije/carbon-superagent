@@ -77,4 +77,12 @@ describe("compose resource conversion", () => {
     expect(composeMemory("512Mi")).toBe("512m");
     expect(composeMemory("4Gi")).toBe("4g");
   });
+
+  it("README gives the exact image build step: build+push for a registry image, build + registry hint for the default", () => {
+    expect(files["README.md"]).toContain(`docker build -f deploy/worker/Dockerfile -t ${KIT_OPTIONS.image} . && docker push ${KIT_OPTIONS.image}`);
+    const bare = renderCompose({ ...KIT_OPTIONS, image: "carbon-worker:0.2.0" })["README.md"];
+    expect(bare).toContain("docker build -f deploy/worker/Dockerfile -t carbon-worker:0.2.0 .");
+    expect(bare).toContain("carbon worker init --image <registry>/carbon-worker:0.2.0");
+    expect(bare).toContain("não é publicada em nenhum registry");
+  });
 });

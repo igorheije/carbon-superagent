@@ -152,6 +152,8 @@ export interface Ticket {
   readonly status: TicketStatus;
   /** Where the task runs; absent on snapshots from before distributed execution (= "local"). */
   readonly runtime?: TaskRuntime;
+  /** Who claimed the current/last remote run, recorded on claim; absent on local and older tasks. */
+  readonly placement?: TaskPlacement | null;
   readonly stage: StageId | null;
   readonly cursor: number;
   readonly totalEvents: number;

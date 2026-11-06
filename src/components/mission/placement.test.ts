@@ -3,7 +3,8 @@ import type { LogLine, Ticket } from "@/lib/domain/types";
 import { placementOf } from "./placement";
 
 const log = (id: number, text: string): LogLine => ({ id, stage: "intake", level: "info", text });
-const ticket = (patch: Partial<Pick<Ticket, "runtime" | "status" | "logs">>): Pick<Ticket, "runtime" | "status" | "logs"> => ({ status: "done", logs: [], ...patch });
+type Source = Pick<Ticket, "runtime" | "status" | "logs" | "placement">;
+const ticket = (patch: Partial<Source>): Source => ({ status: "done", logs: [], ...patch });
 
 describe("placementOf", () => {
   it("defaults to this machine for old snapshots without runtime", () => {
@@ -27,5 +28,20 @@ describe("placementOf", () => {
     expect(placement.short).toBe("AgentCore");
     expect(placement.label).toBe("rodou em: AgentCore (sessão carbon-task-0f6c1e2a-123…)");
     expect(placementOf(ticket({ runtime: "agentcore", status: "waiting" })).label).toBe("rodando em: AgentCore");
+  });
+
+  it("prefers the placement persisted on claim, even after the log was truncated", () => {
+    const placement = { runtime: "pool" as const, workerId: "w1", workerName: "sp-02", agentcoreSessionId: null };
+    expect(placementOf(ticket({ runtime: "pool", status: "running", placement, logs: [log(1, "worker antiga assumiu a tarefa")] })).label).toBe("rodando em: worker sp-02");
+    expect(placementOf(ticket({ runtime: "pool", placement })).short).toBe("sp-02");
+    const session = "carbon-task-0f6c1e2a-1234-4abc-9def-000000000000";
+    const agentcore = { runtime: "agentcore" as const, workerId: `agentcore:${session}`, workerName: null, agentcoreSessionId: session };
+    expect(placementOf(ticket({ runtime: "agentcore", placement: agentcore })).label).toBe("rodou em: AgentCore (sessão carbon-task-0f6c1e2a-123…)");
+  });
+
+  it("ignores a stale placement from another runtime and hides the worker while queued", () => {
+    const placement = { runtime: "pool" as const, workerId: "w1", workerName: "sp-02", agentcoreSessionId: null };
+    expect(placementOf(ticket({ runtime: "local", placement })).label).toBe("rodou em: esta máquina");
+    expect(placementOf(ticket({ runtime: "pool", status: "queued", placement })).label).toBe("vai rodar em: pool de workers");
   });
 });

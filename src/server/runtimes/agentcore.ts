@@ -92,7 +92,7 @@ export function createAgentCoreDispatcher(deps: DispatcherDeps): AgentCoreDispat
   const now = deps.now ?? Date.now;
   const readSettings = deps.settings ?? getSettings;
   // Seeded with tasks already running (panel restart) so their sessions are stopped when they end.
-  let sessions: ReadonlySet<string> = new Set(runningAgentCoreTasks());
+  let sessions: ReadonlySet<string> = new Set(runningAgentCoreTasks(now()));
   let busy = false;
 
   const stopSession = (taskId: string, settings: Settings) => stopSessionWith(deps.send, taskId, settings);
@@ -155,7 +155,8 @@ export function createAgentCoreDispatcher(deps: DispatcherDeps): AgentCoreDispat
       const settings = readSettings();
       await stopFinished(settings);
       if (!agentcoreAvailability(settings, deps.hasCredentials).available) return;
-      const slots = settings.agentcore.maxConcurrent - countActiveSessions();
+      // Sessions blocked on a permission answer still count: the container is up and billed.
+      const slots = settings.agentcore.maxConcurrent - countActiveSessions(now());
       for (const taskId of queuedAgentCoreTasks(slots)) await dispatch(taskId, settings);
     } finally {
       busy = false;
