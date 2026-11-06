@@ -51,7 +51,7 @@ export async function listLocalTargets(taskId: string): Promise<LocalTargets | {
 }
 
 /** Commit the task branch started from: the snapshot baseline for repos without commits. */
-async function baseCommitOf(repoPath: string, workspace: TicketWorkspace): Promise<string | null> {
+export async function baseCommitOf(repoPath: string, workspace: TicketWorkspace): Promise<string | null> {
   if (workspace.base === NO_COMMITS_BASE) {
     const root = await git(repoPath, ["rev-list", "--max-parents=0", workspace.branch]);
     return root.ok ? firstLine(root.stdout) : null;

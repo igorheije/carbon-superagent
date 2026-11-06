@@ -88,19 +88,29 @@ function snippetFor(patch: string): readonly string[] {
     .map((l) => l.slice(0, 160));
 }
 
-/** Stages everything and summarizes it. Returns [] when the agent changed nothing. */
-export async function collectDiff(worktreePath: string): Promise<readonly DiffFile[]> {
-  await git(worktreePath, ["add", "-A"]);
-  const numstat = await git(worktreePath, ["diff", "--cached", "--numstat"]);
+/** Summarizes `git diff <diffArgs>` (numstat + a few changed lines per file, capped). */
+async function summarizeDiff(cwd: string, diffArgs: readonly string[]): Promise<readonly DiffFile[]> {
+  const numstat = await git(cwd, ["diff", ...diffArgs, "--numstat"]);
   const rows = numstat.stdout.split("\n").filter(Boolean).slice(0, MAX_DIFF_FILES);
   return Promise.all(
     rows.map(async (row) => {
       const [add = "0", del = "0", ...rest] = row.split("\t");
       const file = rest.join("\t");
-      const patch = await git(worktreePath, ["diff", "--cached", "-U0", "--", file]);
+      const patch = await git(cwd, ["diff", ...diffArgs, "-U0", "--", file]);
       return { path: file, additions: Number(add) || 0, deletions: Number(del) || 0, snippet: snippetFor(patch.stdout) };
     }),
   );
+}
+
+/** Stages everything and summarizes it. Returns [] when the agent changed nothing. */
+export async function collectDiff(worktreePath: string): Promise<readonly DiffFile[]> {
+  await git(worktreePath, ["add", "-A"]);
+  return summarizeDiff(worktreePath, ["--cached"]);
+}
+
+/** Same summary as collectDiff, between two commits of a repo (e.g. an imported remote branch). */
+export function diffBetween(repoPath: string, base: string, head: string): Promise<readonly DiffFile[]> {
+  return summarizeDiff(repoPath, [base, head]);
 }
 
 export async function commit(worktreePath: string, message: string): Promise<{ readonly ok: boolean; readonly detail: string; readonly sha: string | null }> {
