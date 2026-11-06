@@ -2,10 +2,11 @@ import "server-only";
 import { EventEmitter } from "node:events";
 import type { StageId, Ticket } from "@/lib/domain/types";
 import type { ExecutorEvent } from "../executors/events";
+import { describePermission } from "@/shared/executors/claude-parse";
 import { getDb, nowIso } from "../db";
 import { saveSnapshot } from "../repo/tasks";
 import { appendLog, applyExecutorEvent, emptyContext, type RunContext } from "./apply";
-import { registerRemotePrompt } from "./remote-permissions";
+import { registerRemotePrompt, remoteState } from "./remote-permissions";
 
 /**
  * Live ticket persistence shared by the local runner and remote event ingestion: the ticket is
@@ -96,7 +97,38 @@ interface LeaseRow {
   snapshot: string;
 }
 
-export type IngestResult = { readonly acceptedSeq: number } | "lease_lost";
+/** Open prompts one remote run may have at once; more is a misbehaving worker (M6). */
+export const MAX_REMOTE_PENDING_PERMISSIONS = 50;
+/** Answered prompts kept in the ticket (pending ones are always kept). */
+export const MAX_KEPT_PERMISSIONS = 200;
+/** Snapshot size a remote run may grow the ticket to (logs are already capped by MAX_LOGS). */
+export const MAX_REMOTE_SNAPSHOT_BYTES = 4 * 1024 * 1024;
+
+export type IngestResult = { readonly acceptedSeq: number } | "lease_lost" | { readonly tooLarge: string };
+
+/**
+ * A worker's permission prompt as the panel shows it: summary and detail recomputed from the raw
+ * input (the same input the "always allow" pattern comes from), never the worker's own text.
+ */
+function trustedEvent(event: ExecutorEvent): ExecutorEvent {
+  if (event.type !== "permission_request") return event;
+  return { ...event, ...describePermission(event.tool, event.input) };
+}
+
+/** Drops the oldest answered prompts beyond MAX_KEPT_PERMISSIONS. */
+function trimPermissions(ticket: Ticket): Ticket {
+  const all = ticket.permissions ?? [];
+  if (all.length <= MAX_KEPT_PERMISSIONS) return ticket;
+  let excess = all.length - MAX_KEPT_PERMISSIONS;
+  const permissions = all.filter((p) => {
+    if (excess > 0 && p.status !== "pending") {
+      excess -= 1;
+      return false;
+    }
+    return true;
+  });
+  return { ...ticket, permissions };
+}
 
 /**
  * Applies one batch of executor events sent by the worker holding the lease. Idempotent by
@@ -119,7 +151,7 @@ export function ingestRemoteEvents(taskId: string, workerId: string, seq: number
   if (seq <= row.lease_seq) return { acceptedSeq: row.lease_seq };
 
   const initial = JSON.parse(row.snapshot) as Ticket;
-  const folded = events.reduce(
+  const folded = events.map(trustedEvent).reduce(
     (state, event) => {
       const next = applyExecutorEvent(state.ticket, state.ctx, event);
       // A forwarded prompt also becomes a durable pending entry the human can answer (RMT-01).
@@ -127,12 +159,18 @@ export function ingestRemoteEvents(taskId: string, workerId: string, seq: number
     },
     { ticket: initial, ctx: remoteRunContext(taskId, initial) },
   );
+  const ticket = trimPermissions(folded.ticket);
+  if (remoteState(ticket).pending.length > MAX_REMOTE_PENDING_PERMISSIONS) {
+    return { tooLarge: `mais de ${MAX_REMOTE_PENDING_PERMISSIONS} pedidos de permissão pendentes` };
+  }
+  const snapshot = JSON.stringify(ticket);
+  if (Buffer.byteLength(snapshot) > MAX_REMOTE_SNAPSHOT_BYTES) return { tooLarge: "estado da tarefa grande demais" };
   const result = db
     .prepare(
       `UPDATE tasks SET snapshot = ?, status = ?, lease_seq = ?, updated_at = ?
         WHERE id = ? AND lease_worker = ? AND lease_seq = ?`,
     )
-    .run(JSON.stringify(folded.ticket), folded.ticket.status, seq, nowIso(), taskId, workerId, row.lease_seq);
+    .run(snapshot, ticket.status, seq, nowIso(), taskId, workerId, row.lease_seq);
   if (Number(result.changes) === 0) return "lease_lost";
   remoteContexts().set(taskId, folded.ctx);
   notifyLive();

@@ -4,6 +4,7 @@ import { buildCommand, parseMarkers, startExecutor, type ExecutorCommand, type E
 import { LEASE_LOST, type ClaimedTask, type ResultRequest } from "../shared/worker-protocol";
 import { backoffMs, BundleTooLarge, WorkerClientError, type SleepFn, type WorkerClient } from "./client";
 import { cleanup, commitAll, deliverCode, prepareCode, type GitIdentity, type PreparedCode } from "./code";
+import { gitTokenFor } from "./config";
 import { clipEvent, relativize } from "./events";
 import { answerPermission, createPermissionRelay, type PermissionRelay } from "./permissions";
 
@@ -23,6 +24,11 @@ export interface RunTaskDeps {
   /** Parent folder for clones and bundles of this worker. */
   readonly workDir: string;
   readonly gitToken?: string;
+  /**
+   * Hosts the git token may be sent to (CARBON_GIT_HOSTS). Empty/absent: the token is never sent,
+   * so a remoteUrl chosen by the panel (or rewritten by the agent) cannot receive it.
+   */
+  readonly gitHosts?: readonly string[];
   /** Test hook: replaces the CLI the executor would spawn (keeps the parser and stdin prompt). */
   readonly executorOverride?: (command: ExecutorCommand) => ExecutorCommand;
   readonly now?: () => number;
@@ -72,6 +78,8 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
   const log = deps.log ?? (() => undefined);
   const sleep = deps.sleep ?? defaultSleep;
   const id = task.taskId;
+  const gitToken = task.code.transport === "git" ? gitTokenFor(task.code.remoteUrl, deps.gitToken, deps.gitHosts ?? []) : undefined;
+  if (deps.gitToken && task.code.transport === "git" && !gitToken) log(`[${task.key}] remoto fora de CARBON_GIT_HOSTS (ou não https): token git não será enviado`);
   const state: RunState = { stop: null, executor: null, relay: null, asked: false, agentError: false };
 
   const halt = (stop: Stop): void => {
@@ -195,7 +203,7 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
     if (early) return await early;
 
     try {
-      prepared = await prepareCode(task, deps.workDir, { bundleFile: baseBundle, gitToken: deps.gitToken });
+      prepared = await prepareCode(task, deps.workDir, { bundleFile: baseBundle, gitToken });
     } catch (error) {
       return (await stopped()) ?? (await fail(`não consegui preparar o código: ${message(error)}`));
     } finally {
@@ -217,6 +225,11 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
       sleep,
     });
     state.relay = relay;
+    // Worker mode: the agent never sees the worker/git tokens (allowlisted env) and gets its own
+    // temp dir next to its clone. True isolation between tasks is one task per container.
+    const agentTmp = `${clone}.tmp`;
+    mkdirSync(agentTmp, { recursive: true, mode: 0o700 });
+    const envOptions = { mode: "allowlist", extra: { TMPDIR: agentTmp, TMP: agentTmp, TEMP: agentTmp } } as const;
     const running = startExecutor(command, clone, task.limits.maxRunMinutes * 60_000, (event) => {
       if (event.type === "permission_request") {
         const outcome = answerPermission(event, clone, task.settings, relay.rules(), relay.allowAll());
@@ -233,7 +246,7 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
       if (event.type === "error" || (event.type === "result" && event.isError)) state.agentError = true;
       if (event.type === "text" && parseMarkers(event.text).some((m) => m.kind === "question")) state.asked = true;
       emit([relativize(event, clone)]);
-    });
+    }, envOptions);
     state.executor = running;
     if (state.stop) running.cancel();
     const exit = await running.done;
@@ -275,7 +288,7 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
 
     let delivery: Awaited<ReturnType<typeof deliverCode>>;
     try {
-      delivery = await deliverCode(clone, task, { gitToken: deps.gitToken, allowBundleFallback: true });
+      delivery = await deliverCode(clone, task, { gitToken, allowBundleFallback: true, log: (line) => log(`[${task.key}] ${line}`) });
     } catch (error) {
       return fail(`entrega falhou: ${message(error)}`);
     }

@@ -144,6 +144,12 @@ describe("dispatcher", () => {
     expect(stored?.snapshot.logs.at(-1)?.text).toContain(m.session.agentcoreSessionId(task.id));
     // Token stored only as a hash.
     expect(JSON.stringify(m.db.getDb().prepare("SELECT * FROM task_tokens").all())).not.toContain(payload.taskToken);
+    // L7: TTL = run limit + 30 min, not the 8 h session lifetime.
+    const { expires_at } = m.db.getDb().prepare("SELECT expires_at FROM task_tokens WHERE task_id = ?").get(task.id) as { expires_at: number };
+    const { getSettings } = await import("../repo/settings");
+    const ttl = expires_at - Date.now();
+    expect(ttl).toBeLessThanOrEqual((getSettings().maxRunMinutes + 30) * 60_000);
+    expect(ttl).toBeGreaterThan((getSettings().maxRunMinutes + 29) * 60_000);
   });
 
   it("respects maxConcurrent across ticks", async () => {

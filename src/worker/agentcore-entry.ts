@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { AGENTCORE_CLAIM_PATH, claimedTaskSchema, MAX_JSON_BODY_BYTES, PROTOCOL_VERSION, type ClaimedTask } from "../shared/worker-protocol";
 import { backoffMs, createWorkerClient, ProtocolTooOld, USER_AGENT, WorkerClientError, type FetchLike, type SleepFn, type WorkerClient } from "./client";
-import { DEFAULT_GRACE_SECONDS, MAX_GRACE_SECONDS } from "./config";
+import { checkPanelUrl, DEFAULT_GRACE_SECONDS, MAX_GRACE_SECONDS, parseGitHosts, scrubSecretEnv } from "./config";
 import { runClaimedTask, type RunOutcome, type RunTaskDeps } from "./run-task";
 
 /**
@@ -23,9 +23,11 @@ import { runClaimedTask, type RunOutcome, type RunTaskDeps } from "./run-task";
  * taskId again gets 202 (AgentCore may retry an invocation). `/ping` reports `HealthyBusy` while a
  * task runs so the session is not reclaimed as idle.
  *
- * Environment: PORT (8080) · CARBON_WORKER_DIR · CARBON_GIT_TOKEN · CARBON_WORKER_GRACE_SECONDS ·
- * CARBON_PANEL_URL (optional: when set, invocations for any other panel origin are refused).
- * The task token and git token are never logged.
+ * Environment: PORT (8080) · CARBON_WORKER_DIR · CARBON_GIT_TOKEN · CARBON_GIT_HOSTS ·
+ * CARBON_WORKER_GRACE_SECONDS · CARBON_PANEL_URL (REQUIRED: https unless loopback, never a private /
+ * link-local IP; invocations for any other panel origin are refused, so whoever can invoke the
+ * runtime cannot point the container — and its git token / role — at another server).
+ * The git token only goes to hosts in CARBON_GIT_HOSTS. The task token and git token are never logged.
  */
 
 export const DEFAULT_PORT = 8080;
@@ -126,8 +128,9 @@ export async function claimAgentCoreTask(invocation: Invocation, options: ClaimO
 export interface AgentCoreDeps {
   readonly workDir: string;
   readonly gitToken?: string;
-  /** Normalized origin the container accepts invocations for; undefined accepts any. */
-  readonly allowedPanelOrigin?: string;
+  readonly gitHosts?: readonly string[];
+  /** Normalized origin the container accepts invocations for (CARBON_PANEL_URL). */
+  readonly allowedPanelOrigin: string;
   readonly log?: (message: string) => void;
   readonly now?: () => number;
   /** Test hooks. */
@@ -208,7 +211,7 @@ export function createAgentCoreServer(deps: AgentCoreDeps): AgentCoreServer {
     try {
       const task = await claim(invocation, cancel.signal);
       log(`tarefa ${task.key} recebida (${task.executor})`);
-      const outcome = await runTask(task, { client: createClient(invocation), workDir: deps.workDir, gitToken: deps.gitToken, signal: cancel.signal, log });
+      const outcome = await runTask(task, { client: createClient(invocation), workDir: deps.workDir, gitToken: deps.gitToken, gitHosts: deps.gitHosts, signal: cancel.signal, log });
       log(`tarefa ${task.key} terminou: ${outcome}`);
     } catch (error) {
       log(`tarefa ${invocation.taskId} não executada: ${describe(error)}`);
@@ -240,7 +243,7 @@ export function createAgentCoreServer(deps: AgentCoreDeps): AgentCoreServer {
       throw new HttpFailure(400, `payload inválido (${issue?.path.join(".") || "body"}: ${issue?.message ?? "?"})`);
     }
     const invocation = parsed.data;
-    if (deps.allowedPanelOrigin && originOf(invocation.panelUrl) !== deps.allowedPanelOrigin) throw new HttpFailure(403, "panelUrl não autorizada neste container");
+    if (originOf(invocation.panelUrl) !== deps.allowedPanelOrigin) throw new HttpFailure(403, "panelUrl não autorizada neste container");
     if (current?.taskId === invocation.taskId) return sendJson(res, 202, { accepted: true, taskId: invocation.taskId });
     if (current) throw new HttpFailure(409, "container ocupado com outra tarefa");
     start(invocation);
@@ -300,8 +303,9 @@ export interface EntryConfig {
   readonly port: number;
   readonly workDir: string;
   readonly gitToken: string | undefined;
+  readonly gitHosts: readonly string[];
   readonly graceSeconds: number;
-  readonly allowedPanelOrigin: string | undefined;
+  readonly allowedPanelOrigin: string;
 }
 
 function intEnv(raw: string | undefined, name: string, min: number, max: number, fallback: number, errors: string[]): number {
@@ -318,31 +322,34 @@ export function readEntryConfig(env: Readonly<Record<string, string | undefined>
   const errors: string[] = [];
   const port = intEnv(env.PORT, "PORT", 1, 65535, DEFAULT_PORT, errors);
   const graceSeconds = intEnv(env.CARBON_WORKER_GRACE_SECONDS, "CARBON_WORKER_GRACE_SECONDS", 0, MAX_GRACE_SECONDS, DEFAULT_GRACE_SECONDS, errors);
-  let allowedPanelOrigin: string | undefined;
+  let allowedPanelOrigin = "";
   const pinned = env.CARBON_PANEL_URL?.trim();
-  if (pinned) {
-    const check = invocationSchema.shape.panelUrl.safeParse(pinned);
-    if (check.success) allowedPanelOrigin = originOf(pinned);
-    else errors.push("CARBON_PANEL_URL precisa ser uma URL http(s) válida");
+  if (!pinned) errors.push("CARBON_PANEL_URL é obrigatório (URL pública do painel, https)");
+  else {
+    const check = checkPanelUrl(pinned, { rejectPrivate: true });
+    if (check.ok) allowedPanelOrigin = originOf(check.url);
+    else errors.push(`CARBON_PANEL_URL ${check.error}`);
   }
+  const gitHosts = parseGitHosts(env.CARBON_GIT_HOSTS, errors);
   const workDir = path.resolve(env.CARBON_WORKER_DIR?.trim() || path.join(tmpdir(), "carbon-agentcore"));
   const gitToken = env.CARBON_GIT_TOKEN?.trim() || undefined;
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, config: { port, workDir, gitToken, graceSeconds, allowedPanelOrigin } };
+  return { ok: true, config: { port, workDir, gitToken, gitHosts, graceSeconds, allowedPanelOrigin } };
 }
 
 const stderrLog = (message: string): void => {
   process.stderr.write(`${new Date().toISOString()} [carbon-agentcore] ${message}\n`);
 };
 
-export async function main(env: Readonly<Record<string, string | undefined>> = process.env): Promise<void> {
+export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const parsed = readEntryConfig(env);
+  scrubSecretEnv(env);
   if (!parsed.ok) {
     for (const error of parsed.errors) stderrLog(`configuração inválida: ${error}`);
     process.exit(1);
   }
   const { config } = parsed;
-  const app = createAgentCoreServer({ workDir: config.workDir, gitToken: config.gitToken, allowedPanelOrigin: config.allowedPanelOrigin, log: stderrLog });
+  const app = createAgentCoreServer({ workDir: config.workDir, gitToken: config.gitToken, gitHosts: config.gitHosts, allowedPanelOrigin: config.allowedPanelOrigin, log: stderrLog });
   let signals = 0;
   const onSignal = (name: NodeJS.Signals) => {
     signals += 1;

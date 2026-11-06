@@ -264,6 +264,28 @@ describe("bundle transport", () => {
     expect(incomingFiles()).toEqual([]);
   });
 
+  it("rejects a crafted bundle whose tree has a .git entry (fsck on import, M2)", async () => {
+    const dir = repo("dotgit");
+    const task = poolTask(dir);
+    const claimed = await claim();
+    const { clone, base } = await workerCommitFromBundle(claimed);
+    // A tree with ".git/config" inside: checking it out would plant git config/hooks.
+    const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: clone, input: "[core]\n\tfsmonitor = touch /tmp/pwned\n", encoding: "utf8" }).trim();
+    const inner = execFileSync("git", ["mktree"], { cwd: clone, input: `100644 blob ${blob}\tconfig\n`, encoding: "utf8" }).trim();
+    const head = git(clone, "rev-parse", "HEAD^{tree}");
+    const entries = execFileSync("git", ["ls-tree", head], { cwd: clone, encoding: "utf8" });
+    const tree = execFileSync("git", ["mktree"], { cwd: clone, input: `${entries}040000 tree ${inner}\t.git\n`, encoding: "utf8" }).trim();
+    const evil = git(clone, "commit-tree", tree, "-p", "HEAD", "-m", "evil");
+    git(clone, "update-ref", `refs/heads/${claimed.code.branch}`, evil);
+
+    await putBundle(task.id, resultBundle(clone, base, claimed.code.branch));
+    const response = await postResult(task.id, { status: "done", branch: claimed.code.branch, commit: evil, transport: "bundle" });
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: string }).error).toMatch(/importar/);
+    expect(git(dir, "branch", "--list", claimed.code.branch)).toBe("");
+    expect(ticketOf(task.id).status).toBe("failed");
+  });
+
   it("rejects a result for a branch other than the task's", async () => {
     const task = poolTask(repo("outro-branch"));
     const claimed = await claim();

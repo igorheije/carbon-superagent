@@ -1,6 +1,6 @@
 import "server-only";
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand, StopRuntimeSessionCommand } from "@aws-sdk/client-bedrock-agentcore";
-import { issueTaskToken, revokeTaskTokens } from "../auth/worker-auth";
+import { issueTaskToken, revokeTaskTokens, taskTokenTtlMs } from "../auth/worker-auth";
 import { getSettings, type Settings } from "../repo/settings";
 import { notifyLive } from "../runner/live";
 import { leaseHolder } from "../runner/scheduler";
@@ -21,7 +21,7 @@ export type AgentCoreCommand = InvokeAgentRuntimeCommand | StopRuntimeSessionCom
 export type AgentCoreSend = (command: AgentCoreCommand, region: string) => Promise<unknown>;
 
 export const DISPATCH_INTERVAL_MS = 5_000;
-/** AgentCore Runtime session maxLifetime; also the task token TTL. */
+/** AgentCore Runtime session maxLifetime; upper bound of the task token TTL. */
 export const MAX_SESSION_LIFETIME_MS = 8 * 60 * 60_000;
 /** Invoke is retried this many times after the first failure. */
 export const INVOKE_RETRIES = 3;
@@ -129,7 +129,8 @@ export function createAgentCoreDispatcher(deps: DispatcherDeps): AgentCoreDispat
     if (!markDispatched(taskId, sessionId, now())) return;
     sessions = new Set([...sessions, taskId]);
     notifyLive();
-    const taskToken = issueTaskToken(taskId, MAX_SESSION_LIFETIME_MS, now());
+    // Run limit + 30 min (never above the session lifetime): a leaked token dies with the task (L7).
+    const taskToken = issueTaskToken(taskId, Math.min(taskTokenTtlMs(settings.maxRunMinutes), MAX_SESSION_LIFETIME_MS), now());
     const command = new InvokeAgentRuntimeCommand({
       agentRuntimeArn: settings.agentcore.runtimeArn,
       qualifier: settings.agentcore.qualifier || undefined,

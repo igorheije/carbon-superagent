@@ -2,7 +2,7 @@
 // Runs on the panel host: for compose/k8s it creates the worker straight in the panel database
 // (like reset-password) and returns the token once. Only the token's sha256 is stored.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, writeSync } from "node:fs";
 import path from "node:path";
 
 export const INIT_TARGETS = ["compose", "k8s", "agentcore"];
@@ -124,6 +124,32 @@ function assertWritableDir(out, force) {
   }
 }
 
+/**
+ * Writes `body` to a fresh temp file created with `mode` (O_EXCL: never an existing file or a
+ * symlink planted at that name), then renames it over `target`. A secret is never readable by
+ * others, not even for an instant, and a reader never sees a half-written file (L8).
+ */
+function writeAtomic(target, body, mode) {
+  const temp = path.join(path.dirname(target), `.${path.basename(target)}.${randomBytes(6).toString("hex")}.tmp`);
+  const fd = openSync(temp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0), mode);
+  try {
+    fchmodSync(fd, mode); // exact mode whatever the umask
+    writeSync(fd, body);
+    fsyncSync(fd);
+  } catch (error) {
+    closeSync(fd);
+    rmSync(temp, { force: true });
+    throw error;
+  }
+  closeSync(fd);
+  try {
+    renameSync(temp, target);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
 /** Writes the kit; secret files get 0600, deploy.sh 0755, everything else 0644. */
 export function writeKitFiles(out, files) {
   mkdirSync(out, { recursive: true });
@@ -134,8 +160,7 @@ export function writeKitFiles(out, files) {
     mkdirSync(path.dirname(target), { recursive: true });
     const base = path.basename(file);
     const mode = SECRET_FILES.has(base) ? 0o600 : EXECUTABLE_FILES.has(base) ? 0o755 : 0o644;
-    writeFileSync(target, body, { mode });
-    chmodSync(target, mode);
+    writeAtomic(target, body, mode);
     written.push(file);
   }
   return written;

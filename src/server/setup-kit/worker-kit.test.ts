@@ -17,6 +17,7 @@ describe("validateKitOptions", () => {
     ["$ in panelUrl", { panelUrl: "https://x.local/${HOME}" }],
     ["credentials in panelUrl", { panelUrl: "https://user:pass@x.local" }],
     ["non-http panelUrl", { panelUrl: "ftp://x.local" }],
+    ["plain http panelUrl outside loopback (L5)", { panelUrl: "http://carbon.minha-rede.local" }],
     ["bad token prefix", { token: "abc_" + "x".repeat(43) }],
     ["token with newline", { token: `cwk_${"x".repeat(42)}\n` }],
     ["image with space", { image: "ghcr.io/acme/carbon worker" }],
@@ -31,6 +32,11 @@ describe("validateKitOptions", () => {
     const errors = validateKitOptions({ ...KIT_OPTIONS, ...patch } as typeof KIT_OPTIONS);
     expect(errors.length).toBeGreaterThan(0);
     expect(() => assertKitOptions({ ...KIT_OPTIONS, ...patch } as typeof KIT_OPTIONS)).toThrow(SetupKitError);
+  });
+
+  it("accepts http only on loopback (L5)", () => {
+    expect(validateKitOptions({ ...KIT_OPTIONS, panelUrl: "http://127.0.0.1:3000" })).toEqual([]);
+    expect(validateKitOptions({ ...KIT_OPTIONS, panelUrl: "http://localhost:3000" })).toEqual([]);
   });
 
   it("does not echo the token in error messages", () => {

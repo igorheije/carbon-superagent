@@ -103,6 +103,7 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
    ROLE_ARN=arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME> \\
    CARBON_PANEL_URL=https://carbon.acme.test \\
    CLAUDE_CODE_USE_BEDROCK=1 \\
+   CARBON_GIT_HOSTS=github.com \\
    bash <esta pasta>/deploy.sh
    \`\`\`
 
@@ -115,7 +116,11 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
 
 - O painel precisa estar acessível pela internet **só** em \`/api/worker/*\` e com TLS
   (Cloudflare Tunnel, Tailscale Funnel ou proxy reverso com HTTPS). Nunca HTTP puro.
-- \`CARBON_PANEL_URL\` no runtime faz o container recusar invocações para qualquer outro painel.
+- \`CARBON_PANEL_URL\` é **obrigatório** (https): o container não sobe sem ele, recusa IPs privados /
+  link-local e recusa invocações para qualquer outro painel.
+- \`CARBON_GIT_TOKEN\` só é enviado aos hosts listados em \`CARBON_GIT_HOSTS\` (ex.: \`github.com\`), e
+  só por https. Sem \`CARBON_GIT_HOSTS\` o token nunca sai do container. O agente não enxerga o token
+  (ambiente filtrado) e um \`.git/config\` alterado pelo agente faz o push seguir sem token.
 - Credenciais AWS ficam na cadeia padrão do SDK no host do painel; nada de chave AWS no Carbon.
 - \`ANTHROPIC_API_KEY\` e \`CARBON_GIT_TOKEN\` passados como variáveis de ambiente ficam visíveis
   para quem tem \`GetAgentRuntime\` na conta. Prefira Bedrock para o modelo e restrinja quem lê a
@@ -139,12 +144,13 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
 #   RUNTIME_NAME    opcional     padrão carbon_prod
 #   REPOSITORY      opcional     padrão acme/carbon (repositório ECR)
 #   IMAGE_TAG       opcional     padrão: hash curto do git HEAD
-#   CARBON_PANEL_URL opcional    padrão https://carbon.acme.test
+#   CARBON_PANEL_URL obrigatório https (padrão https://carbon.acme.test); o container recusa outro painel
 #   IDLE_TIMEOUT_SECONDS opcional padrão 600
 #   MAX_LIFETIME_SECONDS opcional padrão 7200 (teto do AgentCore: 28800 = 8h)
 #   CLAUDE_CODE_USE_BEDROCK opcional "1" para o Claude Code usar modelos do Bedrock (sem chave)
 #   ANTHROPIC_API_KEY opcional   chave da API (fica visível na configuração do runtime — prefira Bedrock)
 #   CARBON_GIT_TOKEN  opcional   token git para clone/push (mesma ressalva acima)
+#   CARBON_GIT_HOSTS  opcional   hosts que podem receber o token (ex.: github.com); vazio = token nunca enviado
 set -euo pipefail
 
 REGION="\${REGION:-us-east-1}"
@@ -161,6 +167,12 @@ CONTEXT_DIR="\${CONTEXT_DIR:-$PWD}"
 fail() { echo "deploy.sh: $*" >&2; exit 1; }
 
 [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "ACCOUNT_ID precisa ter 12 dígitos"
+[[ "$CARBON_PANEL_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/.*)?$ ]] || fail "CARBON_PANEL_URL precisa ser https://…"
+[[ "$CARBON_PANEL_URL" != *SEU-PAINEL* ]] || fail "defina CARBON_PANEL_URL com a URL pública do seu painel"
+[[ "\${CARBON_GIT_HOSTS:-}" =~ ^[A-Za-z0-9.,:-]*$ ]] || fail "CARBON_GIT_HOSTS aceita hosts separados por vírgula (ex.: github.com)"
+if [[ -n "\${CARBON_GIT_TOKEN:-}" && -z "\${CARBON_GIT_HOSTS:-}" ]]; then
+  echo "deploy.sh: aviso: CARBON_GIT_TOKEN sem CARBON_GIT_HOSTS — o container não enviará o token a nenhum remoto" >&2
+fi
 [[ "$RUNTIME_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ ]] || fail "RUNTIME_NAME inválido (letras, dígitos e _)"
 if ! [[ "$MAX_LIFETIME_SECONDS" =~ ^[0-9]+$ ]] || (( MAX_LIFETIME_SECONDS > 28800 )); then
   fail "MAX_LIFETIME_SECONDS precisa ser um inteiro <= 28800"
@@ -195,10 +207,12 @@ ENV_JSON="$(jq -n \\
   --arg region "$REGION" \\
   --arg apiKey "\${ANTHROPIC_API_KEY:-}" \\
   --arg gitToken "\${CARBON_GIT_TOKEN:-}" \\
+  --arg gitHosts "\${CARBON_GIT_HOSTS:-}" \\
   '{CARBON_PANEL_URL: $panel, AWS_REGION: $region}
    + (if $bedrock != "" then {CLAUDE_CODE_USE_BEDROCK: $bedrock} else {} end)
    + (if $apiKey != "" then {ANTHROPIC_API_KEY: $apiKey} else {} end)
-   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)')"
+   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)
+   + (if $gitHosts != "" then {CARBON_GIT_HOSTS: $gitHosts} else {} end)')"
 ARTIFACT_JSON="$(jq -n --arg uri "$IMAGE_URI" '{containerConfiguration: {containerUri: $uri}}')"
 LIFECYCLE_JSON="$(jq -n --argjson idle "$IDLE_TIMEOUT_SECONDS" --argjson max "$MAX_LIFETIME_SECONDS" \\
   '{idleRuntimeSessionTimeout: $idle, maxLifetime: $max}')"
@@ -384,6 +398,7 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
    ROLE_ARN=arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME> \\
    CARBON_PANEL_URL=https://SEU-PAINEL.exemplo.com \\
    CLAUDE_CODE_USE_BEDROCK=1 \\
+   CARBON_GIT_HOSTS=github.com \\
    bash <esta pasta>/deploy.sh
    \`\`\`
 
@@ -396,7 +411,11 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
 
 - O painel precisa estar acessível pela internet **só** em \`/api/worker/*\` e com TLS
   (Cloudflare Tunnel, Tailscale Funnel ou proxy reverso com HTTPS). Nunca HTTP puro.
-- \`CARBON_PANEL_URL\` no runtime faz o container recusar invocações para qualquer outro painel.
+- \`CARBON_PANEL_URL\` é **obrigatório** (https): o container não sobe sem ele, recusa IPs privados /
+  link-local e recusa invocações para qualquer outro painel.
+- \`CARBON_GIT_TOKEN\` só é enviado aos hosts listados em \`CARBON_GIT_HOSTS\` (ex.: \`github.com\`), e
+  só por https. Sem \`CARBON_GIT_HOSTS\` o token nunca sai do container. O agente não enxerga o token
+  (ambiente filtrado) e um \`.git/config\` alterado pelo agente faz o push seguir sem token.
 - Credenciais AWS ficam na cadeia padrão do SDK no host do painel; nada de chave AWS no Carbon.
 - \`ANTHROPIC_API_KEY\` e \`CARBON_GIT_TOKEN\` passados como variáveis de ambiente ficam visíveis
   para quem tem \`GetAgentRuntime\` na conta. Prefira Bedrock para o modelo e restrinja quem lê a
@@ -420,12 +439,13 @@ CMD ["node", "/opt/carbon/agentcore.mjs"]
 #   RUNTIME_NAME    opcional     padrão carbon_worker
 #   REPOSITORY      opcional     padrão carbon-agentcore (repositório ECR)
 #   IMAGE_TAG       opcional     padrão: hash curto do git HEAD
-#   CARBON_PANEL_URL opcional    padrão https://SEU-PAINEL.exemplo.com
+#   CARBON_PANEL_URL obrigatório https (padrão https://SEU-PAINEL.exemplo.com); o container recusa outro painel
 #   IDLE_TIMEOUT_SECONDS opcional padrão 900
 #   MAX_LIFETIME_SECONDS opcional padrão 28800 (teto do AgentCore: 28800 = 8h)
 #   CLAUDE_CODE_USE_BEDROCK opcional "1" para o Claude Code usar modelos do Bedrock (sem chave)
 #   ANTHROPIC_API_KEY opcional   chave da API (fica visível na configuração do runtime — prefira Bedrock)
 #   CARBON_GIT_TOKEN  opcional   token git para clone/push (mesma ressalva acima)
+#   CARBON_GIT_HOSTS  opcional   hosts que podem receber o token (ex.: github.com); vazio = token nunca enviado
 set -euo pipefail
 
 REGION="\${REGION:-sa-east-1}"
@@ -442,6 +462,12 @@ CONTEXT_DIR="\${CONTEXT_DIR:-$PWD}"
 fail() { echo "deploy.sh: $*" >&2; exit 1; }
 
 [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || fail "ACCOUNT_ID precisa ter 12 dígitos"
+[[ "$CARBON_PANEL_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/.*)?$ ]] || fail "CARBON_PANEL_URL precisa ser https://…"
+[[ "$CARBON_PANEL_URL" != *SEU-PAINEL* ]] || fail "defina CARBON_PANEL_URL com a URL pública do seu painel"
+[[ "\${CARBON_GIT_HOSTS:-}" =~ ^[A-Za-z0-9.,:-]*$ ]] || fail "CARBON_GIT_HOSTS aceita hosts separados por vírgula (ex.: github.com)"
+if [[ -n "\${CARBON_GIT_TOKEN:-}" && -z "\${CARBON_GIT_HOSTS:-}" ]]; then
+  echo "deploy.sh: aviso: CARBON_GIT_TOKEN sem CARBON_GIT_HOSTS — o container não enviará o token a nenhum remoto" >&2
+fi
 [[ "$RUNTIME_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,47}$ ]] || fail "RUNTIME_NAME inválido (letras, dígitos e _)"
 if ! [[ "$MAX_LIFETIME_SECONDS" =~ ^[0-9]+$ ]] || (( MAX_LIFETIME_SECONDS > 28800 )); then
   fail "MAX_LIFETIME_SECONDS precisa ser um inteiro <= 28800"
@@ -476,10 +502,12 @@ ENV_JSON="$(jq -n \\
   --arg region "$REGION" \\
   --arg apiKey "\${ANTHROPIC_API_KEY:-}" \\
   --arg gitToken "\${CARBON_GIT_TOKEN:-}" \\
+  --arg gitHosts "\${CARBON_GIT_HOSTS:-}" \\
   '{CARBON_PANEL_URL: $panel, AWS_REGION: $region}
    + (if $bedrock != "" then {CLAUDE_CODE_USE_BEDROCK: $bedrock} else {} end)
    + (if $apiKey != "" then {ANTHROPIC_API_KEY: $apiKey} else {} end)
-   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)')"
+   + (if $gitToken != "" then {CARBON_GIT_TOKEN: $gitToken} else {} end)
+   + (if $gitHosts != "" then {CARBON_GIT_HOSTS: $gitHosts} else {} end)')"
 ARTIFACT_JSON="$(jq -n --arg uri "$IMAGE_URI" '{containerConfiguration: {containerUri: $uri}}')"
 LIFECYCLE_JSON="$(jq -n --argjson idle "$IDLE_TIMEOUT_SECONDS" --argjson max "$MAX_LIFETIME_SECONDS" \\
   '{idleRuntimeSessionTimeout: $idle, maxLifetime: $max}')"
