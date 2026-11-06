@@ -5,6 +5,7 @@ import { getDb, nowIso } from "../db";
 import type { ExecutorId } from "../repo/settings";
 import { findTask, type Task } from "../repo/tasks";
 import { findWorker } from "../repo/workers";
+import { closeRemotePrompts } from "./remote-permissions";
 
 /**
  * Queue for remote runtimes (pool workers, AgentCore sessions). The local runner keeps using
@@ -27,13 +28,14 @@ export interface SweepOptions {
 /**
  * Atomic claim of the next pool task: a single conditional UPDATE … RETURNING. The inner SELECT
  * and the outer `status = 'queued'` guard run in the same statement, under BEGIN IMMEDIATE, so two
- * claimers can never both win the same row. Executors are bound as a JSON array (json_each) to keep
+ * claimers can never both win the same row. A claim starts a new run, so the previous run's remote
+ * permission bookkeeping (remote-permissions.ts) is dropped from the snapshot. Executors are bound as a JSON array (json_each) to keep
  * one prepared statement for any list size. Exported so the multi-process test runs the same SQL.
  */
 export const CLAIM_NEXT_SQL = `
   UPDATE tasks
      SET status = 'running',
-         snapshot = json_set(snapshot, '$.status', 'running'),
+         snapshot = json_set(json_remove(snapshot, '$.remotePermissions'), '$.status', 'running'),
          lease_worker = :worker,
          lease_expires_at = :expires,
          lease_seq = 0,
@@ -52,7 +54,7 @@ export const CLAIM_NEXT_SQL = `
 const CLAIM_SPECIFIC_SQL = `
   UPDATE tasks
      SET status = 'running',
-         snapshot = json_set(snapshot, '$.status', 'running'),
+         snapshot = json_set(json_remove(snapshot, '$.remotePermissions'), '$.status', 'running'),
          lease_worker = :worker,
          lease_expires_at = :expires,
          lease_seq = 0,
@@ -126,6 +128,14 @@ export function requestCancel(taskId: string): boolean {
   return Number(result.changes) > 0;
 }
 
+/** Worker id holding a live lease on the task (running or waiting for a permission), or null. */
+export function leaseHolder(taskId: string, now = Date.now()): string | null {
+  const row = getDb()
+    .prepare("SELECT lease_worker FROM tasks WHERE id = ? AND lease_worker IS NOT NULL AND lease_expires_at >= ? AND status IN ('running', 'waiting')")
+    .get(taskId, now) as { lease_worker: string } | undefined;
+  return row?.lease_worker ?? null;
+}
+
 /** The worker is done with the task (result reported): drop its lease without touching the status. */
 export function releaseLease(taskId: string, workerId: string): boolean {
   const result = getDb()
@@ -176,7 +186,8 @@ function withLog(snapshot: Ticket, text: string): readonly LogLine[] {
 }
 
 function expiredSnapshot(row: ExpiredRow, requeue: boolean, now: number): Ticket {
-  const snapshot = JSON.parse(row.snapshot) as Ticket;
+  // Prompts the vanished worker forwarded can no longer be answered.
+  const snapshot = closeRemotePrompts(JSON.parse(row.snapshot) as Ticket);
   const who = findWorker(row.lease_worker)?.name ?? row.lease_worker;
   const at = new Date(now).toISOString();
   const text = requeue

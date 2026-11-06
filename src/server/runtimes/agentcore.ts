@@ -3,6 +3,7 @@ import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand, StopRuntimeSessionCo
 import { issueTaskToken, revokeTaskTokens } from "../auth/worker-auth";
 import { getSettings, type Settings } from "../repo/settings";
 import { notifyLive } from "../runner/live";
+import { leaseHolder } from "../runner/scheduler";
 import { countActiveSessions, failUnclaimed, markDispatched, queuedAgentCoreTasks, runningAgentCoreTasks, taskStatus } from "./agentcore-store";
 import { agentcoreAvailability } from "./availability";
 import { agentcoreSessionId } from "./session";
@@ -69,6 +70,23 @@ function invokePayload(taskId: string, panelUrl: string, taskToken: string): Uin
   return new TextEncoder().encode(JSON.stringify({ taskId, panelUrl, taskToken }));
 }
 
+/** Revokes the task's tokens and stops its runtime session (best effort; never throws). */
+async function stopSessionWith(send: AgentCoreSend, taskId: string, settings: Settings): Promise<void> {
+  revokeTaskTokens(taskId);
+  if (!settings.agentcore.runtimeArn) return;
+  try {
+    const command = new StopRuntimeSessionCommand({
+      agentRuntimeArn: settings.agentcore.runtimeArn,
+      qualifier: settings.agentcore.qualifier || undefined,
+      runtimeSessionId: agentcoreSessionId(taskId),
+    });
+    await send(command, settings.agentcore.region);
+  } catch (error) {
+    // Best effort: an unstopped session still ends on its idle timeout (15 min).
+    console.warn(`[carbon] AgentCore: não foi possível encerrar a sessão de ${taskId}: ${summarizeSdkError(error)}`);
+  }
+}
+
 export function createAgentCoreDispatcher(deps: DispatcherDeps): AgentCoreDispatcher {
   const sleep = deps.sleep ?? defaultSleep;
   const now = deps.now ?? Date.now;
@@ -77,24 +95,16 @@ export function createAgentCoreDispatcher(deps: DispatcherDeps): AgentCoreDispat
   let sessions: ReadonlySet<string> = new Set(runningAgentCoreTasks());
   let busy = false;
 
-  async function stopSession(taskId: string, settings: Settings): Promise<void> {
-    revokeTaskTokens(taskId);
-    if (!settings.agentcore.runtimeArn) return;
-    try {
-      const command = new StopRuntimeSessionCommand({
-        agentRuntimeArn: settings.agentcore.runtimeArn,
-        qualifier: settings.agentcore.qualifier || undefined,
-        runtimeSessionId: agentcoreSessionId(taskId),
-      });
-      await deps.send(command, settings.agentcore.region);
-    } catch (error) {
-      // Best effort: an unstopped session still ends on its idle timeout (15 min).
-      console.warn(`[carbon] AgentCore: não foi possível encerrar a sessão de ${taskId}: ${summarizeSdkError(error)}`);
-    }
-  }
+  const stopSession = (taskId: string, settings: Settings) => stopSessionWith(deps.send, taskId, settings);
+
+  /** A session is still working while its task runs, or waits for a permission answer under its lease. */
+  const isAlive = (taskId: string): boolean => {
+    const status = taskStatus(taskId);
+    return status === "running" || (status === "waiting" && leaseHolder(taskId, now()) !== null);
+  };
 
   async function stopFinished(settings: Settings): Promise<void> {
-    const finished = [...sessions].filter((id) => taskStatus(id) !== "running");
+    const finished = [...sessions].filter((id) => !isAlive(id));
     if (finished.length === 0) return;
     sessions = new Set([...sessions].filter((id) => !finished.includes(id)));
     for (const id of finished) await stopSession(id, settings);
@@ -165,6 +175,14 @@ const sdkSend: AgentCoreSend = (command, region) => {
   const sdk = client.instance;
   return command instanceof InvokeAgentRuntimeCommand ? sdk.send(command) : sdk.send(command);
 };
+
+/**
+ * Stops the AgentCore session of one task right away (e.g. the user canceled it before the
+ * container claimed it) and revokes its task tokens. `send` is injectable for tests.
+ */
+export function stopAgentCoreSession(taskId: string, options: { readonly send?: AgentCoreSend; readonly settings?: Settings } = {}): Promise<void> {
+  return stopSessionWith(options.send ?? sdkSend, taskId, options.settings ?? getSettings());
+}
 
 /** Started once from instrumentation; ticks every DISPATCH_INTERVAL_MS. */
 export function startAgentCoreDispatcher(): void {

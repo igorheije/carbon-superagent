@@ -5,6 +5,7 @@ import type { ExecutorEvent } from "../executors/events";
 import { getDb, nowIso } from "../db";
 import { saveSnapshot } from "../repo/tasks";
 import { appendLog, applyExecutorEvent, emptyContext, type RunContext } from "./apply";
+import { registerRemotePrompt } from "./remote-permissions";
 
 /**
  * Live ticket persistence shared by the local runner and remote event ingestion: the ticket is
@@ -119,7 +120,11 @@ export function ingestRemoteEvents(taskId: string, workerId: string, seq: number
 
   const initial = JSON.parse(row.snapshot) as Ticket;
   const folded = events.reduce(
-    (state, event) => applyExecutorEvent(state.ticket, state.ctx, event),
+    (state, event) => {
+      const next = applyExecutorEvent(state.ticket, state.ctx, event);
+      // A forwarded prompt also becomes a durable pending entry the human can answer (RMT-01).
+      return event.type === "permission_request" ? { ...next, ticket: registerRemotePrompt(next.ticket, event, now) } : next;
+    },
     { ticket: initial, ctx: remoteRunContext(taskId, initial) },
   );
   const result = db

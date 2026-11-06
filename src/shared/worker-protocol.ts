@@ -155,13 +155,37 @@ export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 // ---------------------------------------------------------------- result (route lands in T10)
 
 export const resultRequestSchema = z.object({
-  status: z.enum(["done", "failed", "canceled"]),
+  /**
+   * "waiting" (RMT-02): the agent asked a CARBON_QUESTION. The panel parks the task until a human
+   * answers, then requeues it on the same runtime; nothing is delivered for this run.
+   */
+  status: z.enum(["done", "failed", "canceled", "waiting"]),
   branch: z.string().max(300),
   commit: z.string().max(80).nullable(),
   transport: z.enum(["push", "bundle"]),
   error: z.string().max(4000).optional(),
 });
 export type ResultRequest = z.infer<typeof resultRequestSchema>;
+
+// ---------------------------------------------------------------- permissions (RMT-01)
+
+/** How a human (or the panel's timeout) answered a permission prompt the worker forwarded. */
+export const permissionDecisionSchema = z.object({
+  /** Monotonic per run of the task, starting at 1: the worker polls with ?after=<last seq>. */
+  seq: z.number().int().min(1),
+  requestId: z.string().max(200),
+  behavior: z.enum(["allow", "deny"]),
+  /** Text handed to the agent on deny (who denied it, or the timeout). */
+  message: z.string().max(2000).nullable(),
+  /** "allow everything for the rest of this task": the worker auto-allows later prompts. */
+  allowTask: z.boolean(),
+  /** "always allow in this repo": the new rule, so the worker stops asking for the same thing. */
+  rule: permissionRuleSchema.nullable(),
+});
+export type PermissionDecisionWire = z.infer<typeof permissionDecisionSchema>;
+
+export const permissionsResponseSchema = z.object({ decisions: z.array(permissionDecisionSchema).max(200) });
+export type PermissionsResponse = z.infer<typeof permissionsResponseSchema>;
 
 /** Error body codes the worker reacts to. */
 export const LEASE_LOST = "lease_lost";
@@ -172,6 +196,9 @@ const taskPath = (taskId: string) => `/api/worker/tasks/${encodeURIComponent(tas
 
 /** GET: git bundle of the task base · PUT: the worker's result bundle (application/octet-stream). */
 export const bundlePath = (taskId: string) => `${taskPath(taskId)}/bundle`;
+
+/** GET ?after=<seq>: long-poll of answered permission prompts (PermissionsResponse). */
+export const permissionsPath = (taskId: string, after = 0) => `${taskPath(taskId)}/permissions?after=${Math.max(0, Math.floor(after))}`;
 
 /** POST: the task's final ResultRequest. */
 export const resultPath = (taskId: string) => `${taskPath(taskId)}/result`;

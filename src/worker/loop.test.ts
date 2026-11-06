@@ -54,6 +54,7 @@ function fakeClient(tasks: ClaimedTask[], hello: () => Promise<HelloResponse> = 
     downloadBundle: async () => "ok" as const,
     uploadBundle: async () => "ok" as const,
     result: async () => "ok" as const,
+    permissions: async () => ({ decisions: [] }),
   };
   return client;
 }
