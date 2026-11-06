@@ -5,6 +5,13 @@ import { getDb } from "../db";
 /** A machine that runs tasks for the panel. Tokens are generated in auth/worker-auth.ts; only their hash lives here. */
 export type WorkerKind = "pool" | "agentcore";
 
+/** Whether the node takes new tasks: paused = drain (finishes current ones), pending = waiting for admin approval. */
+export const WORKER_AVAILABILITIES = ["active", "paused", "pending"] as const;
+export type WorkerAvailability = (typeof WORKER_AVAILABILITIES)[number];
+
+/** manual = created in the panel/CLI with its own token; join = entered with the cluster join token. */
+export type WorkerOrigin = "manual" | "join";
+
 export interface WorkerCapabilities {
   readonly executors?: readonly string[];
   readonly git?: boolean;
@@ -21,6 +28,9 @@ export interface Worker {
   readonly lastSeenAt: number | null;
   readonly version: string | null;
   readonly capabilities: WorkerCapabilities;
+  readonly availability: WorkerAvailability;
+  readonly joinedVia: WorkerOrigin;
+  readonly hostname: string | null;
 }
 
 interface WorkerRow {
@@ -34,7 +44,13 @@ interface WorkerRow {
   last_seen_at: number | null;
   version: string | null;
   capabilities: string;
+  availability: string;
+  joined_via: string;
+  hostname: string | null;
 }
+
+const asAvailability = (raw: string): WorkerAvailability =>
+  (WORKER_AVAILABILITIES as readonly string[]).includes(raw) ? (raw as WorkerAvailability) : "paused";
 
 function parseCapabilities(raw: string): WorkerCapabilities {
   try {
@@ -56,6 +72,9 @@ function toWorker(row: WorkerRow): Worker {
     lastSeenAt: row.last_seen_at,
     version: row.version,
     capabilities: parseCapabilities(row.capabilities),
+    availability: asAvailability(row.availability),
+    joinedVia: row.joined_via === "join" ? "join" : "manual",
+    hostname: row.hostname,
   };
 }
 
@@ -64,13 +83,18 @@ export interface NewWorker {
   readonly kind: WorkerKind;
   readonly tokenHash: string;
   readonly createdBy: string;
+  readonly joinedVia?: WorkerOrigin;
+  readonly hostname?: string | null;
+  readonly availability?: WorkerAvailability;
 }
 
 export function createWorkerRecord(input: NewWorker, now = Date.now()): Worker {
   const id = randomUUID();
   getDb()
-    .prepare("INSERT INTO workers (id, name, kind, token_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(id, input.name, input.kind, input.tokenHash, input.createdBy, now);
+    .prepare(
+      "INSERT INTO workers (id, name, kind, token_hash, created_by, created_at, joined_via, hostname, availability) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(id, input.name, input.kind, input.tokenHash, input.createdBy, now, input.joinedVia ?? "manual", input.hostname ?? null, input.availability ?? "active");
   return findWorker(id) as Worker;
 }
 
@@ -106,4 +130,16 @@ export function setCapabilities(id: string, capabilities: WorkerCapabilities): v
 export function listWorkers(): readonly Worker[] {
   const rows = getDb().prepare("SELECT * FROM workers ORDER BY created_at, name").all() as unknown as WorkerRow[];
   return rows.map(toWorker);
+}
+
+/** Pause (drain), resume or approve a node. False when it does not exist or was removed. */
+export function setAvailability(id: string, availability: WorkerAvailability): boolean {
+  const result = getDb().prepare("UPDATE workers SET availability = ? WHERE id = ? AND revoked_at IS NULL").run(availability, id);
+  return Number(result.changes) > 0;
+}
+
+/** Current availability, read fresh (the claim long-poll re-checks it so a pause applies mid-poll). */
+export function availabilityOf(id: string): WorkerAvailability | null {
+  const row = getDb().prepare("SELECT availability FROM workers WHERE id = ? AND revoked_at IS NULL").get(id) as { availability: string } | undefined;
+  return row ? asAvailability(row.availability) : null;
 }

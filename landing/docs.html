@@ -177,6 +177,7 @@
       <p class="group">Execução distribuída</p>
       <ol>
         <li><a href="#conceitos">Conceitos</a></li>
+        <li><a href="#cluster">Cluster join (estilo Swarm)</a></li>
         <li><a href="#compose">Workers com Docker Compose</a></li>
         <li><a href="#kubernetes">Kubernetes</a></li>
         <li><a href="#agentcore">AgentCore <span class="exp">EXP</span></a></li>
@@ -353,7 +354,9 @@ CARBON_WORKER_TLS_KEY=/caminho/key.pem</code></pre>
           <tr><td>ocupada</td><td>Vista recentemente, com tarefa sob lease</td></tr>
           <tr><td>ociosa</td><td>Vista há menos de 2 × lease, sem tarefa</td></tr>
           <tr><td>offline</td><td>Nunca conectou ou sem contato há mais de 2 × lease</td></tr>
-          <tr><td>revogada</td><td>Token revogado: próximos requests recebem <code>401</code></td></tr>
+          <tr><td>pausada</td><td>Pausada pelo admin: termina o que está rodando, não pega tarefa nova</td></tr>
+          <tr><td>aguardando aprovação</td><td>Entrou pelo join com "exigir aprovação" ligado</td></tr>
+          <tr><td>removida</td><td>Credencial revogada: próximos requests recebem <code>401</code></td></tr>
         </tbody>
       </table></div>
       <p>O mesmo gerador existe na CLI, no host do painel (grava a máquina direto no banco e imprime o token uma vez):</p>
@@ -363,6 +366,38 @@ CARBON_WORKER_TLS_KEY=/caminho/key.pem</code></pre>
 
 <span class="c"># worker sem Docker (na mesma máquina, para testar)</span>
 CARBON_PANEL_URL=http://127.0.0.1:3417 CARBON_WORKER_TOKEN=cwk_... node bin/carbon.mjs worker</code></pre>
+    </section>
+
+    <!-- ============================================================ cluster -->
+    <section class="doc" id="cluster">
+      <h2>Cluster join (estilo Docker Swarm)</h2>
+      <p>O painel é o manager. Para colocar um servidor para ajudar, gere um <b>token de join</b> e rode um comando nele: o servidor entra no cluster, aparece em <i>Configurações → Máquinas</i> com o selo <code>join</code> e passa a pegar tarefas com <b>Onde rodar: Pool de workers</b>.</p>
+      <div class="table"><table>
+        <thead><tr><th>Docker Swarm</th><th>Carbon</th></tr></thead>
+        <tbody>
+          <tr><td><code>docker swarm join-token worker</code></td><td><i>Máquinas → Entrar no cluster</i> · <code>carbon join-token --rotate</code></td></tr>
+          <tr><td><code>docker swarm join --token …</code></td><td><code>carbon join &lt;url&gt; --token cjt_…</code> · ou o <code>docker run</code> mostrado no painel</td></tr>
+          <tr><td><code>docker node update --availability drain</code></td><td><b>pausar</b>: termina o que está rodando e não pega tarefa nova</td></tr>
+          <tr><td><code>docker node rm</code> · <code>docker swarm leave</code></td><td><b>remover</b> · <code>carbon leave</code></td></tr>
+        </tbody>
+      </table></div>
+      <pre><code><span class="c"># no host do painel</span>
+carbon join-token --rotate [--ttl 24h] [--max-uses 3]
+
+<span class="c"># em cada servidor (Node 22.13+, git e Claude Code/Codex logado)</span>
+npx carbon join 'https://painel.exemplo.com' --token 'cjt_…' [--name gpu-1]
+
+<span class="c"># ou com Docker (imagem de deploy/worker/Dockerfile); o volume guarda a credencial do nó</span>
+docker run -d --name carbon-worker --restart unless-stopped \
+  -e CARBON_PANEL_URL='https://painel.exemplo.com' -e CARBON_JOIN_TOKEN='cjt_…' \
+  -e ANTHROPIC_API_KEY='…' -v carbon-worker-state:/home/carbon/state carbon-worker:&lt;versão&gt;</code></pre>
+      <ul>
+        <li>O token de join só serve para entrar: cada servidor recebe uma credencial própria (<code>cwk_</code>), salva com permissão 600. Remover um não afeta os outros.</li>
+        <li>Reiniciar o worker reaproveita o mesmo nó. Girar o token barra joins novos; quem já entrou segue.</li>
+        <li>Servidor removido para com código 3 e não volta sozinho, mesmo com <code>--restart</code>.</li>
+        <li>Opções: validade, máximo de servidores e <b>exigir aprovação</b> (o nó fica "aguardando aprovação" até um admin aprovar).</li>
+        <li>Trate o token como senha: quem o tem coloca servidores no cluster e recebe tarefas.</li>
+      </ul>
     </section>
 
     <!-- ============================================================ protocolo -->

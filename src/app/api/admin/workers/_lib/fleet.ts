@@ -1,13 +1,14 @@
 import "server-only";
 import { getDb } from "@/server/db";
-import { listWorkers, type Worker, type WorkerCapabilities, type WorkerKind } from "@/server/repo/workers";
+import { listWorkers, type Worker, type WorkerAvailability, type WorkerCapabilities, type WorkerKind, type WorkerOrigin } from "@/server/repo/workers";
 
 /**
  * Fleet view (FLT-01) for Configurações → Máquinas. Status comes from `last_seen_at` and the tasks the
  * worker currently holds a lease on. "online" is not a state of its own: an online worker is
- * either `busy` (holds at least one lease) or `idle`.
+ * either `busy` (holds at least one lease) or `idle`. A paused (draining) node that still runs tasks
+ * shows `busy`; once empty it shows `paused`. `pending` (waiting for approval) wins over health.
  */
-export type WorkerStatus = "busy" | "idle" | "offline" | "revoked";
+export type WorkerStatus = "busy" | "idle" | "paused" | "pending" | "offline" | "revoked";
 
 /** A worker is offline when it has not been seen for this many lease periods. */
 export const OFFLINE_AFTER_LEASES = 2;
@@ -26,6 +27,9 @@ export interface FleetWorker {
   readonly lastSeenAt: number | null;
   readonly version: string | null;
   readonly capabilities: WorkerCapabilities;
+  readonly availability: WorkerAvailability;
+  readonly joinedVia: WorkerOrigin;
+  readonly hostname: string | null;
   readonly status: WorkerStatus;
   readonly currentTasks: readonly WorkerTaskRef[];
 }
@@ -47,10 +51,17 @@ function leasesByWorker(): ReadonlyMap<string, readonly WorkerTaskRef[]> {
   }, new Map<string, readonly WorkerTaskRef[]>());
 }
 
-export function workerStatus(worker: Pick<Worker, "revokedAt" | "lastSeenAt">, taskCount: number, leaseMs: number, now: number): WorkerStatus {
+export function workerStatus(
+  worker: Pick<Worker, "revokedAt" | "lastSeenAt"> & { readonly availability?: WorkerAvailability },
+  taskCount: number,
+  leaseMs: number,
+  now: number,
+): WorkerStatus {
   if (worker.revokedAt !== null) return "revoked";
+  if (worker.availability === "pending") return "pending";
   if (worker.lastSeenAt === null || now - worker.lastSeenAt > OFFLINE_AFTER_LEASES * leaseMs) return "offline";
-  return taskCount > 0 ? "busy" : "idle";
+  if (taskCount > 0) return "busy";
+  return worker.availability === "paused" ? "paused" : "idle";
 }
 
 export function listFleet(leaseMs: number, now = Date.now()): readonly FleetWorker[] {
@@ -66,6 +77,9 @@ export function listFleet(leaseMs: number, now = Date.now()): readonly FleetWork
       lastSeenAt: worker.lastSeenAt,
       version: worker.version,
       capabilities: worker.capabilities,
+      availability: worker.availability,
+      joinedVia: worker.joinedVia,
+      hostname: worker.hostname,
       status: workerStatus(worker, currentTasks.length, leaseMs, now),
       currentTasks,
     };

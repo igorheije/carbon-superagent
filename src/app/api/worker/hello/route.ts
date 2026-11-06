@@ -18,6 +18,6 @@ export function POST(request: Request) {
     touchLastSeen(worker.id, Date.now(), body.workerVersion);
     setCapabilities(worker.id, { executors: body.executors, git: body.git, maxParallel: body.maxParallel });
     const { leaseMs, pollMs } = getSettings().workers;
-    return ok({ protocol: PROTOCOL_VERSION, leaseMs, pollMs } satisfies HelloResponse);
+    return ok({ protocol: PROTOCOL_VERSION, leaseMs, pollMs, availability: worker.availability } satisfies HelloResponse);
   });
 }

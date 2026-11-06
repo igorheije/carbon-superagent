@@ -136,7 +136,7 @@ describe("hello", () => {
   it("returns protocol and default timings, and records capabilities", async () => {
     const response = await m.hello.POST(post("/api/worker/hello", token, { version: 1, executors: ["claude"], git: true, maxParallel: 2, workerVersion: "0.3.0" }));
     expect(response.status).toBe(200);
-    expect((await json(response)).data).toEqual({ protocol: 1, leaseMs: 60_000, pollMs: 25_000 });
+    expect((await json(response)).data).toEqual({ protocol: 1, leaseMs: 60_000, pollMs: 25_000, availability: "active" });
     const { findWorker } = await import("../repo/workers");
     const worker = findWorker(workerId);
     expect(worker?.version).toBe("0.3.0");

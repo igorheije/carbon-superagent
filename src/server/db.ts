@@ -210,6 +210,23 @@ export const MIGRATIONS: readonly string[] = [
     used_at INTEGER
   );
   `,
+  // Cluster join (Docker Swarm-like): node availability, how the node was added, and the shared
+  // join token (cjt_). Values validated in TS/zod, no CHECK (same rule as tasks.runtime).
+  `
+  ALTER TABLE workers ADD COLUMN availability TEXT NOT NULL DEFAULT 'active';
+  ALTER TABLE workers ADD COLUMN joined_via TEXT NOT NULL DEFAULT 'manual';
+  ALTER TABLE workers ADD COLUMN hostname TEXT;
+  CREATE TABLE IF NOT EXISTS join_tokens (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    max_uses INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0,
+    revoked_at INTEGER
+  );
+  `,
 ];
 
 /**

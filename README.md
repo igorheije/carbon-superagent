@@ -223,10 +223,11 @@ O código vai para o worker por **git** (clone do `origin` e push do branch `age
 Em resumo:
 
 1. Exponha só `/api/worker/*` (abaixo) e defina a **URL pública do painel** (`https://`) em *Configurações → Execução*.
-2. *Configurações → Máquinas → Adicionar máquina* gera o kit (Compose ou Kubernetes) com o token da máquina — ou `node bin/carbon.mjs worker init --target compose|k8s|agentcore --out <pasta> …` no host do painel.
-3. Na máquina worker: gere a imagem com `deploy/worker/Dockerfile` (mesma versão do painel), preencha as credenciais do modelo no `.env` e `docker compose up -d`.
+2. **Cluster join (estilo Docker Swarm):** *Configurações → Máquinas → Entrar no cluster* (ou `carbon join-token --rotate`) gera um token; em cada servidor rode `carbon join https://painel --token cjt_…` ou o `docker run` mostrado. O servidor entra sozinho e dá para pausar, retomar ou remover pelo painel. Ver [cluster join](docs/distributed/cluster-join.md).
+3. Alternativa com kit por máquina: *Configurações → Máquinas → Adicionar máquina* gera o kit (Compose ou Kubernetes) com o token da máquina — ou `node bin/carbon.mjs worker init --target compose|k8s|agentcore --out <pasta> …` no host do painel.
+   Na máquina worker: gere a imagem com `deploy/worker/Dockerfile` (mesma versão do painel), preencha as credenciais do modelo no `.env` e `docker compose up -d`.
 
-Documentação completa em [`docs/distributed/`](docs/distributed/README.md) — [quickstart](docs/distributed/quickstart.md), [Compose](docs/distributed/docker-compose.md), [Kubernetes](docs/distributed/kubernetes.md), [AgentCore](docs/distributed/agentcore.md), [protocolo](docs/distributed/protocol.md), [segurança](docs/distributed/security.md), [operação](docs/distributed/operations.md), [variáveis](docs/distributed/environment.md), [troubleshooting](docs/distributed/troubleshooting.md), [FAQ](docs/distributed/faq.md) — e no site: [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html).
+Documentação completa em [`docs/distributed/`](docs/distributed/README.md) — [cluster join](docs/distributed/cluster-join.md), [quickstart](docs/distributed/quickstart.md), [Compose](docs/distributed/docker-compose.md), [Kubernetes](docs/distributed/kubernetes.md), [AgentCore](docs/distributed/agentcore.md), [protocolo](docs/distributed/protocol.md), [segurança](docs/distributed/security.md), [operação](docs/distributed/operations.md), [variáveis](docs/distributed/environment.md), [troubleshooting](docs/distributed/troubleshooting.md), [FAQ](docs/distributed/faq.md) — e no site: [carbon-superagent.vercel.app/docs.html](https://carbon-superagent.vercel.app/docs.html).
 
 ### Expor o painel para workers
 
