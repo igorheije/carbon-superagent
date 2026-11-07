@@ -86,9 +86,10 @@ export function ClaudeSharePanel() {
           aria-label="Compartilhar o Claude Code deste computador com os workers"
           disabled={!data || isBusy || isUnsupported}
           onClick={toggle}
-          className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors disabled:opacity-50 ${isOn ? "border-accent bg-accent" : "border-line-strong bg-surface-sunken"}`}
+          className={`inline-flex h-7 w-12 shrink-0 items-center rounded-full p-0.5 ring-1 ring-inset transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50 ${isOn ? "bg-accent ring-accent" : "bg-surface-sunken ring-line-strong"}`}
         >
-          <span className={`absolute top-0.5 size-[22px] rounded-full bg-surface shadow transition-transform ${isOn ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+          {/* track 48px − padding 4px − knob 24px = 20px of travel (translate-x-5) */}
+          <span aria-hidden className={`size-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${isOn ? "translate-x-5" : "translate-x-0"}`} />
         </button>
       }
     >
