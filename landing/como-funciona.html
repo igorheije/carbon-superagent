@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como funciona · Carbon SuperAgent</title>
+<meta name="description" content="Como outro computador ajuda numa tarefa se o código está na sua máquina: o que viaja, por onde, o que nunca sai do seu computador e como o resultado volta para você decidir.">
+<meta property="og:title" content="Como funciona · Carbon SuperAgent">
+<meta property="og:description" content="O código está no seu computador. Veja, passo a passo, como outro servidor ajuda na tarefa.">
+<meta property="og:image" content="https://carbon-superagent.vercel.app/assets/mission-control.png">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // Same theme key as docs.html, applied before first paint. Storage may be unavailable: ignore.
+  try { const t = localStorage.getItem("carbon-docs-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<style>
+  /* Same tokens as index.html / docs.html */
+  :root {
+    --bg: #0a0a0b; --surface: #111113; --surface-2: #17171a;
+    --line: #232327; --line-strong: #34343a;
+    --ink: #f4f4f5; --muted: #9b9ba3; --subtle: #6b6b73;
+    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
+    --warn: #f59e0b; --warn-soft: rgba(245,158,11,.12);
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+      --line: #e6e6e8; --line-strong: #d4d4d8;
+      --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+      --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+      --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+    --line: #e6e6e8; --line-strong: #d4d4d8;
+    --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+    --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+    --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--ink); overflow-wrap: anywhere; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1120px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
+  .brand small { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--accent); font-weight: 500; }
+  .brand .tag { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .top-links { display: flex; gap: 8px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 500; text-decoration: none; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); cursor: pointer; font-family: var(--sans); transition: border-color .2s, background .2s; }
+  .btn:hover { border-color: var(--muted); }
+  .btn-ghost { color: var(--muted); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #052e16; }
+  .btn-primary:hover { border-color: var(--accent); filter: brightness(1.05); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .icon-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .hero { padding: 56px 0 28px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .eyebrow .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 10px var(--accent); }
+  h1 { font-size: clamp(34px, 5.4vw, 60px); letter-spacing: -.045em; line-height: 1.02; margin: 14px 0 0; font-weight: 700; max-width: 900px; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { color: var(--muted); max-width: 760px; margin: 18px 0 0; font-size: 18px; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  /* explorer */
+  .explorer { border: 1px solid var(--line); border-radius: 20px; background: var(--surface); overflow: hidden; margin-top: 28px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 18px 28px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+  .control { display: flex; flex-direction: column; gap: 8px; }
+  .control .label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--subtle); }
+  .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px; }
+  .seg button { font: inherit; font-family: var(--mono); font-size: 12px; color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  .seg button[aria-checked="true"] { background: var(--ink); color: var(--bg); }
+  .stage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .diagram { padding: 18px; border-right: 1px solid var(--line); background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 28px 28px,
+      linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 28px 28px; background-color: var(--surface); }
+  .diagram svg { width: 100%; height: auto; display: block; }
+  .node rect { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.5; transition: stroke .3s, fill .3s; }
+  .node.on rect { stroke: var(--accent); fill: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); }
+  .node.off { opacity: .28; }
+  .node .title { font-family: var(--sans); font-weight: 600; font-size: 18px; fill: var(--ink); }
+  .node .sub { font-family: var(--mono); font-size: 12.5px; fill: var(--muted); }
+  .node .item { font-family: var(--mono); font-size: 13px; fill: var(--muted); }
+  .node .item.hl { fill: var(--accent); }
+  .edge { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 5 6; fill: none; transition: stroke .3s, opacity .3s; }
+  .edge.on { stroke: var(--accent); stroke-dasharray: none; }
+  .edge.off { opacity: .15; }
+  .packet circle { fill: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
+  .packet rect { fill: var(--bg); stroke: var(--accent); }
+  .packet text { font-family: var(--mono); font-size: 12.5px; fill: var(--ink); }
+
+  .story { padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 14px; min-height: 100%; }
+  .progress { display: flex; gap: 6px; }
+  .progress button { flex: 1; height: 4px; border: 0; border-radius: 4px; background: var(--line-strong); cursor: pointer; padding: 0; }
+  .progress button.done { background: color-mix(in srgb, var(--accent) 55%, var(--line-strong)); }
+  .progress button.now { background: var(--accent); }
+  .step-k { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  .step-title:focus, .step-title:focus-visible { outline: none; }
+  .step-title { font-size: 22px; letter-spacing: -.02em; line-height: 1.2; margin: 0; font-weight: 650; }
+  .step-body { color: var(--muted); margin: 0; }
+  .step-body b { color: var(--ink); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-strong); color: var(--muted); border-radius: 999px; padding: 3px 9px; }
+  .chip.keep { border-color: var(--accent); color: var(--accent); }
+  .nav { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 6px; }
+  .nav .count { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--subtle); }
+
+  /* below */
+  section.block { padding: 56px 0 8px; }
+  h2 { font-size: clamp(24px, 3vw, 34px); letter-spacing: -.03em; line-height: 1.1; margin: 0 0 14px; font-weight: 650; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .panel h3 { margin: 0 0 10px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .panel ul { margin: 0; padding-left: 18px; }
+  .panel li { color: var(--muted); margin: 6px 0; }
+  .panel li b { color: var(--ink); font-weight: 600; }
+  .panel.go { border-top: 3px solid var(--accent); }
+  .panel.stay { border-top: 3px solid var(--warn); }
+  details { border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 10px 0; background: var(--surface); }
+  details summary { cursor: pointer; font-weight: 500; }
+  details p { color: var(--muted); margin: 10px 0 2px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; margin-top: 56px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-family: var(--mono); font-size: 12.5px; color: var(--subtle); }
+  footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
+
+  @media (max-width: 900px) {
+    .stage { grid-template-columns: minmax(0, 1fr); }
+    .diagram { border-right: 0; border-bottom: 1px solid var(--line); }
+    .two { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .top-in, .wrap { padding: 0 16px; }
+    .brand .tag, .hide-sm { display: none; }
+    .controls { padding: 14px; }
+    .story { padding: 18px 16px 16px; }
+    .step-title { font-size: 19px; }
+    /* The diagram shrinks to ~45%: keep only big titles; the step text carries the details. */
+    .node .item, .node .sub { display: none; }
+    .node .title { font-size: 28px; }
+    .packet text { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="index.html">Carbon <small>SUPERAGENT</small> <span class="tag">/ como funciona</span></a>
+    <div class="top-links">
+      <a class="btn btn-ghost hide-sm" href="index.html">Início</a>
+      <a class="btn btn-ghost" href="docs.html">Docs</a>
+      <a class="btn btn-ghost hide-sm" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">GitHub</a>
+      <button type="button" class="btn icon-btn" id="theme" aria-label="Alternar tema claro/escuro" title="Alternar tema">◐</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <p class="eyebrow"><span class="dot"></span>Execução distribuída, passo a passo</p>
+    <h1>O código está no seu computador. <em>Como outro servidor ajuda?</em></h1>
+    <p class="lede">O servidor recebe <b>só o que a tarefa precisa</b>: o pedido e uma cópia do código já commitado. Ele trabalha numa cópia isolada, devolve <b>um branch</b> e apaga a cópia. Nada entra no seu projeto sem você decidir. Escolha o seu caso e avance os passos.</p>
+  </div>
+
+  <div class="explorer" id="explorer">
+    <div class="controls">
+      <div class="control">
+        <span class="label" id="lbl-repo">Seu repositório tem GitHub/GitLab?</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lbl-repo" data-key="repo">
+          <button type="button" role="radio" aria-checked="true" data-value="remote">Sim, tem remoto</button>
+          <button type="button" role="radio" aria-checked="false" data-value="local">Não, só na minha máquina</button>
+        </div>
+      </div>
+      <div class="control">
+        <span class="label" id="lbl-mode">Como a tarefa roda</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lbl-mode" data-key="mode">
+          <button type="button" role="radio" aria-checked="true" data-value="whole">Inteira num servidor</button>
+          <button type="button" role="radio" aria-checked="false" data-value="split">Dividida em partes</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="diagram">
+        <svg viewBox="0 0 760 400" role="img" aria-labelledby="diagram-title">
+          <title id="diagram-title">Diagrama: seu computador, o servidor worker e o GitHub, com o caminho do passo atual destacado</title>
+          <path class="edge" id="e-you-srv" d="M262 250 C 380 250, 380 250, 498 250"/>
+          <path class="edge" id="e-hub-srv" d="M470 92 C 560 120, 600 150, 610 172"/>
+          <path class="edge" id="e-you-hub" d="M150 172 C 160 150, 200 120, 290 92"/>
+
+          <g class="node" id="n-you">
+            <rect x="20" y="172" width="242" height="200" rx="16"/>
+            <text class="title" id="you-title" x="40" y="204">Seu computador</text>
+            <text class="sub" x="40" y="226">painel + seu repositório</text>
+            <text class="item" id="you-1" x="40" y="258">▸ fila de tarefas</text>
+            <text class="item" id="you-2" x="40" y="282">▸ repositório (commits)</text>
+            <text class="item" id="you-3" x="40" y="306">▸ mudanças locais</text>
+            <text class="item" id="you-4" x="40" y="330">▸ .env e segredos</text>
+            <text class="item" id="you-5" x="40" y="354">▸ você decide o merge</text>
+          </g>
+
+          <g class="node" id="n-srv">
+            <rect x="498" y="172" width="242" height="200" rx="16"/>
+            <text class="title" x="518" y="204" id="srv-title">Servidor (worker)</text>
+            <text class="sub" x="518" y="226">worker + Claude Code</text>
+            <text class="item" id="srv-1" x="518" y="258">▸ pede tarefa ao painel</text>
+            <text class="item" id="srv-2" x="518" y="282">▸ cópia isolada do código</text>
+            <text class="item" id="srv-3" x="518" y="306">▸ agente lê, edita, testa</text>
+            <text class="item" id="srv-4" x="518" y="330">▸ devolve um branch</text>
+            <text class="item" id="srv-5" x="518" y="354">▸ apaga a cópia</text>
+          </g>
+
+          <g class="node" id="n-hub">
+            <rect x="290" y="20" width="180" height="96" rx="16"/>
+            <text class="title" id="hub-title" x="310" y="52">GitHub / GitLab</text>
+            <text class="sub" x="310" y="74">o remoto</text>
+            <text class="item" x="310" y="98">▸ base · agent/*</text>
+          </g>
+
+          <g class="packet" id="packet" opacity="0">
+            <rect id="packet-pill" x="-70" y="-38" width="140" height="26" rx="13"/>
+            <text id="packet-label" x="0" y="-20" text-anchor="middle">pedido</text>
+            <circle r="7"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="story">
+        <div class="progress" id="progress" aria-label="Passos"></div>
+        <p class="step-k" id="step-k">Passo 1</p>
+        <h2 class="step-title" id="step-title" tabindex="-1"></h2>
+        <p class="step-body" id="step-body" aria-live="polite"></p>
+        <div class="chips" id="step-chips"></div>
+        <div class="nav">
+          <button type="button" class="btn" id="prev" aria-label="Passo anterior">←</button>
+          <button type="button" class="btn btn-primary" id="next">Próximo →</button>
+          <button type="button" class="btn btn-ghost" id="play" aria-pressed="false">▶ Reproduzir</button>
+          <span class="count" id="count"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="block" aria-labelledby="what-travels">
+    <h2 id="what-travels">O que viaja e o que nunca sai do seu computador</h2>
+    <div class="two">
+      <div class="panel go">
+        <h3>↗ Vai para o servidor</h3>
+        <ul>
+          <li><b>O pedido</b>: título, descrição, decisões que você já respondeu, regras de permissão do repositório.</li>
+          <li><b>O código commitado</b> do branch base: clonado do GitHub/GitLab, ou em um pacote git (bundle) baixado do painel.</li>
+          <li><b>Contexto do projeto</b>: skills do Carbon e o mapa do projeto (arquivos relevantes).</li>
+        </ul>
+      </div>
+      <div class="panel stay">
+        <h3>■ Fica no seu computador</h3>
+        <ul>
+          <li><b>Mudanças não commitadas</b> na sua pasta e arquivos ignorados pelo git (como o <code>.env</code>).</li>
+          <li><b>O seu branch atual</b>: o servidor devolve o trabalho num branch <code>agent/…</code> separado.</li>
+          <li><b>A decisão</b>: merge, PR ou aplicar na pasta é sempre você quem faz.</li>
+          <li><b>Seus tokens</b>: o token da máquina e o de git são tirados do ambiente antes do agente rodar.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="faq">
+    <h2 id="faq">Perguntas rápidas</h2>
+    <details>
+      <summary>Preciso abrir porta no servidor?</summary>
+      <p>Não. Quem abre a conexão é o servidor: ele pergunta ao painel se há tarefa (por HTTPS). O que precisa ser alcançável é o <b>painel</b>: pela rede local, pelo IP público, por VPN ou por um túnel SSH aberto do seu computador, sem nenhuma porta aberta na internet.</p>
+    </details>
+    <details>
+      <summary>E se o servidor cair no meio da tarefa?</summary>
+      <p>O servidor renova a posse da tarefa a cada ~20 s. Se parar de renovar, a tarefa falha com o motivo (ou volta para a fila, se você configurar). O seu repositório não é tocado: o trabalho só entra quando o resultado chega completo.</p>
+    </details>
+    <details>
+      <summary>Com repositório sem GitHub, como o código vai?</summary>
+      <p>O painel monta um <b>pacote git (bundle)</b> com o commit base e o servidor baixa do próprio painel. O resultado volta do mesmo jeito: um pacote com o branch da tarefa, que o painel importa no seu repositório. Repositório sem nenhum commit também funciona: a base é uma cópia dos arquivos que respeita o <code>.gitignore</code>.</p>
+    </details>
+    <details>
+      <summary>Que modelo o servidor usa?</summary>
+      <p>O Claude Code ou o Codex instalados e logados no servidor. Em modo experimental, ele pode usar o <b>login do Claude Code deste computador</b> por um proxy local, sem copiar a credencial para o servidor.</p>
+    </details>
+    <details>
+      <summary>E o meu código fica no servidor?</summary>
+      <p>Só enquanto a tarefa roda: ao terminar, a cópia é apagada. Mesmo assim, o código passa pela máquina: use servidores que você controla e que podem receber esse repositório.</p>
+    </details>
+    <div class="cta">
+      <a class="btn btn-primary" href="docs.html#cluster">Colocar um servidor no cluster</a>
+      <a class="btn" href="docs.html#tunel">Servidor por túnel SSH</a>
+      <a class="btn btn-ghost" href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/README.md" rel="noopener noreferrer">Documentação completa</a>
+    </div>
+  </section>
+
+  <footer>
+    <span>Carbon SuperAgent · MIT</span>
+    <span><a href="index.html">início</a> · <a href="docs.html">docs</a> · <a href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">github</a></span>
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  // ---------------------------------------------------------------- theme (same key as docs.html)
+  const themeBtn = document.getElementById("theme");
+  themeBtn.addEventListener("click", () => {
+    const isDark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+    const next = isDark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("carbon-docs-theme", next); } catch {}
+  });
+
+  // ---------------------------------------------------------------- the story
+  // Each step: which nodes/edges light up, the packet trip (from → to, label), the text, and the
+  // items inside the boxes that matter. Text mirrors the real code paths (prepare-claim.ts,
+  // worker/code.ts, remote-delivery.ts); keep them in sync.
+  const P = { you: [262, 250], srv: [498, 250], hub: [380, 116], youTop: [150, 172], srvTop: [610, 172] };
+  const TRIP = {
+    "you>srv": { from: P.you, to: P.srv, edge: "e-you-srv" },
+    "srv>you": { from: P.srv, to: P.you, edge: "e-you-srv" },
+    "hub>srv": { from: P.hub, to: P.srvTop, edge: "e-hub-srv" },
+    "srv>hub": { from: P.srvTop, to: P.hub, edge: "e-hub-srv" },
+    "hub>you": { from: P.hub, to: P.youTop, edge: "e-you-hub" },
+  };
+
+  const WHOLE = (remote) => [
+    {
+      k: "Você", title: "Você cria a tarefa e escolhe “Pool de workers”",
+      body: "A tarefa entra na <b>fila do painel</b>, no seu computador. O código continua só aqui. Nenhum servidor recebe nada ainda.",
+      nodes: ["you"], items: ["you-1"], chips: [["fila", "keep"]],
+    },
+    {
+      k: "Servidor → painel", title: "O servidor pede trabalho",
+      body: "O <b>servidor puxa</b>: a cada poucos segundos ele pergunta ao painel se há tarefa. É uma conexão de <b>saída</b> do servidor, por HTTPS, com o token da máquina. Nenhuma porta é aberta nele.",
+      nodes: ["you", "srv"], items: ["srv-1"], trip: ["srv>you", "tem tarefa?"], chips: [["HTTPS de saída"], ["token da máquina"]],
+    },
+    {
+      k: "Painel → servidor", title: "O painel entrega o pedido, não o código",
+      body: "Vai o <b>pedido</b> (título, descrição, decisões que você já respondeu), as regras de permissão, as skills e o <b>mapa do projeto</b>, mais as instruções de <b>onde buscar o código</b>. O código ainda não foi.",
+      nodes: ["you", "srv"], items: ["you-1"], trip: ["you>srv", "pedido + contexto"], chips: [["prompt"], ["skills"], ["mapa do projeto"]],
+    },
+    remote
+      ? {
+          k: "GitHub → servidor", title: "O servidor clona o código do GitHub",
+          body: "Seu repositório tem remoto, então o servidor faz <b>git clone</b> do branch base direto do GitHub/GitLab, com o token git configurado nele. Vai só o que está <b>commitado e enviado</b>. Mudanças não commitadas na sua pasta não vão.",
+          nodes: ["hub", "srv"], items: ["srv-2"], trip: ["hub>srv", "git clone"], chips: [["commits do branch base", "keep"], ["sem .env"], ["sem mudanças locais"]],
+        }
+      : {
+          k: "Painel → servidor", title: "O painel manda um pacote git (bundle)",
+          body: "Sem remoto, o painel monta um <b>pacote git</b> com o <b>commit base</b> e o servidor baixa do próprio painel. Vai o que está <b>commitado</b>. Mudanças não commitadas e arquivos ignorados, como o <code>.env</code>, ficam no seu computador.",
+          nodes: ["you", "srv"], items: ["you-2", "srv-2"], trip: ["you>srv", "bundle do commit base"], chips: [["commit base", "keep"], ["sem .env"], ["sem mudanças locais"]],
+        },
+    {
+      k: "Servidor", title: "O agente trabalha numa cópia isolada",
+      body: "No servidor, o Claude Code (ou Codex) lê, edita e roda os testes <b>na cópia</b>, num branch próprio <code>agent/…</code>. O log aparece <b>ao vivo</b> no seu painel, e pedidos de permissão chegam até você.",
+      nodes: ["you", "srv"], items: ["srv-3"], trip: ["srv>you", "log ao vivo"], chips: [["branch agent/…"], ["testes"], ["permissões no painel"]],
+    },
+    remote
+      ? {
+          k: "Servidor → GitHub → painel", title: "O resultado volta como um branch",
+          body: "O servidor faz <b>push do branch agent/…</b> para o remoto e avisa o painel, que busca esse branch para o seu repositório. Depois a cópia no servidor é <b>apagada</b>.",
+          nodes: ["hub", "srv", "you"], items: ["srv-4", "srv-5"], trip: ["srv>hub", "push agent/…"], then: ["hub>you", "fetch"], chips: [["branch agent/…", "keep"], ["cópia apagada"]],
+        }
+      : {
+          k: "Servidor → painel", title: "O resultado volta como um branch",
+          body: "O servidor envia um <b>pacote git com o branch agent/…</b> para o painel, que importa no seu repositório. Depois a cópia no servidor é <b>apagada</b>.",
+          nodes: ["you", "srv"], items: ["srv-4", "srv-5"], trip: ["srv>you", "bundle agent/…"], chips: [["branch agent/…", "keep"], ["cópia apagada"]],
+        },
+    {
+      k: "Você", title: "Você decide o que entra",
+      body: "No painel você vê o <b>diff</b>, os testes e a revisão. Daí escolhe: <b>merge local</b>, <b>aplicar na pasta</b> ou <b>abrir PR</b>. Se der conflito, o agente pode resolver. Nada entra no seu branch sem você.",
+      nodes: ["you"], items: ["you-5"], chips: [["diff"], ["merge / PR / aplicar", "keep"]],
+    },
+  ];
+
+  const SPLIT = (remote) => [
+    {
+      k: "Seu computador", title: "O agente principal prepara e divide",
+      body: "A tarefa marcada <b>Dividir entre os computadores</b> começa <b>no seu computador</b>: o agente prepara a base e divide o trabalho em até <b>4 partes independentes</b>, cada uma com os arquivos que pode mexer.",
+      nodes: ["you"], items: ["you-1", "you-2"], chips: [["até 4 partes"], ["arquivos por parte"]],
+    },
+    {
+      k: "Painel → servidores", title: "Cada parte vira uma tarefa para o cluster",
+      body: "As partes entram na fila do pool. <b>Cada servidor livre pega uma</b>; se não houver servidor, elas rodam aqui, uma por vez. Cada parte recebe o pedido dela e a base preparada.",
+      nodes: ["you", "srv"], items: ["srv-1"], trip: ["you>srv", "parte 2 de 3"], chips: [["um servidor por parte"], ["paralelo"]],
+    },
+    {
+      k: remote ? "GitHub → servidores" : "Painel → servidores", title: "O código de cada parte chega como na tarefa inteira",
+      body: remote
+        ? "Cada servidor <b>clona do GitHub</b> o branch base da parte. Vai só o que está commitado."
+        : "Cada servidor baixa do painel um <b>pacote git</b> com a base da parte. Vai só o que está commitado.",
+      nodes: remote ? ["hub", "srv"] : ["you", "srv"], items: ["srv-2"], trip: remote ? ["hub>srv", "git clone"] : ["you>srv", "bundle da base"], chips: [["commitado", "keep"], ["sem .env"]],
+    },
+    {
+      k: "Servidores", title: "As partes rodam ao mesmo tempo",
+      body: "Cada servidor trabalha na <b>sua parte</b>, numa cópia isolada, e você acompanha todas no painel: quem está rodando cada parte e onde.",
+      nodes: ["you", "srv"], items: ["srv-3"], trip: ["srv>you", "log ao vivo"], chips: [["em paralelo"], ["onde roda cada parte"]],
+    },
+    {
+      k: "Servidores → painel", title: "Cada parte volta como um branch",
+      body: remote ? "Cada servidor faz push do branch da parte e o painel busca." : "Cada servidor envia um pacote git com o branch da parte.",
+      nodes: remote ? ["hub", "srv", "you"] : ["you", "srv"], items: ["srv-4", "srv-5"], trip: remote ? ["srv>hub", "push da parte"] : ["srv>you", "bundle da parte"], then: remote ? ["hub>you", "fetch"] : null, chips: [["branch por parte", "keep"], ["cópia apagada"]],
+    },
+    {
+      k: "Seu computador", title: "O agente junta tudo e testa",
+      body: "De volta ao seu computador, o agente principal faz <b>merge das partes</b>, aplica à mão o que conflitar, roda os testes e entrega <b>um branch só</b>.",
+      nodes: ["you"], items: ["you-2"], chips: [["merge das partes"], ["testes"]],
+    },
+    {
+      k: "Você", title: "Um resultado, e você decide",
+      body: "Você revisa o diff final e escolhe <b>merge</b>, <b>aplicar na pasta</b> ou <b>PR</b>. Nada entra no seu branch sem você.",
+      nodes: ["you"], items: ["you-5"], chips: [["um PR só", "keep"]],
+    },
+  ];
+
+  const state = { repo: "remote", mode: "whole", step: 0, playing: null };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (id) => document.getElementById(id);
+  const steps = () => (state.mode === "whole" ? WHOLE : SPLIT)(state.repo === "remote");
+
+  // ---------------------------------------------------------------- packet animation
+  let anim = null;
+  const packet = $("packet");
+  function place([x, y]) { packet.setAttribute("transform", `translate(${x} ${y})`); }
+  function travel(tripKey, label, onDone) {
+    const trip = TRIP[tripKey];
+    $("packet-label").textContent = label;
+    const charW = window.matchMedia("(max-width: 560px)").matches ? 13.5 : 8;
+    const width = Math.max(90, label.length * charW + 24);
+    $("packet-pill").setAttribute("width", String(width));
+    $("packet-pill").setAttribute("x", String(-width / 2));
+    packet.setAttribute("opacity", "1");
+    if (reduceMotion) { place(trip.to); onDone && onDone(); return; }
+    const start = performance.now();
+    const DURATION = 1100;
+    cancelAnimationFrame(anim);
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      const e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease in-out
+      place([trip.from[0] + (trip.to[0] - trip.from[0]) * e, trip.from[1] + (trip.to[1] - trip.from[1]) * e]);
+      if (t < 1) anim = requestAnimationFrame(tick); else onDone && onDone();
+    };
+    anim = requestAnimationFrame(tick);
+  }
+
+  // ---------------------------------------------------------------- render
+  function render(focus) {
+    const list = steps();
+    state.step = Math.max(0, Math.min(state.step, list.length - 1));
+    const s = list[state.step];
+
+    document.querySelectorAll(".node").forEach((g) => {
+      const id = g.id.slice(2);
+      const isHub = id === "hub";
+      g.classList.toggle("on", s.nodes.includes(id));
+      g.classList.toggle("off", isHub && state.repo !== "remote");
+    });
+    document.querySelectorAll(".item").forEach((t) => t.classList.toggle("hl", s.items.includes(t.id)));
+    const lit = [s.trip && TRIP[s.trip[0]].edge, s.then && TRIP[s.then[0]].edge].filter(Boolean);
+    document.querySelectorAll(".edge").forEach((p) => {
+      p.classList.toggle("on", lit.includes(p.id));
+      p.classList.toggle("off", state.repo !== "remote" && p.id !== "e-you-srv");
+    });
+    const isSmall = window.matchMedia("(max-width: 560px)").matches;
+    $("srv-title").textContent = state.mode === "split" ? (isSmall ? "Servidores" : "Servidores (1 por parte)") : isSmall ? "Servidor" : "Servidor (worker)";
+    $("hub-title").textContent = isSmall ? "GitHub" : "GitHub / GitLab";
+    $("you-title").textContent = isSmall ? "Você" : "Seu computador";
+
+    cancelAnimationFrame(anim);
+    if (s.trip) travel(s.trip[0], s.trip[1], () => { if (s.then) setTimeout(() => travel(s.then[0], s.then[1]), reduceMotion ? 0 : 250); });
+    else packet.setAttribute("opacity", "0");
+
+    $("step-k").textContent = `Passo ${state.step + 1} · ${s.k}`;
+    $("step-title").textContent = s.title;
+    $("step-body").innerHTML = s.body;
+    $("step-chips").innerHTML = s.chips.map(([text, kind]) => `<span class="chip${kind ? " " + kind : ""}">${text}</span>`).join("");
+    $("count").textContent = `${state.step + 1} / ${list.length}`;
+    $("prev").disabled = state.step === 0;
+    $("next").textContent = state.step === list.length - 1 ? "Recomeçar ↺" : "Próximo →";
+
+    $("progress").innerHTML = list
+      .map((_, i) => `<button type="button" aria-label="Ir para o passo ${i + 1}" class="${i < state.step ? "done" : i === state.step ? "now" : ""}" data-i="${i}"></button>`)
+      .join("");
+    if (focus) $("step-title").focus({ preventScroll: true });
+  }
+
+  function go(delta) {
+    const last = steps().length - 1;
+    state.step = state.step === last && delta > 0 ? 0 : Math.max(0, Math.min(last, state.step + delta));
+    render(true);
+  }
+
+  function stopPlay() {
+    clearInterval(state.playing);
+    state.playing = null;
+    $("play").setAttribute("aria-pressed", "false");
+    $("play").textContent = "▶ Reproduzir";
+  }
+
+  $("next").addEventListener("click", () => { stopPlay(); go(1); });
+  $("prev").addEventListener("click", () => { stopPlay(); go(-1); });
+  $("progress").addEventListener("click", (e) => {
+    const i = e.target.closest("button")?.dataset.i;
+    if (i === undefined) return;
+    stopPlay(); state.step = Number(i); render(true);
+  });
+  $("play").addEventListener("click", () => {
+    if (state.playing) return stopPlay();
+    $("play").setAttribute("aria-pressed", "true");
+    $("play").textContent = "❚❚ Pausar";
+    state.playing = setInterval(() => {
+      if (state.step === steps().length - 1) return stopPlay();
+      go(1);
+    }, 3400);
+  });
+
+  document.querySelectorAll(".seg").forEach((seg) => {
+    seg.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === btn)));
+      state[seg.dataset.key] = btn.dataset.value;
+      state.step = 0;
+      stopPlay();
+      render(false);
+    });
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, summary")) return;
+    if (e.key === "ArrowRight") { stopPlay(); go(1); }
+    if (e.key === "ArrowLeft") { stopPlay(); go(-1); }
+  });
+
+  window.matchMedia("(max-width: 560px)").addEventListener("change", () => render(false));
+  render(false);
+})();
+</script>
+</body>
+</html>
