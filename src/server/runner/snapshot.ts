@@ -2,6 +2,7 @@ import "server-only";
 import { agentsAt, idleAgents } from "@/lib/domain/agents";
 import type { EngineState } from "@/lib/domain/types";
 import { getSettings } from "../repo/settings";
+import { runsByTask } from "../repo/task-runs";
 import { listLessons, listTasks } from "../repo/tasks";
 import { runnerStatus } from "./runner";
 
@@ -9,10 +10,17 @@ import { runnerStatus } from "./runner";
 /** Live state of one project, in the same shape as the simulator. */
 export function liveSnapshot(projectId: string | null): EngineState {
   const tasks = projectId ? listTasks(projectId) : [];
-  const tickets = tasks.map((t) => t.snapshot);
+  const runs = runsByTask(tasks.map((t) => t.id));
+  const tickets = tasks.map((t) => {
+    const trail = runs.get(t.id);
+    return trail ? { ...t.snapshot, runs: trail } : t.snapshot;
+  });
   const status = runnerStatus();
   const active = tickets.find((t) => t.id === status.activeTaskId) ?? null;
   const done = tickets.filter((t) => t.status === "done");
+  // The pipeline follows the local run, else a task running on a worker (never "active" locally).
+  const remoteRunning = tickets.find((t) => (t.runtime ?? "local") !== "local" && t.status === "running");
+  const pipelineStage = active?.stage ?? remoteRunning?.stage ?? null;
   return {
     tick: 0,
     running: status.enabled,
@@ -20,7 +28,7 @@ export function liveSnapshot(projectId: string | null): EngineState {
     acceptMode: getSettings().acceptMode,
     activeTicketId: active?.id ?? null,
     tickets,
-    agents: active?.stage ? agentsAt(active.stage) : idleAgents(),
+    agents: pipelineStage ? agentsAt(pipelineStage) : idleAgents(),
     lessons: projectId ? listLessons(projectId) : [],
     metrics: {
       completed: done.length,

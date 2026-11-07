@@ -59,3 +59,28 @@ export function placementOf(ticket: PlacementSource): Placement {
   const { short, full } = target(runtime, who);
   return { runtime, short, label: `${verbOf(ticket.status)}: ${full}` };
 }
+
+/** One step of the execution trail shown in the badge tooltip and in the task detail. */
+export interface TrailStep {
+  readonly where: string;
+  readonly isLocal: boolean;
+  readonly state: "running" | "done" | "failed" | "waiting" | "stopped";
+}
+
+const STATE_OF: Readonly<Record<string, TrailStep["state"]>> = { done: "done", failed: "failed", lost: "failed", waiting: "waiting", canceled: "stopped" };
+const GLYPH: Readonly<Record<TrailStep["state"], string>> = { running: "●", done: "✓", failed: "✗", waiting: "?", stopped: "■" };
+
+/** Executions of the task, oldest first ("esta máquina", then a worker, …). */
+export function runTrail(ticket: Pick<Ticket, "runs">): readonly TrailStep[] {
+  return (ticket.runs ?? []).map((run) => ({ where: run.where, isLocal: run.isLocal, state: run.outcome === null ? "running" : (STATE_OF[run.outcome] ?? "stopped") }));
+}
+
+/** True when the task ran on more than one machine (e.g. failed here, retried on a worker). */
+export function isMixed(trail: readonly TrailStep[]): boolean {
+  return new Set(trail.map((s) => s.where)).size > 1;
+}
+
+/** "esta máquina ✗ → vps-sp-01 ●" */
+export function trailText(trail: readonly TrailStep[]): string {
+  return trail.map((s) => `${s.where} ${GLYPH[s.state]}`).join(" → ");
+}

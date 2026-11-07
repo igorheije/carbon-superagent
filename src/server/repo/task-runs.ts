@@ -1,4 +1,5 @@
 import "server-only";
+import type { TicketRun } from "@/lib/domain/types";
 import { getDb } from "../db";
 
 /**
@@ -103,4 +104,46 @@ export function summarizeRuns(rows: readonly RunRow[], windowMs: number, now: nu
 
 export function statsFor(map: ReadonlyMap<string, NodeRunStats>, workerId: string | null): NodeRunStats {
   return map.get(workerId ?? LOCAL) ?? EMPTY;
+}
+
+/** Runs kept per task in the live snapshot (the panel shows a short trail, not the full history). */
+export const RUNS_PER_TASK = 6;
+export const LOCAL_LABEL = "esta máquina";
+
+interface TrailRow {
+  task_id: string;
+  worker_id: string | null;
+  worker_name: string | null;
+  started_at: number;
+  finished_at: number | null;
+  outcome: string | null;
+}
+
+/** Last RUNS_PER_TASK executions of each task, oldest first, with the machine's name. */
+export function runsByTask(taskIds: readonly string[]): ReadonlyMap<string, readonly TicketRun[]> {
+  if (taskIds.length === 0) return new Map();
+  let rows: TrailRow[];
+  try {
+    rows = getDb()
+      .prepare(
+        `SELECT r.task_id, r.worker_id, w.name AS worker_name, r.started_at, r.finished_at, r.outcome
+           FROM task_runs r LEFT JOIN workers w ON w.id = r.worker_id
+          WHERE r.task_id IN (SELECT value FROM json_each(?))
+          ORDER BY r.task_id, r.id`,
+      )
+      .all(JSON.stringify(taskIds)) as unknown as TrailRow[];
+  } catch {
+    return new Map(); // metrics are best effort: never break the live snapshot
+  }
+  const grouped = rows.reduce((map, row) => {
+    const run: TicketRun = {
+      where: row.worker_id === null ? LOCAL_LABEL : (row.worker_name ?? "máquina removida"),
+      isLocal: row.worker_id === null,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      outcome: row.outcome,
+    };
+    return new Map(map).set(row.task_id, [...(map.get(row.task_id) ?? []), run]);
+  }, new Map<string, readonly TicketRun[]>());
+  return new Map([...grouped].map(([id, runs]) => [id, runs.slice(-RUNS_PER_TASK)] as const));
 }

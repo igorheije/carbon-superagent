@@ -5,7 +5,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowUp, RotateCcw, Square, Trash2 } from "lucide-react";
 import { api } from "@/lib/client/api";
-import { useEngine } from "@/components/engine/EngineProvider";
+import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { Panel } from "@/components/ui/Panel";
 import { STAGES, type Ticket, type TicketStatus } from "@/lib/domain/types";
 import { PlacementBadge } from "./PlacementBadge";
@@ -101,8 +101,10 @@ function SplitBadge({ ticket }: { ticket: Ticket }) {
   return null;
 }
 
-function TicketRow({ ticket }: { ticket: Ticket }) {
-  const { dispatch, mode } = useEngine();
+function TicketRow({ ticket, isFocused }: { ticket: Ticket; isFocused: boolean }) {
+  const { dispatch, mode, focusedTicketId, setFocusedTicketId } = useEngine();
+  // isFocused = shown in the grid (picked or automatic); isPicked = the user chose it.
+  const isPicked = focusedTicketId === ticket.id;
   const stageProgress = ticket.stage ? (STAGES.indexOf(ticket.stage) + 1) / STAGES.length : 0;
   const progress = ticket.totalEvents === 0 ? stageProgress : ticket.cursor / ticket.totalEvents;
   const isRunning = ticket.status === "running";
@@ -110,7 +112,7 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
     <motion.li
       layout
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 ${isRunning ? "border-accent/50 bg-accent-weak" : "border-line bg-surface"}`}
+      className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 ${isRunning ? "border-accent/50 bg-accent-weak" : "border-line bg-surface"} ${isFocused ? "ring-2 ring-accent" : ""}`}
     >
       <div className="flex items-center gap-2.5">
         <PriorityGlyph priority={ticket.priority} />
@@ -124,7 +126,15 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
           {STATUS_LABEL[ticket.status]}
         </span>
       </div>
-      <p className="mt-1.5 truncate text-[13px]">{ticket.title}</p>
+      <button
+        type="button"
+        aria-pressed={isPicked}
+        title={isPicked ? "Fixada no painel abaixo · clique para voltar ao automático" : isFocused ? "Mostrando no painel abaixo (automático) · clique para fixar" : "Ver esta tarefa no terminal, plano e entrega abaixo"}
+        onClick={() => setFocusedTicketId(isPicked ? null : ticket.id)}
+        className="mt-1.5 block w-full truncate rounded text-left text-[13px] outline-none hover:underline focus-visible:shadow-[var(--ring)]"
+      >
+        {ticket.title}
+      </button>
       <div className="mt-1 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <PlacementBadge ticket={ticket} />
@@ -157,6 +167,7 @@ function TicketRow({ ticket }: { ticket: Ticket }) {
 
 export function TicketQueue() {
   const { state, isReady } = useEngine();
+  const focused = useFocusTicket();
   const queued = state.tickets.filter((t) => t.status === "queued").length;
   return (
     <Panel eyebrow="Fila · Linear + GitHub" title="Tickets" aside={<span className="font-mono text-[11px] text-muted">{queued} na fila</span>}>
@@ -167,7 +178,7 @@ export function TicketQueue() {
       <AsciiReveal loading={!isReady} revealOnMount={false}>
       <ul className="flex flex-col gap-2">
         {state.tickets.map((ticket) => (
-          <TicketRow key={ticket.id} ticket={ticket} />
+          <TicketRow key={ticket.id} ticket={ticket} isFocused={focused?.id === ticket.id} />
         ))}
       </ul>
       </AsciiReveal>
