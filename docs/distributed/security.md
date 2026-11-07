@@ -73,6 +73,8 @@ Consequência: um repositório malicioso ou um prompt injetado não consegue ler
 ## HTTPS
 
 - O worker exige `https://` para `CARBON_PANEL_URL` fora de loopback (`127.x.x.x`, `localhost`, `*.localhost`, `::1`).
+- **Certificado autoassinado + fingerprint (`carbon join`)**: com o listener em `0.0.0.0`/IP da rede, o painel gera o próprio certificado (`<pasta de dados>/worker-tls/`, pasta `0700`, chave `0600`). O worker com `CARBON_PANEL_FINGERPRINT` não consulta CA nem hostname: compara o SHA-256 do certificado recebido logo após o handshake e fecha a conexão se não bater, **antes** de escrever a requisição (o token não sai). Retomada de sessão TLS fica desligada, então todo socket passa pela comparação. Sem `--fingerprint`, o `carbon join` mostra o fingerprint e pede confirmação (confiança no primeiro contato, como no SSH); em rede que você não controla, passe sempre `--fingerprint`. Detalhes em [direct-join.md](direct-join.md#segurança).
+- **Porta aberta no roteador** (IP público): só `/api/worker/*` responde, com token; o resto é `404`, sem token `401`, com limites de conexão por IP. Ainda assim é superfície exposta à internet: prefira VPN quando possível e revogue máquinas sem uso.
 - `panelPublicUrl` só aceita `https://`.
 - O container AgentCore exige `CARBON_PANEL_URL` (`https://`, sem IP privado/link-local literal), e recusa invocações para outro painel (`403`).
 - **Não há resolução de DNS** nessas checagens: um nome de host que resolve para IP privado não é bloqueado. Só IPs literais privados são recusados (no AgentCore).

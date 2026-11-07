@@ -2,7 +2,8 @@ import { z } from "zod";
 import { disableJoinToken, joinTokenInfo, MAX_JOIN_TTL_HOURS, MAX_JOIN_USES, rotateJoinToken } from "@/server/auth/join-tokens";
 import { handle, ok, parseBody, requireAdmin } from "@/server/http";
 import { getSettings, saveSettings } from "@/server/repo/settings";
-import { joinCommands } from "@/server/setup-kit/join-command";
+import { directJoinInfo } from "@/server/direct-join";
+import { directJoinCommands, joinCommands } from "@/server/setup-kit/join-command";
 import { DEFAULT_WORKER_IMAGE } from "../_lib/kit";
 
 export const dynamic = "force-dynamic";
@@ -35,11 +36,32 @@ export function POST(request: Request) {
       maxUses: input.maxUses ?? null,
     });
     const panelUrl = getSettings().panelPublicUrl;
-    const commands = joinCommands({ panelUrl, token, image: DEFAULT_WORKER_IMAGE });
-    const response = ok({ token, info, panelUrl, commands }, 201);
+    // Listener reachable by IP with its own certificate (carbon start + CARBON_WORKER_LISTEN=0.0.0.0:…).
+    const listener = directJoinInfo();
+    const direct = listener.available
+      ? directJoinCommands({ addresses: listener.addresses, port: listener.port, fingerprint: listener.fingerprint, token, image: DEFAULT_WORKER_IMAGE })
+      : null;
+    // No public URL yet: the first address of this computer becomes the main command.
+    const commands = !panelUrl && direct?.lan[0] ? direct.lan[0] : joinCommands({ panelUrl, token, image: DEFAULT_WORKER_IMAGE, fingerprint: pinFor(panelUrl, listener) });
+    const response = ok({ token, info, panelUrl, commands, direct }, 201);
     response.headers.set("Cache-Control", "no-store");
     return response;
   });
+}
+
+/**
+ * The public URL may point straight at the self-signed listener (`https://<ip>:<porta>`): then the
+ * workers must pin it. A tunnel/proxy with a CA certificate (hostname) needs no pin.
+ */
+function pinFor(panelUrl: string, listener: ReturnType<typeof directJoinInfo>): string | null {
+  if (!panelUrl || !listener.available || !listener.fingerprint) return null;
+  try {
+    const url = new URL(panelUrl);
+    const isIpLiteral = /^[\d.]+$/.test(url.hostname) || url.hostname.startsWith("[");
+    return isIpLiteral && Number(url.port) === listener.port ? listener.fingerprint : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Turns joining off until a new token is generated. */

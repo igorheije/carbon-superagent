@@ -1,6 +1,6 @@
 import type { ExecutorId } from "../shared/executors";
 import type { ClaimedTask } from "../shared/worker-protocol";
-import { backoffMs, createWorkerClient, ProtocolTooOld, WorkerClientError, type SleepFn, type WorkerClient } from "./client";
+import { backoffMs, createWorkerClient, ProtocolTooOld, WorkerClientError, type FetchLike, type SleepFn, type WorkerClient } from "./client";
 import { runClaimedTask, type RunOutcome, type RunTaskDeps } from "./run-task";
 
 /**
@@ -31,6 +31,8 @@ export interface WorkerLoopOptions {
   readonly onUnauthorized?: () => { readonly message: string; readonly code: number } | undefined;
   /** Test hooks. */
   readonly client?: WorkerClient;
+  /** Transport for the default client (pinned TLS for `carbon join`). */
+  readonly fetchImpl?: FetchLike;
   readonly runTask?: (task: ClaimedTask, deps: RunTaskDeps) => Promise<RunOutcome>;
   readonly sleep?: SleepFn;
 }
@@ -75,7 +77,7 @@ export async function runWorkerLoop(options: WorkerLoopOptions): Promise<number>
   const log = options.log ?? (() => undefined);
   const sleep = options.sleep ?? abortableSleep;
   const runTask = options.runTask ?? runClaimedTask;
-  const client = options.client ?? createWorkerClient({ panelUrl: options.panelUrl, token: options.token });
+  const client = options.client ?? createWorkerClient({ panelUrl: options.panelUrl, token: options.token, fetchImpl: options.fetchImpl });
   const { signal } = options;
   /** Aborted when the grace period is over: running tasks stop and report canceled. */
   const cancelTasks = new AbortController();

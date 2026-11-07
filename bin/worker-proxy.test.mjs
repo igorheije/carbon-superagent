@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import net from "node:net";
-import { createWorkerProxy, hasWorkerAuth, parseListen, workerPath } from "./worker-proxy.mjs";
+import { createWorkerProxy, hasWorkerAuth, isLoopbackListen, parseListen, resolveListenerTls, workerPath } from "./worker-proxy.mjs";
 
 const AUTH = `Bearer cwk_${"a".repeat(43)}`;
 
@@ -283,10 +283,46 @@ describe("worker proxy", () => {
 });
 
 describe("hasWorkerAuth", () => {
-  it("accepts cwk_/ctk_ bearer tokens only", () => {
+  it("accepts cwk_/ctk_/cjt_ bearer tokens only", () => {
     expect(hasWorkerAuth({ authorization: AUTH })).toBe(true);
     expect(hasWorkerAuth({ authorization: `Bearer ctk_${"x".repeat(20)}` })).toBe(true);
+    expect(hasWorkerAuth({ authorization: `Bearer cjt_${"x".repeat(20)}` })).toBe(true); // cluster join through the listener
     expect(hasWorkerAuth({ authorization: `bearer cwk_${"x".repeat(20)}` })).toBe(false);
     expect(hasWorkerAuth({})).toBe(false);
+  });
+});
+
+describe("resolveListenerTls (carbon join without a domain)", () => {
+  const pair = { cert: Buffer.from("c"), key: Buffer.from("k"), fingerprint: "ab".repeat(32), created: true };
+  const ensureCert = (dir) => ({ ...pair, dir });
+
+  it("auto: self-signed pair when the listener is reachable from other machines", () => {
+    for (const host of ["0.0.0.0", "::", "192.168.0.12"]) {
+      const result = resolveListenerTls({}, host, { tlsDir: "/data/worker-tls", ensureCert });
+      expect(result.mode, host).toBe("self-signed");
+      expect(result.fingerprint).toBe(pair.fingerprint);
+      expect(result.tls).toEqual({ cert: pair.cert, key: pair.key });
+    }
+  });
+
+  it("loopback listener (tunnel/VPN in front), CARBON_WORKER_TLS=off or no data dir: plain http", () => {
+    expect(resolveListenerTls({}, "127.0.0.1", { tlsDir: "/d", ensureCert }).mode).toBe("off");
+    expect(resolveListenerTls({ CARBON_WORKER_TLS: "off" }, "0.0.0.0", { tlsDir: "/d", ensureCert }).mode).toBe("off");
+    expect(resolveListenerTls({}, "0.0.0.0", { ensureCert }).mode).toBe("off");
+  });
+
+  it("CARBON_WORKER_TLS=on forces the self-signed pair on loopback too", () => {
+    expect(resolveListenerTls({ CARBON_WORKER_TLS: "on" }, "127.0.0.1", { tlsDir: "/d", ensureCert }).mode).toBe("self-signed");
+    expect(() => resolveListenerTls({ CARBON_WORKER_TLS: "on" }, "127.0.0.1", { ensureCert })).toThrow(/pasta de dados/);
+  });
+
+  it("explicit certificate wins; bad values fail loudly", () => {
+    expect(() => resolveListenerTls({ CARBON_WORKER_TLS: "maybe" }, "0.0.0.0", { tlsDir: "/d", ensureCert })).toThrow(/auto, on ou off/);
+    expect(() => resolveListenerTls({ CARBON_WORKER_TLS_CERT: "/c.pem" }, "0.0.0.0", { tlsDir: "/d", ensureCert })).toThrow(/juntos/);
+  });
+
+  it("isLoopbackListen", () => {
+    expect(["127.0.0.1", "localhost", "::1"].every(isLoopbackListen)).toBe(true);
+    expect(["0.0.0.0", "::", "10.0.0.1"].some(isLoopbackListen)).toBe(false);
   });
 });

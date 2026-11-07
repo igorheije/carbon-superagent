@@ -14,7 +14,8 @@ servidor que entra vira um nó do pool e pega tarefas com **Onde rodar: Pool de 
 
 ## Pré-requisitos
 
-- O painel acessível pelos servidores: `CARBON_WORKER_LISTEN` + URL pública https (ver [exposing-the-panel.md](exposing-the-panel.md)).
+- O painel acessível pelos servidores: `CARBON_WORKER_LISTEN` + URL pública https (ver [exposing-the-panel.md](exposing-the-panel.md)),
+  **ou**, sem servidor nem domínio, `CARBON_WORKER_LISTEN=0.0.0.0:3418` e `carbon join <ip>:3418 --token cjt_… --fingerprint …` (ver [direct-join.md](direct-join.md)).
   Configure a URL em Configurações → Execução para o comando sair pronto.
 - Em cada servidor: Node 22.13+, git e Claude Code (ou Codex) logado — ou Docker com a imagem de `deploy/worker/Dockerfile`.
 

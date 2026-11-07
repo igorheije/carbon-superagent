@@ -109,7 +109,14 @@ export interface GeneratedJoinToken {
   readonly token: string;
   readonly info: JoinTokenInfo;
   readonly panelUrl: string;
-  readonly commands: { readonly cli: string; readonly docker: string };
+  readonly commands: JoinCommandPair;
+  /** Listener reachable by IP with its own certificate: `carbon join <ip>:<porta> --fingerprint …`. */
+  readonly direct: { readonly lan: readonly JoinCommandPair[]; readonly internet: JoinCommandPair; readonly fingerprint: string | null } | null;
+}
+
+export interface JoinCommandPair {
+  readonly cli: string;
+  readonly docker: string;
 }
 
 /** Validity choices offered in the UI (hours; null = no expiry, the Docker Swarm default). */

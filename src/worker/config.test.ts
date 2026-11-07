@@ -25,6 +25,27 @@ describe("worker config: panel URL (L5)", () => {
   });
 });
 
+describe("worker config: CARBON_PANEL_FINGERPRINT (carbon join)", () => {
+  const FP = "5c187335c8e23c6b89194fd73306ed950cc3993d39abf29455224c5806122a01";
+
+  it("accepts https://<ip>:<porta> with a pinned fingerprint in any notation", () => {
+    const result = readWorkerConfig({ CARBON_PANEL_URL: "https://203.0.113.7:3418", CARBON_WORKER_TOKEN: TOKEN, CARBON_PANEL_FINGERPRINT: FP.toUpperCase().match(/.{2}/g)?.join(":") }, detect);
+    expect(result.ok && result.config.panelFingerprint).toBe(FP);
+  });
+
+  it("is optional (undefined = CA store)", () => {
+    const result = readWorkerConfig({ CARBON_PANEL_URL: "https://p.test", CARBON_WORKER_TOKEN: TOKEN }, detect);
+    expect(result.ok && result.config.panelFingerprint).toBeUndefined();
+  });
+
+  it("rejects a malformed fingerprint and a pin on plain http", () => {
+    const bad = readWorkerConfig({ CARBON_PANEL_URL: "https://p.test", CARBON_WORKER_TOKEN: TOKEN, CARBON_PANEL_FINGERPRINT: "abc" }, detect);
+    expect(!bad.ok && bad.errors.join(" ")).toMatch(/SHA-256/);
+    const http = readWorkerConfig({ CARBON_PANEL_URL: "http://127.0.0.1:3418", CARBON_WORKER_TOKEN: TOKEN, CARBON_PANEL_FINGERPRINT: FP }, detect);
+    expect(!http.ok && http.errors.join(" ")).toMatch(/https/);
+  });
+});
+
 describe("checkPanelUrl / host classification", () => {
   it.each(["127.0.0.1", "127.8.9.1", "localhost", "a.localhost", "[::1]", "::ffff:7f00:1"])("%s is loopback", (host) => {
     expect(isLoopbackHost(host)).toBe(true);

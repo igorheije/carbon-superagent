@@ -16,6 +16,8 @@ const nodeStateSchema = z.object({
   token: z.string().startsWith("cwk_"),
   name: z.string(),
   joinedAt: z.string(),
+  /** Pinned SHA-256 of the panel certificate (`carbon join <ip>:<porta> --fingerprint`); null = CA store. */
+  panelFingerprint: z.string().regex(/^[0-9a-f]{64}$/).nullable().default(null),
   /** Set when the panel refused the credential (node removed): auto-join from the env must not re-add it. */
   removedAt: z.string().nullable().default(null),
 });

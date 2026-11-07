@@ -2,6 +2,8 @@
 
 Dois caminhos: **A)** worker na mesma máquina do painel (sem rede, bom para testar) e **B)** workers em outra máquina com Docker Compose. Os dois usam o mesmo painel; você pode ter os dois ao mesmo tempo.
 
+**Sem servidor, domínio nem Docker?** Outro computador entra direto pelo IP (rede local ou IP público) com `carbon join 192.168.0.12:3418 --token cjt_… --fingerprint …`: veja [direct-join.md](direct-join.md).
+
 Pré-requisitos no painel: Carbon instalado e funcionando (`npm install`, `npm run setup`, `npm start`), com ao menos um projeto e um admin. Veja o [README principal](../../README.md#começar-em-2-minutos).
 
 ---

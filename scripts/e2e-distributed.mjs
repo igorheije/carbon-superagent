@@ -323,7 +323,12 @@ async function main() {
   }
   const fx = await step("fixtures (repos, claude falso, TLS)", async () => makeFixtures(), () => `repo A com remoto bare · repo B sem commits · ${tmp}`);
 
-  const [panelPort, proxyPort, containerPort] = [await freePort(), await freePort(), await freePort()];
+  const [panelPort, proxyPort, containerPort, directPort] = [await freePort(), await freePort(), await freePort(), await freePort()];
+  // "Direto" (carbon join <ip>:<porta>): listener with the panel's own self-signed certificate, pinned by fingerprint.
+  const { ensureWorkerCert } = await import(path.join(ROOT, "bin/worker-tls.mjs"));
+  const directTlsDir = path.join(fx.dataDir, "worker-tls");
+  const directPin = ensureWorkerCert(directTlsDir).fingerprint;
+  const directUrl = `https://127.0.0.1:${directPort}`;
   const panelUrl = `http://127.0.0.1:${panelPort}`;
   const publicUrl = `https://127.0.0.1:${proxyPort}`;
   const containerUrl = `http://127.0.0.1:${containerPort}`;
@@ -341,6 +346,11 @@ async function main() {
       AWS_REGION: "sa-east-1",
       AWS_ENDPOINT_URL: fakeAws.url,
       AWS_ENDPOINT_URL_BEDROCK_AGENTCORE: fakeAws.url,
+      // what `carbon start` exports after opening the listener
+      CARBON_WORKER_JOIN_PORT: String(directPort),
+      CARBON_WORKER_JOIN_HOST: "127.0.0.1",
+      CARBON_WORKER_JOIN_TLS: "self-signed",
+      CARBON_WORKER_JOIN_FINGERPRINT: directPin,
     });
     await until("painel responder", async () => (await fetch(`${panelUrl}/api/setup/status`).catch(() => null))?.ok, TIMEOUT_MS.panel).catch((error) => {
       throw new E2EError(`${error.message}\n${tailLog("panel")}`);
@@ -354,7 +364,13 @@ async function main() {
     const ca = readFileSync(fx.cert);
     const [ui, hello] = [await httpsStatus(`${publicUrl}/api/tasks`, ca), await httpsStatus(`${publicUrl}/api/worker/hello`, ca, "POST")];
     check(proxy.tls && ui === 404 && hello === 401, "proxy", `esperava UI 404 e /api/worker/hello 401 sem token (veio ${ui} / ${hello})`);
-    return `UI ${panelUrl} · workers ${publicUrl}`;
+    const direct = await startWorkerProxy({ CARBON_WORKER_LISTEN: `127.0.0.1:${directPort}`, CARBON_PORT: String(panelPort), CARBON_WORKER_TLS: "on" }, {
+      tlsDir: directTlsDir,
+      log: (line) => proxyLog.write(`[direto] ${line}\n`),
+    });
+    servers.push(direct.close);
+    check(direct.tlsMode === "self-signed" && direct.fingerprint === directPin, "listener direto", "certificado autoassinado não reaproveitado");
+    return `UI ${panelUrl} · workers ${publicUrl} · direto ${directUrl}`;
   });
 
   const api = panelApi(panelUrl);
@@ -368,14 +384,18 @@ async function main() {
     const projectA = projects.find((p) => p.repoPath === fx.repoA);
     const { project: projectB } = await api("POST", "/api/projects", { repoPath: fx.repoB, name: "repo-sem-commits" });
     const machines = [];
-    for (const name of ["e2e-maquina-1", "e2e-maquina-2"]) machines.push(await api("POST", "/api/admin/workers", { name, target: "compose", executors: ["claude"] }));
+    machines.push(await api("POST", "/api/admin/workers", { name: "e2e-maquina-1", target: "compose", executors: ["claude"] }));
+    // Cluster join token; the panel adds the `carbon join <ip>:<porta> --fingerprint` line for the listener.
+    const joinToken = await api("POST", "/api/admin/workers/join-token", {});
+    const lan = joinToken.direct?.lan?.[0]?.cli ?? "";
+    check(lan.includes(`'https://127.0.0.1:${directPort}'`) && lan.includes(`--fingerprint ${directPin}`), "join direto", `comando inesperado: ${lan}`);
     await api("POST", "/api/projects/active", { id: projectA.id });
     const a1 = (await api("POST", "/api/tasks", { title: "Ajustar rodapé", description: "e2e git 1", runtime: "pool" })).task;
     const a2 = (await api("POST", "/api/tasks", { title: "Corrigir cabeçalho", description: "e2e git 2", runtime: "pool" })).task;
     await api("POST", "/api/projects/active", { id: projectB.id });
     const b1 = (await api("POST", "/api/tasks", { title: "Primeiro arquivo", description: "e2e bundle", runtime: "pool" })).task;
-    return { a: [a1.id, a2.id], b: b1.id, projectA: projectA.id, tokens: machines.map((m) => ({ name: m.worker.name, token: m.token })) };
-  }, (v) => `${v.tokens.length} máquinas · 3 tarefas (2 git, 1 bundle)`);
+    return { a: [a1.id, a2.id], b: b1.id, projectA: projectA.id, tokens: machines.map((m) => ({ name: m.worker.name, token: m.token })), joinToken: joinToken.token };
+  }, (v) => `1 máquina por kit + token de join · 3 tarefas (2 git, 1 bundle)`);
 
   const db = await openDb(fx.dataDir);
   try {
@@ -390,8 +410,13 @@ async function main() {
       CARBON_WORKER_DIR: path.join(tmp, `worker-${n}`),
       CARBON_WORKER_GRACE_SECONDS: "5",
     });
-    const tickets = await step("2 workers (dist/worker.mjs) → 3 tarefas done", async () => {
-      ids.tokens.forEach((machine, i) => startProcess(`worker-${i + 1}`, process.execPath, [path.join(ROOT, "dist/worker.mjs")], workerEnv(machine, i + 1)));
+    const tickets = await step("worker por kit + worker por `carbon join` (IP:porta, fingerprint) → 3 tarefas done", async () => {
+      const [kit] = ids.tokens;
+      startProcess("worker-1", process.execPath, [path.join(ROOT, "dist/worker.mjs")], workerEnv(kit, 1));
+      // No NODE_EXTRA_CA_CERTS nor machine token: cluster join by IP, trust only from the pinned fingerprint.
+      const { NODE_EXTRA_CA_CERTS: _ca, CARBON_PANEL_URL: _url, CARBON_WORKER_TOKEN: _token, ...joinEnv } = workerEnv({ token: "" }, 2);
+      const joinArgs = ["join", `127.0.0.1:${directPort}`, "--token", ids.joinToken, "--fingerprint", directPin, "--name", "e2e-maquina-2"];
+      startProcess("worker-2", process.execPath, [path.join(ROOT, "bin/carbon.mjs"), ...joinArgs], { ...joinEnv, CARBON_WORKER_STATE_DIR: path.join(tmp, "worker-2-state") });
       const done = await waitDone(db, [...ids.a, ids.b], TIMEOUT_MS.pool).catch((error) => {
         throw new E2EError(`${error.message}\n--- worker-1\n${tailLog("worker-1")}\n--- worker-2\n${tailLog("worker-2")}`);
       });

@@ -45,8 +45,24 @@ function GeneratedCommands({ generated, onDismiss }: { readonly generated: Gener
         <p className="eyebrow">Ou com Docker (imagem de deploy/worker/Dockerfile)</p>
         <CopyBlock text={generated.commands.docker} label="comando docker" />
       </div>
-      {!generated.panelUrl && (
-        <p className="text-[12px] text-warn">O painel não tem URL pública configurada (Configurações → Execução): troque o placeholder pela URL https onde os workers alcançam o painel.</p>
+      {generated.direct && generated.direct.lan.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="eyebrow">Outros endereços deste computador na rede</p>
+          {generated.direct.lan.slice(generated.panelUrl ? 0 : 1).map((c) => <CopyCommand key={c.cli} command={c.cli} />)}
+        </div>
+      )}
+      {generated.direct && (
+        <div className="flex flex-col gap-1.5">
+          <p className="eyebrow">Pela internet (IP público)</p>
+          <CopyCommand command={generated.direct.internet.cli} />
+          <p className="text-[12px] text-subtle">Libere a porta no roteador (port forwarding TCP) apontando para este computador. Só /api/worker/* fica exposto; a UI continua em 127.0.0.1.</p>
+        </div>
+      )}
+      {generated.direct?.fingerprint && (
+        <p className="text-[12px] text-muted">Conexão direta por IP: o tráfego é cifrado com o certificado próprio deste painel, e o worker só conversa com quem apresentar o fingerprint <span className="font-mono">{generated.direct.fingerprint.slice(0, 16)}…</span> (já incluso nos comandos).</p>
+      )}
+      {!generated.panelUrl && !generated.direct && (
+        <p className="text-[12px] text-warn">O painel não tem URL pública configurada (Configurações → Execução): troque o placeholder pela URL https onde os workers alcançam o painel. Sem servidor? Defina CARBON_WORKER_LISTEN=0.0.0.0:3418 e reinicie com npm start: os comandos saem com o IP deste computador.</p>
       )}
       <div>
         <Button variant="ghost" onClick={onDismiss}>Já copiei</Button>

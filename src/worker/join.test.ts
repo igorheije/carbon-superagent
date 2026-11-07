@@ -67,6 +67,7 @@ const savedState = (extra: Partial<NodeState> = {}): NodeState => ({
   name: "srv-1",
   joinedAt: "2026-11-06T00:00:00.000Z",
   removedAt: null,
+  panelFingerprint: null,
   ...extra,
 });
 
@@ -110,6 +111,13 @@ describe("resolveCredential", () => {
     const raw = readFileSync(nodeFile(stateDir, "srv-1"), "utf8");
     expect(raw).toContain(result.token);
     expect(raw).not.toContain(JOIN_TOKEN);
+  });
+
+  it("saves the pinned certificate fingerprint with the credential (join by ip:porta)", async () => {
+    const panel = fakePanel();
+    const fp = "ab".repeat(32);
+    await resolveCredential({ ...options(panel.fetchImpl), panelFingerprint: fp });
+    expect(readNodeState(stateDir, "srv-1")?.panelFingerprint).toBe(fp);
   });
 
   it("restart reuses the saved node instead of joining again", async () => {
@@ -173,5 +181,14 @@ describe("parseJoinArgs", () => {
     expect(parseJoinArgs([PANEL])).toMatchObject({ error: "falta --token cjt_…" });
     expect(parseJoinArgs([PANEL, "--force"])).toMatchObject({ error: "opção desconhecida: --force" });
     expect(parseJoinArgs(["http://127.0.0.1:3000", "--token", JOIN_TOKEN])).toMatchObject({ panelUrl: "http://127.0.0.1:3000" });
+  });
+
+  it("accepts ip[:porta] (https, default listener port) with --fingerprint (carbon join direto)", () => {
+    const fp = "5c187335c8e23c6b89194fd73306ed950cc3993d39abf29455224c5806122a01";
+    expect(parseJoinArgs(["192.168.0.12:3418", "--token", JOIN_TOKEN, "--fingerprint", fp.toUpperCase()])).toEqual({ panelUrl: "https://192.168.0.12:3418", token: JOIN_TOKEN, fingerprint: fp });
+    expect(parseJoinArgs(["203.0.113.7", "--token", JOIN_TOKEN])).toMatchObject({ panelUrl: "https://203.0.113.7:3418" });
+    expect(parseJoinArgs(["[fd00::5]:9000", "--token", JOIN_TOKEN])).toMatchObject({ panelUrl: "https://[fd00::5]:9000" });
+    expect(parseJoinArgs(["10.0.0.5:3418", "--token", JOIN_TOKEN, "--fingerprint", "zz"])).toMatchObject({ error: expect.stringContaining("SHA-256") });
+    expect(parseJoinArgs(["http://127.0.0.1:3418", "--token", JOIN_TOKEN, "--fingerprint", fp])).toMatchObject({ error: expect.stringContaining("https") });
   });
 });

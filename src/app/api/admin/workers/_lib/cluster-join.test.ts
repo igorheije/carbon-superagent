@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Cluster join (Docker Swarm-like): join token lifecycle, /api/worker/join|leave, node availability
 // and the admin routes, against a throwaway database with a mocked session cookie.
@@ -235,6 +235,44 @@ describe("admin join-token route", () => {
 
     expect((await m.joinToken.DELETE()).status).toBe(200);
     expect((await body<{ token: unknown }>(await m.joinToken.GET())).data.token).toBeNull();
+  });
+
+  describe("listener reachable by IP with its own certificate (carbon join <ip>:<porta>)", () => {
+    const FP = "cd".repeat(32);
+    const JOIN_ENV = ["CARBON_WORKER_JOIN_PORT", "CARBON_WORKER_JOIN_HOST", "CARBON_WORKER_JOIN_TLS", "CARBON_WORKER_JOIN_FINGERPRINT"] as const;
+    const setListener = (values: Partial<Record<(typeof JOIN_ENV)[number], string>>) => {
+      for (const name of JOIN_ENV) delete process.env[name];
+      Object.assign(process.env, values);
+    };
+    afterEach(() => setListener({}));
+
+    type Created = { token: string; panelUrl: string; commands: { cli: string; docker: string }; direct: { lan: { cli: string }[]; internet: { cli: string }; fingerprint: string } | null };
+
+    it("no public URL: main command uses this computer's IP and pins the fingerprint", async () => {
+      m.settings.saveSettings({ panelPublicUrl: "" });
+      setListener({ CARBON_WORKER_JOIN_PORT: "3418", CARBON_WORKER_JOIN_HOST: "192.168.0.12", CARBON_WORKER_JOIN_TLS: "self-signed", CARBON_WORKER_JOIN_FINGERPRINT: FP });
+      const created = (await body<Created>(await m.joinToken.POST(adminPost("/api/admin/workers/join-token", {})))).data;
+      expect(created.commands.cli).toBe(`npx carbon join 'https://192.168.0.12:3418' --token '${created.token}' --fingerprint ${FP}`);
+      expect(created.commands.docker).toContain(`CARBON_PANEL_FINGERPRINT=${FP}`);
+      expect(created.direct?.internet.cli).toContain("'https://<ip-público>:3418'");
+      expect(created.direct?.fingerprint).toBe(FP);
+    });
+
+    it("public URL through a tunnel (hostname) keeps the plain command; listener off returns no direct block", async () => {
+      setListener({ CARBON_WORKER_JOIN_PORT: "3418", CARBON_WORKER_JOIN_HOST: "0.0.0.0", CARBON_WORKER_JOIN_TLS: "self-signed", CARBON_WORKER_JOIN_FINGERPRINT: FP });
+      const tunnel = (await body<Created>(await m.joinToken.POST(adminPost("/x", {})))).data;
+      expect(tunnel.commands.cli).not.toContain("--fingerprint");
+      setListener({});
+      const off = (await body<Created>(await m.joinToken.POST(adminPost("/x", {})))).data;
+      expect(off.direct).toBeNull();
+    });
+
+    it("public URL that is the listener's own IP:port gets the pin", async () => {
+      m.settings.saveSettings({ panelPublicUrl: "https://203.0.113.7:3418" });
+      setListener({ CARBON_WORKER_JOIN_PORT: "3418", CARBON_WORKER_JOIN_HOST: "0.0.0.0", CARBON_WORKER_JOIN_TLS: "self-signed", CARBON_WORKER_JOIN_FINGERPRINT: FP });
+      const created = (await body<Created>(await m.joinToken.POST(adminPost("/x", {})))).data;
+      expect(created.commands.cli).toContain(`--fingerprint ${FP}`);
+    });
   });
 
   it("is admin only", async () => {

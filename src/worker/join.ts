@@ -51,6 +51,8 @@ export interface ResolveOptions {
   /** true for `carbon join`: re-check the saved credential and join again when refused. */
   readonly explicitJoin: boolean;
   readonly caps: JoinCaps;
+  /** Pinned certificate fingerprint used for this panel; saved with the credential. */
+  readonly panelFingerprint?: string;
   readonly fetchImpl?: FetchLike;
   readonly log?: (message: string) => void;
   readonly now?: () => Date;
@@ -109,7 +111,7 @@ async function credentialAccepted(opts: ResolveOptions, token: string): Promise<
 
 async function joinFresh(opts: ResolveOptions): Promise<ResolvedCredential> {
   if (!opts.joinToken) {
-    throw new JoinError("sem credencial: rode `carbon join <url-do-painel> --token cjt_…` (o comando aparece em Configurações → Máquinas)");
+    throw new JoinError("sem credencial: rode `carbon join <url-ou-ip:porta> --token cjt_…` (o comando aparece em Configurações → Máquinas)");
   }
   const joined = await requestJoin(
     opts.panelUrl,
@@ -124,6 +126,7 @@ async function joinFresh(opts: ResolveOptions): Promise<ResolvedCredential> {
     name: joined.name,
     joinedAt: (opts.now?.() ?? new Date()).toISOString(),
     removedAt: null,
+    panelFingerprint: opts.panelFingerprint ?? null,
   };
   const file = writeNodeState(opts.stateDir, opts.hostname, state);
   opts.log?.(`entrou no cluster como "${joined.name}" (nó ${joined.nodeId.slice(0, 8)}) · credencial salva em ${file}`);

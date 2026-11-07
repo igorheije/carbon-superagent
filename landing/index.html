@@ -490,7 +490,7 @@
   <section id="workers" class="wrap">
     <p class="eyebrow reveal"><span class="dot"></span>execução distribuída</p>
     <h2 class="reveal">Escale para outras máquinas e para a AWS.</h2>
-    <p class="sub reveal">Por padrão, uma tarefa por vez no seu computador. Com workers, várias tarefas rodam ao mesmo tempo em outros servidores, e o painel continua sendo o centro: fila, log ao vivo, perguntas, permissões e entrega aparecem nele como numa tarefa local. Para colocar um servidor novo, é um comando, como no Docker Swarm.</p>
+    <p class="sub reveal">Por padrão, uma tarefa por vez no seu computador. Com workers, várias tarefas rodam ao mesmo tempo em outros servidores ou em outro computador da sua rede (direto pelo IP, sem servidor), e o painel continua sendo o centro: fila, log ao vivo, perguntas, permissões e entrega aparecem nele como numa tarefa local. Para colocar um servidor novo, é um comando, como no Docker Swarm.</p>
     <div class="bento">
       <div class="card c2 reveal">
         <span class="k">LOCAL</span>
@@ -500,7 +500,7 @@
       <div class="card c2 reveal">
         <span class="k">POOL</span>
         <h3>Cluster de workers</h3>
-        <p>Gere um token de join no painel e rode <code>carbon join</code> (ou um <code>docker run</code>) em cada servidor. Ele entra sozinho, recebe credencial própria e começa a pegar tarefas. Pause, retome ou remova servidores pelo painel.</p>
+        <p>Gere um token de join no painel e rode <code>carbon join</code> (ou um <code>docker run</code>) em cada servidor. Vale URL ou <code>ip:porta</code>, pela rede local ou pelo IP público. Ele entra sozinho, recebe credencial própria e começa a pegar tarefas. Pause, retome ou remova servidores pelo painel.</p>
       </div>
       <div class="card c2 reveal">
         <span class="k">AGENTCORE · EXPERIMENTAL</span>
@@ -514,10 +514,14 @@
 
 <span class="c"># em cada servidor novo (o comando já sai pronto em Configurações → Máquinas)</span>
 <span class="p">$ </span><b>carbon join https://painel.exemplo.com --token cjt_…</b>
-<span class="c">entrou no cluster como "srv-1" · conectado ao painel · 1 slot(s) · claude</span></pre>
+<span class="c">entrou no cluster como "srv-1" · conectado ao painel · 1 slot(s) · claude</span>
+
+<span class="c"># sem servidor nem domínio: painel com CARBON_WORKER_LISTEN=0.0.0.0:3418, worker pelo IP</span>
+<span class="p">$ </span><b>carbon join 192.168.0.12:3418 --token cjt_… --fingerprint 5c18…2a01</b></pre>
     <div class="reqs reveal">
       <a class="chip" href="docs.html#conceitos">Conceitos</a>
       <a class="chip" href="docs.html#cluster">Cluster join</a>
+      <a class="chip" href="docs.html#join">Join por IP</a>
       <a class="chip" href="docs.html#compose">Docker Compose</a>
       <a class="chip" href="docs.html#kubernetes">Kubernetes</a>
       <a class="chip" href="docs.html#agentcore">AgentCore</a>

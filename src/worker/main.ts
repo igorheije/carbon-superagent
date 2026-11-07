@@ -4,6 +4,7 @@ import { readWorkerConfig, scrubSecretEnv, type WorkerConfig } from "./config";
 import { EXIT_REMOVED, JoinError, leaveCluster, resolveCredential } from "./join";
 import { JOIN_USAGE, parseJoinArgs } from "./join-args";
 import { EXIT_FATAL, runWorkerLoop } from "./loop";
+import { createPinnedFetch } from "./pinned-fetch";
 import { markNodeRemoved, NodeStateError, readNodeState, removeNodeState } from "./node-state";
 
 /**
@@ -39,8 +40,20 @@ function onSignals(config: WorkerConfig): AbortController {
   return controller;
 }
 
+/**
+ * Certificate pin for this panel: CARBON_PANEL_FINGERPRINT (or `carbon join --fingerprint`), else the
+ * one saved by an earlier join to the same panel, so a plain restart keeps pinning.
+ */
+function panelPin(config: WorkerConfig): string | undefined {
+  if (config.panelFingerprint) return config.panelFingerprint;
+  const saved = readNodeState(config.stateDir, config.hostname);
+  return saved && saved.panelUrl === config.panelUrl ? (saved.panelFingerprint ?? undefined) : undefined;
+}
+
 async function run(config: WorkerConfig, explicitJoin: boolean): Promise<number> {
   const caps = { executors: config.executors, git: Boolean(config.gitToken), maxParallel: config.parallel, workerVersion: WORKER_VERSION };
+  const pin = panelPin(config);
+  const fetchImpl = pin ? createPinnedFetch(pin) : undefined;
   const credential = await resolveCredential({
     panelUrl: config.panelUrl,
     envToken: config.token || undefined,
@@ -50,11 +63,14 @@ async function run(config: WorkerConfig, explicitJoin: boolean): Promise<number>
     name: config.name,
     explicitJoin,
     caps,
+    panelFingerprint: pin,
+    fetchImpl,
     log,
   });
   const controller = onSignals(config);
   if (config.gitToken && config.gitHosts.length === 0) log("CARBON_GIT_TOKEN definido sem CARBON_GIT_HOSTS: o token não será enviado a nenhum remoto");
-  log(`carbon-worker ${WORKER_VERSION} · painel ${config.panelUrl} · pasta ${config.workDir}${credential.nodeId ? ` · nó ${credential.nodeId.slice(0, 8)}` : ""}`);
+  const pinned = pin ? ` · certificado fixado ${pin.slice(0, 16)}…` : "";
+  log(`carbon-worker ${WORKER_VERSION} · painel ${config.panelUrl}${pinned} · pasta ${config.workDir}${credential.nodeId ? ` · nó ${credential.nodeId.slice(0, 8)}` : ""}`);
   return runWorkerLoop({
     panelUrl: config.panelUrl,
     token: credential.token,
@@ -64,6 +80,7 @@ async function run(config: WorkerConfig, explicitJoin: boolean): Promise<number>
     gitToken: config.gitToken,
     gitHosts: config.gitHosts,
     graceSeconds: config.graceSeconds,
+    fetchImpl,
     signal: controller.signal,
     workerVersion: WORKER_VERSION,
     log,
@@ -88,7 +105,7 @@ async function leave(env: Record<string, string | undefined>): Promise<number> {
     log("este servidor não entrou em nenhum cluster (nenhuma credencial salva)");
     return 0;
   }
-  const outcome = await leaveCluster(saved.panelUrl, saved.token);
+  const outcome = await leaveCluster(saved.panelUrl, saved.token, saved.panelFingerprint ? createPinnedFetch(saved.panelFingerprint) : undefined);
   removeNodeState(stateDir, hostname);
   log(outcome === "left" ? `saiu do cluster ${saved.panelUrl}` : "o painel já tinha removido este nó; credencial local apagada");
   return 0;
@@ -115,6 +132,7 @@ async function main(argv: readonly string[]): Promise<number> {
     env.CARBON_JOIN_TOKEN = args.token;
     delete env.CARBON_WORKER_TOKEN;
     if (args.name) env.CARBON_WORKER_NAME = args.name;
+    if (args.fingerprint) env.CARBON_PANEL_FINGERPRINT = args.fingerprint;
   } else if (command !== undefined) {
     log(`comando desconhecido: ${command} (use join, leave ou nenhum)`);
     return EXIT_FATAL;

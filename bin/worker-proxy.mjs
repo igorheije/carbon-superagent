@@ -5,7 +5,7 @@
  * Forwards ONLY `/api/worker/*` to the Next server on 127.0.0.1:CARBON_PORT; every other request
  * gets an empty 404. The UI and admin API never become reachable through this port.
  *
- * Hardening: requests without a `Bearer cwk_…`/`ctk_…` token get an empty 401 before reaching
+ * Hardening: requests without a `Bearer cwk_…`/`ctk_…`/`cjt_…` token get an empty 401 before reaching
  * Next; JSON routes are capped at 1 MB and 60 s (bundles: the large ceiling and 30 min); open
  * sockets are capped in total (CARBON_WORKER_MAX_CONNECTIONS, 256) and per client address
  * (CARBON_WORKER_MAX_CONNECTIONS_PER_IP, 32); only simple query strings pass.
@@ -15,6 +15,7 @@ import http from "node:http";
 import https from "node:https";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { ensureWorkerCert } from "./worker-tls.mjs";
 
 export const WORKER_PREFIX = "/api/worker/";
 /** Absolute ceiling for bundle uploads; the panel enforces the real limit (settings.workers.maxBundleMb). */
@@ -29,8 +30,8 @@ export const BUNDLE_REQUEST_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_MAX_CONNECTIONS = 256;
 /** Open sockets per client address. */
 export const DEFAULT_MAX_CONNECTIONS_PER_IP = 32;
-/** Only worker/task tokens are forwarded; anything else never reaches Next. */
-const WORKER_AUTH = /^Bearer (cwk_|ctk_)[A-Za-z0-9_-]{20,200}$/;
+/** Only worker (cwk_), task (ctk_) and cluster join (cjt_, for /api/worker/join) tokens are forwarded. */
+const WORKER_AUTH = /^Bearer (cwk_|ctk_|cjt_)[A-Za-z0-9_-]{20,200}$/;
 const BUNDLE_ROUTE = /^\/api\/worker\/tasks\/[^/]+\/bundle$/;
 /** Worker routes only use simple query strings (?after=12). */
 const SAFE_QUERY = /^(\?[A-Za-z0-9\-._~=&%]{0,512})?$/;
@@ -132,7 +133,7 @@ function defaultLog(line) {
   console.log(line);
 }
 
-/** True when the request carries a well-formed worker (cwk_) or task (ctk_) bearer token. */
+/** True when the request carries a well-formed worker (cwk_), task (ctk_) or join (cjt_) bearer token. */
 export function hasWorkerAuth(headers) {
   const value = headers.authorization;
   return typeof value === "string" && WORKER_AUTH.test(value);
@@ -288,21 +289,48 @@ function positiveInt(raw, fallback, name) {
   return value;
 }
 
+const LOOPBACK_LISTEN = /^(127\.\d+\.\d+\.\d+|localhost|::1)$/i;
+
+/** True when the listener only accepts connections from this machine (a tunnel/VPN sidecar in front). */
+export function isLoopbackListen(host) {
+  return LOOPBACK_LISTEN.test(host);
+}
+
 /**
- * Starts the proxy from env (CARBON_WORKER_LISTEN, CARBON_PORT, CARBON_WORKER_TLS_CERT/KEY).
- * Resolves with `{ server, url, close }` once listening; rejects on bad config or bind failure.
+ * Picks the listener's TLS: explicit CARBON_WORKER_TLS_CERT/KEY; otherwise, when the listener is
+ * reachable from other machines (0.0.0.0, a LAN IP) and CARBON_WORKER_TLS is not "off", a
+ * self-signed pair in `tlsDir` that workers pin by fingerprint (`carbon join`). Loopback listeners
+ * stay plain HTTP (the tunnel/VPN in front terminates TLS) unless CARBON_WORKER_TLS=on, which
+ * forces the self-signed pair everywhere (e.g. a container port published from 127.0.0.1).
  */
-export async function startWorkerProxy(env = process.env, options = {}) {
-  const { host, port } = parseListen(env.CARBON_WORKER_LISTEN);
+export function resolveListenerTls(env, host, { tlsDir, ensureCert = ensureWorkerCert } = {}) {
   const certPath = env.CARBON_WORKER_TLS_CERT;
   const keyPath = env.CARBON_WORKER_TLS_KEY;
   if (Boolean(certPath) !== Boolean(keyPath)) {
     throw new Error("Defina CARBON_WORKER_TLS_CERT e CARBON_WORKER_TLS_KEY juntos (ou nenhum).");
   }
-  const tls = certPath ? { cert: readFileSync(certPath), key: readFileSync(keyPath) } : undefined;
+  if (certPath) return { tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) }, mode: "custom", fingerprint: null };
+  const mode = String(env.CARBON_WORKER_TLS ?? "auto").trim().toLowerCase() || "auto";
+  if (mode !== "auto" && mode !== "on" && mode !== "off") throw new Error(`CARBON_WORKER_TLS inválido: "${mode}" (use auto, on ou off)`);
+  if (mode === "on" && !tlsDir) throw new Error("CARBON_WORKER_TLS=on precisa da pasta de dados do painel para guardar o certificado");
+  if (mode === "off" || !tlsDir || (mode === "auto" && isLoopbackListen(host))) return { tls: undefined, mode: "off", fingerprint: null };
+  const pair = ensureCert(tlsDir);
+  return { tls: { cert: pair.cert, key: pair.key }, mode: "self-signed", fingerprint: pair.fingerprint, created: pair.created };
+}
+
+/**
+ * Starts the proxy from env (CARBON_WORKER_LISTEN, CARBON_PORT, CARBON_WORKER_TLS_CERT/KEY,
+ * CARBON_WORKER_TLS). `options.tlsDir` is where the self-signed pair lives (auto TLS).
+ * Resolves with `{ server, url, host, port, tls, tlsMode, fingerprint, close }` once listening;
+ * rejects on bad config or bind failure.
+ */
+export async function startWorkerProxy(env = process.env, options = {}) {
+  const { host, port } = parseListen(env.CARBON_WORKER_LISTEN);
+  const { tlsDir, ensureCert, ...proxyOptions } = options;
+  const resolved = resolveListenerTls(env, host, { tlsDir, ensureCert });
   const maxConnections = positiveInt(env.CARBON_WORKER_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS, "CARBON_WORKER_MAX_CONNECTIONS");
   const maxConnectionsPerIp = positiveInt(env.CARBON_WORKER_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_CONNECTIONS_PER_IP, "CARBON_WORKER_MAX_CONNECTIONS_PER_IP");
-  const server = createWorkerProxy({ maxConnections, maxConnectionsPerIp, ...options, tls, upstreamPort: Number(env.CARBON_PORT ?? DEFAULT_UPSTREAM_PORT) });
+  const server = createWorkerProxy({ maxConnections, maxConnectionsPerIp, ...proxyOptions, tls: resolved.tls, upstreamPort: Number(env.CARBON_PORT ?? DEFAULT_UPSTREAM_PORT) });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
@@ -310,20 +338,22 @@ export async function startWorkerProxy(env = process.env, options = {}) {
       resolve();
     });
   });
+  const boundPort = server.address().port;
   const shownHost = host === "0.0.0.0" || host === "::" ? "<este-host>" : host.includes(":") ? `[${host}]` : host;
-  const url = `${tls ? "https" : "http"}://${shownHost}:${server.address().port}`;
+  const url = `${resolved.tls ? "https" : "http"}://${shownHost}:${boundPort}`;
   const close = () =>
     new Promise((resolve) => {
       server.close(() => resolve());
       server.closeAllConnections();
     });
-  return { server, url, tls: Boolean(tls), close };
+  return { server, url, host, port: boundPort, tls: Boolean(resolved.tls), tlsMode: resolved.mode, fingerprint: resolved.fingerprint, certCreated: Boolean(resolved.created), close };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  startWorkerProxy()
-    .then(({ url, close }) => {
+  startWorkerProxy(process.env, { tlsDir: process.env.CARBON_WORKER_TLS_DIR })
+    .then(({ url, fingerprint, close }) => {
       console.log(`[worker-proxy] ouvindo em ${url}${WORKER_PREFIX} → 127.0.0.1:${process.env.CARBON_PORT ?? DEFAULT_UPSTREAM_PORT}`);
+      if (fingerprint) console.log(`[worker-proxy] certificado autoassinado · fingerprint ${fingerprint}`);
       for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => close().then(() => process.exit(0)));
     })
     .catch((err) => {
