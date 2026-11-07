@@ -9,6 +9,7 @@
 | T2 preflight, T3 tunnel (+ proxy.sh, serve.sh), T5 pair, T6 code-sync | Feitos, 9 testes com ssh/orca falsos |
 | T4 prepare-server | Virou `references/server-setup.md` (passos manuais com confirmação), não script |
 | T7, T8 (só security + server-setup; o guia do Orca é carregado em runtime), T9, T10 | Feitos; `claude plugin validate .` ok |
+| T12 Sessão nova | **Feito** (2026-11-07): sessão independente com o plugin conduziu o fluxo completo. Bugs: proxy.sh reaproveitava qualquer porta (0.1.1) e o proxy morria quando lançado por uma sessão de agente (0.1.2, processo destacado) |
 | T11 UAT | **Feito** (2026-11-07): fluxo completo validado no VPS — preflight, túnel+proxy, orca-ide serve, pair, code-sync, worker Orca remoto (4/4 testes no branch trazido de volta), release e disconnect. Bugs achados e corrigidos: serve.sh (pgrep), pair.sh (link no log quando já pareado), code-sync (clone sem checkout) |
 
 ## Plano de execução
