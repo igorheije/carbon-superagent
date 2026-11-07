@@ -68,6 +68,14 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 CLAUDE_CODE_OAUTH_TOKEN=placeholder-pro
 # escolha o tema, aceite o aviso do modo sem permissões, saia com /exit
 ```
 
+Sem terminal interativo, o equivalente (Claude Code 2.1.319) é: em `~/.claude.json`,
+`"hasCompletedOnboarding": true`; em `~/.claude/settings.json`, `"skipDangerousModePermissionPrompt": true`.
+Confira antes da tarefa real: `timeout 15 script -qc "claude --dangerously-skip-permissions" /dev/null` deve
+abrir direto no prompt, sem aviso. O Orca desiste da tarefa depois de 3 inícios com `agent_readiness: timeout`.
+
+Dê também uma identidade git à conta do worker, para os commits não saírem sem autor:
+`git config --global user.name "worker-<servidor>" && git config --global user.email "<seu-email>"`.
+
 Aceitar esse modo é uma decisão sua: o worker vai rodar comandos sem pedir confirmação. O que limita o
 estrago é a conta sem sudo e fora do `docker`, e a spec do worker. Se preferir que ele peça permissão,
 mude em **Orca → Settings** o modo das novas abas de agente no servidor (os pedidos ficam no terminal remoto).

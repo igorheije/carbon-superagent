@@ -9,7 +9,7 @@
 | T2 preflight, T3 tunnel (+ proxy.sh, serve.sh), T5 pair, T6 code-sync | Feitos, 9 testes com ssh/orca falsos |
 | T4 prepare-server | Virou `references/server-setup.md` (passos manuais com confirmação), não script |
 | T7, T8 (só security + server-setup; o guia do Orca é carregado em runtime), T9, T10 | Feitos; `claude plugin validate .` ok |
-| T11 UAT | Parcial (2026-11-07): preflight, túnel+proxy, code-sync, orca-ide serve, pair, repo add e env do agente validados. Worker parou no onboarding do Claude Code (1ª execução interativa); falta a pessoa fazer o passo 4 de server-setup |
+| T11 UAT | **Feito** (2026-11-07): fluxo completo validado no VPS — preflight, túnel+proxy, orca-ide serve, pair, code-sync, worker Orca remoto (4/4 testes no branch trazido de volta), release e disconnect. Bugs achados e corrigidos: serve.sh (pgrep), pair.sh (link no log quando já pareado), code-sync (clone sem checkout) |
 
 ## Plano de execução
 
