@@ -289,6 +289,7 @@
       <span class="k">DEPENDE SÓ DE</span>
       <ul>
         <li>Orca (aqui e no servidor, mesma versão)</li>
+        <li>Servidor Linux ou outro Mac</li>
         <li><code>ssh</code> por chave e <code>git</code></li>
         <li>Node 22+ e Claude Code logado aqui</li>
         <li>Nada do painel do Carbon</li>
@@ -467,7 +468,8 @@
       <div class="req reveal">
         <h3>Servidor</h3>
         <ul>
-          <li>Conta própria, <b>sem sudo</b> e fora do grupo <code>docker</code></li>
+          <li><b>Linux</b> (VPS, máquina dedicada) <b>ou outro Mac</b> na mesma rede ou pela Tailscale</li>
+          <li>Conta própria, <b>sem sudo/admin</b> e fora do grupo <code>docker</code></li>
           <li>Acesso por <b>chave</b> SSH (nunca senha)</li>
           <li>Node 22+, Claude Code <b>sem login</b>, <code>orca-ide</code> na mesma versão do Orca daqui</li>
         </ul>
@@ -498,6 +500,7 @@
       <span class="pill ok">worker remoto concluiu a tarefa e o branch voltou (4/4 testes)</span>
       <span class="pill ok">instalação pelo plugin e proxy sem o painel validados</span>
       <span class="pill ok">sessão nova conduziu o fluxo completo só pela skill (17/17 testes)</span>
+      <span class="pill wait">servidor macOS: suportado e testado com simulação, falta um Mac real</span>
     </div>
     <div class="cta reveal">
       <a class="btn btn-primary" href="https://github.com/leolegends/carbon-superagent/blob/main/docs/skills/carbon-coop.md" rel="noopener noreferrer">Guia completo →</a>

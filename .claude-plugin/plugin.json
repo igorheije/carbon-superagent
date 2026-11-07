@@ -1,7 +1,7 @@
 {
   "name": "carbon-coop",
   "description": "Trabalho cooperativo: conecta a sessão do Claude Code a um servidor Orca pareado por SSH e manda partes do trabalho para lá usando o Claude Code deste computador.",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "author": { "name": "Leonardo Ribeiro" },
   "repository": "https://github.com/leolegends/carbon-superagent",
   "license": "MIT"

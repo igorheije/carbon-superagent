@@ -1,8 +1,8 @@
 ---
 name: carbon-coop
 description: >-
-  Trabalho cooperativo: conecta esta sessão do Claude Code a um servidor seu (VPS, máquina dedicada)
-  por SSH, pareado como servidor Orca, e manda partes do trabalho para rodar lá com o Claude Code
+  Trabalho cooperativo: conecta esta sessão do Claude Code a um servidor seu (VPS Linux, máquina
+  dedicada ou outro Mac na mesma rede/Tailscale) por SSH, pareado como servidor Orca, e manda partes do trabalho para rodar lá com o Claude Code
   DESTE computador (a credencial não sai daqui). O resultado volta como branch git para revisar e
   integrar. Use quando a pessoa pedir "conecta no meu servidor", "manda isso pro servidor",
   "trabalho cooperativo", "divide com o outro computador", "/carbon-coop connect|dispatch|status|disconnect".
@@ -12,7 +12,8 @@ description: >-
 
 # carbon-coop — trabalho cooperativo com um servidor
 
-Esta sessão é a **coordenadora**. O servidor roda `orca-ide serve` (só em `127.0.0.1`) e vira um
+Esta sessão é a **coordenadora**. O servidor (Linux ou macOS; a skill detecta) roda o Orca headless
+(`orca-ide serve` no Linux, `orca serve` com `ORCA_SERVE_RUNTIME=orcad` no macOS), só em `127.0.0.1`, e vira um
 **servidor Orca pareado**; os workers lá usam o Claude Code deste computador por um proxy local
 alcançado por túnel SSH reverso. Uma única conexão SSH, aberta daqui, carrega tudo.
 

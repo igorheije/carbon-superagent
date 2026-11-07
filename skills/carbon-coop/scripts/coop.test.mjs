@@ -181,6 +181,47 @@ describe("proxy.sh with the port already taken", () => {
   });
 });
 
+describe("serve.sh on a Linux or macOS server", () => {
+  /** Fake Orca CLI: prints a pairing link, records ORCA_SERVE_RUNTIME, then really listens on --port. */
+  const FAKE_ORCA_CLI = `#!/bin/bash
+case "$1" in
+  --version) echo "9.9.9" ;;
+  serve)
+    while [ $# -gt 0 ]; do [ "$1" = --port ] && port="$2"; shift; done
+    echo '{"pairingUrl":"orca://pair?code=FAKE"}'
+    echo "runtime=\${ORCA_SERVE_RUNTIME:-default}"
+    exec node -e "require('node:http').createServer((q, r) => r.end()).listen($port, '127.0.0.1')" ;;
+esac
+`;
+
+  async function freePort() {
+    const server = http.createServer();
+    const port = await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
+    await new Promise((resolve) => server.close(resolve));
+    return port;
+  }
+
+  for (const [os, bin] of [["Linux", "orca-ide"], ["Darwin", "orca"]]) {
+    it(`starts, reports and stops ${bin} on ${os}`, async () => {
+      const binDir = path.join(env.FAKE_HOME, ".local", "bin");
+      mkdirSync(binDir, { recursive: true });
+      writeExec(path.join(binDir, bin), FAKE_ORCA_CLI);
+      const port = await freePort();
+      await run(script("init.sh"), ["srv", "carbon@example.test", "--port", String(port)], { env });
+      const osEnv = { ...env, COOP_UNAME: os };
+
+      const started = await run(script("serve.sh"), ["start", "srv"], { env: osEnv });
+      expect(started.stdout).toContain(`orca serve no ar (${os}`);
+      const log = readFileSync(path.join(env.FAKE_HOME, ".carbon-coop", "serve.log"), "utf8");
+      expect(log).toContain(os === "Darwin" ? "runtime=orcad" : "runtime=default");
+
+      expect((await run(script("serve.sh"), ["status", "srv"], { env: osEnv })).stdout).toContain(`rodando (${os}`);
+      expect((await run(script("serve.sh"), ["stop", "srv"], { env: osEnv })).stdout).toContain("orca serve parado");
+      expect((await run(script("serve.sh"), ["status", "srv"], { env: osEnv })).stdout).toContain("parado");
+    });
+  }
+});
+
 describe("embedded auth proxy", () => {
   it("is byte-identical to bin/claude-auth-proxy.mjs (the skill must not depend on the Carbon checkout)", () => {
     const repoRoot = path.resolve(here, "../../..");
