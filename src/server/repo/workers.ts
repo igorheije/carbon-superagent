@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { parseStoredTelemetry, type HostTelemetry, type StoredTelemetry } from "@/shared/host-telemetry";
 import { getDb } from "../db";
 
 /** A machine that runs tasks for the panel. Tokens are generated in auth/worker-auth.ts; only their hash lives here. */
@@ -31,6 +32,8 @@ export interface Worker {
   readonly availability: WorkerAvailability;
   readonly joinedVia: WorkerOrigin;
   readonly hostname: string | null;
+  /** Last host snapshot (pool workers that report it), or null. */
+  readonly telemetry: StoredTelemetry | null;
 }
 
 interface WorkerRow {
@@ -47,6 +50,7 @@ interface WorkerRow {
   availability: string;
   joined_via: string;
   hostname: string | null;
+  telemetry?: string | null;
 }
 
 const asAvailability = (raw: string): WorkerAvailability =>
@@ -75,6 +79,7 @@ function toWorker(row: WorkerRow): Worker {
     availability: asAvailability(row.availability),
     joinedVia: row.joined_via === "join" ? "join" : "manual",
     hostname: row.hostname,
+    telemetry: parseStoredTelemetry(row.telemetry ?? null),
   };
 }
 
@@ -125,6 +130,11 @@ export function touchLastSeen(id: string, now = Date.now(), version?: string): v
 
 export function setCapabilities(id: string, capabilities: WorkerCapabilities): void {
   getDb().prepare("UPDATE workers SET capabilities = ? WHERE id = ?").run(JSON.stringify(capabilities), id);
+}
+
+/** Stores the latest host snapshot reported by the worker (validated by the route's zod schema). */
+export function setTelemetry(id: string, telemetry: HostTelemetry, now = Date.now()): void {
+  getDb().prepare("UPDATE workers SET telemetry = ? WHERE id = ?").run(JSON.stringify({ ...telemetry, receivedAt: now }), id);
 }
 
 export function listWorkers(): readonly Worker[] {

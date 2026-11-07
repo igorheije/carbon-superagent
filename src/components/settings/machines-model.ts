@@ -21,6 +21,24 @@ export interface Machine {
   readonly currentTasks: readonly { readonly id: string; readonly key: string }[];
 }
 
+/** How a new machine can reach this panel (GET /api/admin/workers → connection). */
+export type DirectInfo =
+  | { readonly available: true; readonly port: number; readonly fingerprint: string | null; readonly addresses: readonly string[] }
+  | { readonly available: false; readonly reason: string };
+
+export interface ConnectionOptions {
+  readonly panelPublicUrl: string;
+  readonly direct: DirectInfo;
+}
+
+export type MachineConnection = "direct" | "public";
+
+/** Direct by IP unless only the public URL works (no domain, tunnel or server needed by default). */
+export function defaultConnection(options: ConnectionOptions | null): MachineConnection {
+  if (!options) return "direct";
+  return !options.direct.available && options.panelPublicUrl ? "public" : "direct";
+}
+
 export interface CreatedMachine {
   readonly worker: Machine;
   readonly token: string;

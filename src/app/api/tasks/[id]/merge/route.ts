@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { handle, HttpError, ok, parseBody, requireUser } from "@/server/http";
-import { mergeIntoBranch } from "@/server/runner/local-delivery";
+import { conflictsWith, mergeIntoBranch } from "@/server/runner/local-delivery";
 import { BRANCH_RE } from "@/server/runner/pull-request";
 import { notifyChange } from "@/server/runner/runner";
 
@@ -18,5 +18,17 @@ export function POST(request: Request, { params }: { params: Promise<{ id: strin
     if (!result.ok) throw new HttpError(409, result.error);
     notifyChange();
     return ok({ detail: result.detail });
+  });
+}
+
+/** Files that would conflict merging into ?target= (nothing is touched). */
+export function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  return handle(async () => {
+    await requireUser();
+    const { id } = await params;
+    const { target } = bodySchema.parse({ target: new URL(request.url).searchParams.get("target") ?? "" });
+    const result = await conflictsWith(id, target);
+    if ("error" in result) throw new HttpError(409, result.error);
+    return ok({ target, conflicts: result.files });
   });
 }

@@ -183,7 +183,8 @@
         <li><a href="#kubernetes">Kubernetes</a></li>
         <li><a href="#agentcore">AgentCore <span class="exp">EXP</span></a></li>
         <li><a href="#expor">Expor o painel</a></li>
-        <li><a href="#maquinas">Máquinas e <code>worker init</code></a></li>
+        <li><a href="#tunel">Túnel SSH + Claude Code compartilhado <span class="exp">EXP</span></a></li>
+        <li><a href="#maquinas">Máquinas, carga e <code>worker init</code></a></li>
       </ol>
       <p class="group">Referência</p>
       <ol>
@@ -379,8 +380,35 @@ CARBON_WORKER_TLS_KEY=/caminho/key.pem</code></pre>
     </section>
 
     <!-- ============================================================ máquinas -->
+    <section class="doc" id="tunel">
+      <h2>Servidor por túnel SSH + Claude Code compartilhado <span class="badge">experimental</span></h2>
+      <p>Um servidor seu como worker <b>sem abrir porta na internet</b> e <b>sem copiar credencial</b>: uma conexão SSH aberta do seu computador leva o listener e um proxy de autenticação até o loopback do servidor.</p>
+      <pre><code><span class="c"># .env.local do painel: listener só no loopback</span>
+CARBON_WORKER_LISTEN=127.0.0.1:3418
+
+<span class="c"># do seu computador: dois túneis reversos (o servidor só enxerga 127.0.0.1)</span>
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 \
+  -R 127.0.0.1:3418:127.0.0.1:3418 -R 127.0.0.1:8787:127.0.0.1:8787 usuario@servidor
+
+<span class="c"># no servidor (usuário próprio, sem sudo, fora do grupo docker)</span>
+CARBON_PANEL_URL=http://127.0.0.1:3418
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+CLAUDE_CODE_OAUTH_TOKEN=placeholder-proxy-injects-real</code></pre>
+      <p>Em <i>Configurações → Máquinas → Claude Code deste computador para os workers</i>, um interruptor sobe o proxy dentro do painel. Ele lê o login do Claude Code no Keychain do macOS (na 1ª vez, clique em <b>Permitir sempre</b>) e injeta nas chamadas do worker. O proxy nunca renova o login: quem renova é o Claude Code daqui, senão ele seria deslogado.</p>
+      <div class="table"><table>
+        <thead><tr><th>Ponto</th><th>O que significa</th></tr></thead>
+        <tbody>
+          <tr><td>Conta</td><td>Os workers usam a sua conta e o seu plano: mais máquinas = mais tarefas em paralelo, não mais quota</td></tr>
+          <tr><td>Enquanto ligado</td><td>Root no servidor consegue usar o proxy pelo túnel (não consegue levar a credencial); desligar ou fechar o túnel corta</td></tr>
+          <tr><td>Código</td><td>O repositório da tarefa vai para o servidor, como em qualquer worker</td></tr>
+        </tbody>
+      </table></div>
+      <p>Receita completa: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/ssh-tunnel-shared-claude.md" rel="noopener noreferrer">ssh-tunnel-shared-claude.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ maquinas -->
     <section class="doc" id="maquinas">
-      <h2>Máquinas (UI) e <code>carbon worker init</code></h2>
+      <h2>Máquinas (UI), carga e <code>carbon worker init</code></h2>
       <p><i>Configurações → Máquinas</i> (admin) lista a frota: nome, tipo, status, última batida, tarefa atual e versão.</p>
       <div class="table"><table>
         <thead><tr><th>Status</th><th>Quando</th></tr></thead>
@@ -393,6 +421,11 @@ CARBON_WORKER_TLS_KEY=/caminho/key.pem</code></pre>
           <tr><td>removida</td><td>Credencial revogada: próximos requests recebem <code>401</code></td></tr>
         </tbody>
       </table></div>
+      <h3 id="carga">Carga</h3>
+      <p>O painel <b>Carga</b> mostra, a cada 5 s, cada máquina (este computador e cada worker) com uma animação do tipo dela — servidor, Mac, Linux, Windows, container ou AgentCore — cujo ritmo segue a CPU, pacotes indo do painel para cada tarefa em execução, CPU, memória, slots, utilização, concluídas, tempo médio e sucesso nas últimas 24 h, a comparação com este computador ("assumiu 67% das entregas · 2.0× mais rápido") e quem entregou. Os workers mandam a telemetria do host junto do claim e do heartbeat.</p>
+      <p>Na fila e no terminal, um selo diz onde cada tarefa roda <b>agora</b>; se ela passou por mais de uma máquina, o selo ganha ⇄ e mostra a trilha (<code>esta máquina ✗ → vps-sp-01 ●</code>).</p>
+      <h3 id="adicionar">Adicionar máquina: como ela chega no painel</h3>
+      <p>O kit (Compose ou Kubernetes) começa pela conexão: <b>IP deste computador</b> (padrão; o kit sai com <code>https://&lt;ip&gt;:3418</code> e <code>CARBON_PANEL_FINGERPRINT</code>, sem URL pública) ou <b>URL pública</b>. Sem Docker na outra máquina, use <a href="#join">carbon join</a>.</p>
       <p>O mesmo gerador existe na CLI, no host do painel (grava a máquina direto no banco e imprime o token uma vez):</p>
       <pre><code>node bin/carbon.mjs worker init --target compose|k8s|agentcore --out &lt;pasta&gt; \
   --name &lt;nome&gt; --panel-url &lt;url&gt; [--replicas N] [--parallel N] \
@@ -508,7 +541,9 @@ docker run -d --name carbon-worker --restart unless-stopped \
       <h3 id="op-cancelar">Cancelamento</h3>
       <p>Pool: o worker recebe <code>cancel</code> no próximo heartbeat (≤ 20 s no padrão), mata o agente e reporta <code>canceled</code>. AgentCore antes do claim: o painel encerra a sessão na hora.</p>
       <h3 id="op-permissoes">Permissões e perguntas remotas</h3>
-      <p>Pedidos de permissão aparecem no painel como numa tarefa local; o worker espera a resposta (15 min, depois nega). Quando o agente faz uma pergunta, a execução termina sem entregar; ao responder, a tarefa volta para a fila do mesmo runtime e <b>recomeça da base com as decisões</b> no prompt.</p>
+      <p>Pedidos de permissão aparecem no painel como numa tarefa local — inclusive num <b>alerta fixo no canto de qualquer página</b>, com Permitir/Negar — e o worker espera a resposta (15 min, depois nega). Tarefa marcada <b>Seguir até o final sem pedir permissão</b> aprova sozinha o trabalho comum do projeto; infraestrutura (<code>docker</code>, <code>kubectl</code>, <code>terraform</code>), rede, ações fora do projeto e arquivos sensíveis continuam pedindo, e os bloqueios seguem valendo. Quando o agente faz uma pergunta, a execução termina sem entregar; ao responder, a tarefa volta para a fila do mesmo runtime e <b>recomeça da base com as decisões</b> no prompt.</p>
+      <h3 id="op-conflito">Merge com conflito</h3>
+      <p>Ao escolher o branch de destino, o card de entrega verifica conflitos (<code>git merge-tree</code>, sem alterar nada) e lista os arquivos. <b>Resolver com o agente e fazer o merge</b> roda a tarefa de novo neste computador, na mesma branch: o agente traz o destino, junta as duas versões sem descartar nenhum lado e roda os testes; o Carbon conclui e faz o merge. Para corrigir o pedido antes, o lápis na fila edita a tarefa e <b>Salvar e rodar de novo</b>.</p>
       <h3 id="op-limites">Limites</h3>
       <div class="table"><table>
         <tbody>

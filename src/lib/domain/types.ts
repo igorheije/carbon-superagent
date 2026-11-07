@@ -35,6 +35,24 @@ export interface TaskPlacement {
   readonly agentcoreSessionId: string | null;
 }
 
+export interface ConflictResolution {
+  readonly target: string;
+  readonly files: readonly string[];
+  readonly thenMerge: boolean;
+  readonly requestedBy: string;
+}
+
+/** One execution of a task on a machine (local runner or worker), oldest first. */
+export interface TicketRun {
+  /** "esta máquina" for the local runner, else the worker's name. */
+  readonly where: string;
+  readonly isLocal: boolean;
+  readonly startedAt: number;
+  readonly finishedAt: number | null;
+  /** null while running; done | failed | waiting | lost | canceled once it ended. */
+  readonly outcome: string | null;
+}
+
 export type AgentStatus = "idle" | "working" | "done";
 
 export type LogLevel = "info" | "tool" | "ok" | "warn" | "think";
@@ -171,6 +189,15 @@ export interface Ticket {
   readonly runtime?: TaskRuntime;
   /** Who claimed the current/last remote run, recorded on claim; absent on local and older tasks. */
   readonly placement?: TaskPlacement | null;
+  /**
+   * Set when a human asked the agent to resolve merge conflicts with `target`: the next run brings
+   * `target` into the task branch, resolves `files`, and (thenMerge) Carbon merges it afterwards.
+   */
+  readonly resolveConflicts?: ConflictResolution | null;
+  /** "Seguir até o final sem pedir permissão": only blocked and high-risk actions still ask. */
+  readonly autoApprove?: boolean;
+  /** Execution history across machines (last few), attached by the live snapshot. */
+  readonly runs?: readonly TicketRun[];
   readonly stage: StageId | null;
   readonly cursor: number;
   readonly totalEvents: number;

@@ -45,3 +45,26 @@ describe("placementOf", () => {
     expect(placementOf(ticket({ runtime: "pool", status: "queued", placement })).label).toBe("vai rodar em: pool de workers");
   });
 });
+
+describe("runTrail / isMixed / trailText", () => {
+  it("describes a task that failed here and now runs on a worker", async () => {
+    const { isMixed, runTrail, trailText } = await import("./placement");
+    const trail = runTrail({
+      runs: [
+        { where: "esta máquina", isLocal: true, startedAt: 1, finishedAt: 2, outcome: "failed" },
+        { where: "vps-sp-01", isLocal: false, startedAt: 3, finishedAt: null, outcome: null },
+      ],
+    });
+    expect(trail.map((s) => s.state)).toEqual(["failed", "running"]);
+    expect(isMixed(trail)).toBe(true);
+    expect(trailText(trail)).toBe("esta máquina ✗ → vps-sp-01 ●");
+  });
+
+  it("is not mixed when every run was on the same machine, and empty without runs", async () => {
+    const { isMixed, runTrail } = await import("./placement");
+    const same = runTrail({ runs: [{ where: "vps", isLocal: false, startedAt: 1, finishedAt: 2, outcome: "lost" }, { where: "vps", isLocal: false, startedAt: 3, finishedAt: 4, outcome: "done" }] });
+    expect(same.map((s) => s.state)).toEqual(["failed", "done"]);
+    expect(isMixed(same)).toBe(false);
+    expect(runTrail({})).toEqual([]);
+  });
+});

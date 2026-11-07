@@ -63,6 +63,7 @@ export function taskPrompt(task: Task, projectId: string, parts: PromptParts): s
     claudeMemory: parts.memory ? memoryPromptSection(parts.memory) : null,
     multiAgent: task.snapshot.multiAgent === true,
     distributedSection: distributedSectionFor(task.snapshot, parts.mergeReport),
+    resolveConflicts: task.snapshot.resolveConflicts ?? null,
     decisions: decisionsSection(parts.decisions),
   });
 }
@@ -224,6 +225,7 @@ export async function prepareClaim(lease: Lease, worker: Pick<Worker, "id" | "na
       permissionRules: listRules(project.repoPath).map((r) => ({ tool: r.tool, pattern: r.pattern })),
       settings: { permissionProfile: settings.permissionProfile, isolateClaudeConfig: settings.isolateClaudeConfig, approvalPolicy: settings.approvalPolicy },
       files: [...context.files],
+      ...(ticket.autoApprove ? { autoApprove: true } : {}),
     };
   } catch (error) {
     return failClaim(task, worker.id, `não foi possível preparar a tarefa para o worker: ${error instanceof Error ? error.message : String(error)}`);

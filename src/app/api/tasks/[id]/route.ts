@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handle, HttpError, ok, parseBody, requireUser } from "@/server/http";
-import { deleteTask, findTask, moveToFront } from "@/server/repo/tasks";
+import { deleteTask, editTask, findTask, moveToFront } from "@/server/repo/tasks";
+import { newTaskSchema } from "@/server/schemas";
 import { cancelActive, kick, notifyChange, retryTask, runnerStatus } from "@/server/runner/runner";
 import { requestCancel } from "@/server/runner/scheduler";
 import { failUnclaimed } from "@/server/runtimes/agentcore-store";
@@ -50,6 +51,39 @@ export function POST(request: Request, { params }: Params) {
       throw new HttpError(409, "esta tarefa não está executando");
     }
     return ok({ action });
+  });
+}
+
+/** What the edit form needs (the description is not part of the live snapshot). */
+export function GET(_request: Request, { params }: Params) {
+  return handle(async () => {
+    await requireUser();
+    const { id } = await params;
+    const task = findTask(id);
+    if (!task) throw new HttpError(404, "tarefa não encontrada");
+    return ok({
+      task: { id: task.id, key: task.key, title: task.title, description: task.description, runtime: task.runtime, status: task.status, distributed: task.snapshot.distributed === true, autoApprove: task.snapshot.autoApprove === true },
+    });
+  });
+}
+
+/** Same rules as creating a task; `rerun` queues it again right after saving. */
+const editSchema = newTaskSchema.pick({ title: true, description: true, runtime: true }).extend({ autoApprove: z.boolean().optional() }).extend({ rerun: z.boolean().default(false) });
+
+const EDIT_BUSY = "a tarefa está executando ou aguardando você: pare ou responda antes de editar";
+
+export function PATCH(request: Request, { params }: Params) {
+  return handle(async () => {
+    await requireUser();
+    const { id } = await params;
+    const { rerun, ...edit } = await parseBody(request, editSchema);
+    const outcome = editTask(id, edit);
+    if (outcome === "not_found") throw new HttpError(404, "tarefa não encontrada");
+    if (outcome === "busy") throw new HttpError(409, EDIT_BUSY);
+    // A queued task already runs with the new text; a finished/failed one goes back to the queue.
+    const requeued = rerun && findTask(id)?.status !== "queued" ? retryTask(id) : false;
+    if (!requeued) notifyChange();
+    return ok({ edited: true, requeued });
   });
 }
 

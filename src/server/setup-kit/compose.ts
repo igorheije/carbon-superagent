@@ -54,6 +54,7 @@ function renderEnv(opts: WorkerKitOptions): string {
     `# Carbon worker "${opts.workerName}". NÃO versione nem compartilhe este arquivo: ele contém o token da máquina.`,
     "# Se o token vazar, revogue a máquina no painel (Configurações → Máquinas) e gere um kit novo.",
     `CARBON_PANEL_URL=${opts.panelUrl}`,
+    ...(opts.panelFingerprint ? ["# Certificado do painel fixado (conexão direta por IP): outro certificado é recusado antes do token sair.", `CARBON_PANEL_FINGERPRINT=${opts.panelFingerprint}`] : []),
     `CARBON_WORKER_TOKEN=${opts.token}`,
     `CARBON_WORKER_PARALLEL=${opts.parallel}`,
     `CARBON_WORKER_EXECUTORS=${opts.executors.join(",")}`,

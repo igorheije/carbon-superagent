@@ -6,6 +6,7 @@ import type { ExecutorId } from "../repo/settings";
 import { findTask, type Task } from "../repo/tasks";
 import { findWorker } from "../repo/workers";
 import { closeRemotePrompts } from "./remote-permissions";
+import { finishRun, startRun } from "../repo/task-runs";
 
 /**
  * Queue for remote runtimes (pool workers, AgentCore sessions). The local runner keeps using
@@ -78,8 +79,9 @@ function immediate<T>(db: DatabaseSync, fn: () => T): T {
   }
 }
 
-function leaseFor(id: string | undefined, expires: number): Lease | null {
+function leaseFor(id: string | undefined, expires: number, workerId: string, now: number): Lease | null {
   if (!id) return null;
+  startRun(id, workerId, now);
   const task = findTask(id);
   return task ? { task, leaseExpiresAt: expires } : null;
 }
@@ -92,7 +94,7 @@ export function claimNext(workerId: string, executors: readonly ExecutorId[], le
   const row = immediate(db, () =>
     db.prepare(CLAIM_NEXT_SQL).get({ worker: workerId, expires, now: nowIso(), executors: JSON.stringify(executors) }) as { id: string } | undefined,
   );
-  return leaseFor(row?.id, expires);
+  return leaseFor(row?.id, expires, workerId, now);
 }
 
 /** Claims one known remote task (AgentCore: the container was invoked for exactly this task). */
@@ -102,7 +104,7 @@ export function claimSpecific(taskId: string, workerId: string, leaseMs: number,
   const row = immediate(db, () =>
     db.prepare(CLAIM_SPECIFIC_SQL).get({ id: taskId, worker: workerId, expires, now: nowIso() }) as { id: string } | undefined,
   );
-  return leaseFor(row?.id, expires);
+  return leaseFor(row?.id, expires, workerId, now);
 }
 
 /**
@@ -220,6 +222,7 @@ export function sweepExpiredLeases(now: number, options: SweepOptions): readonly
       const result = update.run(snapshot.status, JSON.stringify(snapshot), nowIso(), row.id, row.lease_worker, row.lease_expires_at);
       if (Number(result.changes) > 0) changed.push(row.id);
     }
+    for (const id of changed) finishRun(id, "lost", now);
     return changed;
   });
 }

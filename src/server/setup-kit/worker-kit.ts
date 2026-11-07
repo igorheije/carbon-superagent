@@ -12,6 +12,11 @@ export interface WorkerKitOptions {
   readonly workerName: string;
   /** https URL the worker uses to reach the panel (http only on loopback). */
   readonly panelUrl: string;
+  /**
+   * SHA-256 of the panel's self-signed listener certificate (direct IP connection). The worker
+   * pins it and refuses any other certificate before sending the token. Canonical 64 hex.
+   */
+  readonly panelFingerprint?: string | null;
   /** `cwk_…` worker token. Written only to `.env` (Compose) and `secret.yaml` (Kubernetes). */
   readonly token: string;
   /** Container image, e.g. `ghcr.io/acme/carbon-worker:0.2.0`. */
@@ -44,6 +49,7 @@ export const CONTAINER_WORK_DIR = "/home/carbon/work";
 const KNOWN_EXECUTORS: readonly ExecutorId[] = ["claude", "codex"];
 const WORKER_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const TOKEN = /^cwk_[A-Za-z0-9_-]{43}$/;
+const FINGERPRINT = /^[0-9a-f]{64}$/;
 /** Registry/repository[:tag][@digest] with no whitespace, quotes, `$` or shell metacharacters. */
 const IMAGE = /^[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]{1,128})?(?:@sha256:[a-f0-9]{64})?$/;
 const CPU = /^(?:[1-9]\d{0,3}m|\d{1,3}(?:\.\d{1,3})?)$/;
@@ -90,6 +96,10 @@ export function validateKitOptions(opts: WorkerKitOptions): readonly string[] {
     errors.push(`workerName precisa ter 1 a ${MAX_WORKER_NAME_LENGTH} caracteres: letras minúsculas, dígitos e hífen`);
   }
   checkPanelUrl(opts.panelUrl, errors);
+  if (opts.panelFingerprint) {
+    if (!FINGERPRINT.test(opts.panelFingerprint)) errors.push("panelFingerprint precisa ser o SHA-256 canônico (64 hex minúsculos)");
+    else if (!opts.panelUrl.startsWith("https://")) errors.push("panelFingerprint exige panelUrl com https://");
+  }
   if (!TOKEN.test(opts.token)) errors.push("token inválido (formato cwk_…)");
   if (opts.image.length > 255 || !IMAGE.test(opts.image)) errors.push("image inválida (ex.: ghcr.io/acme/carbon-worker:0.2.0)");
   if (!isIntIn(opts.replicas, 1, MAX_REPLICAS)) errors.push(`replicas precisa ser inteiro entre 1 e ${MAX_REPLICAS}`);

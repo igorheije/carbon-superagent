@@ -88,6 +88,7 @@ Em `carbon start`, o ambiente do processo vence o `.env.local`. Depois de abrir 
 | `CARBON_SECURE_COOKIES` | — | `true` marca o cookie de sessão como `Secure` |
 | `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_WEB_IDENTITY_TOKEN_FILE`+`AWS_ROLE_ARN`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`/`_FULL_URI`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE` | — | Cadeia padrão do SDK para Invoke/Stop do AgentCore. O painel só verifica (offline) que alguma fonte existe; `~/.aws/credentials` ou `~/.aws/config` também contam |
 | `AWS_ENDPOINT_URL` | — | Variável padrão do SDK; o E2E usa para apontar para um endpoint falso |
+| `CARBON_CLAUDE_SHARE_PORT` | `8787` | Porta (sempre `127.0.0.1`) do proxy *Claude Code deste computador para os workers* (experimental, só macOS). Ver [ssh-tunnel-shared-claude.md](ssh-tunnel-shared-claude.md) |
 | `CARBON_WORKER_CLAIM_WAIT_MS`, `CARBON_WORKER_PERMISSION_WAIT_MS` | 25 000 | Ganchos de teste: encurtam os long-polls (máximo 25 000) |
 
 ## Configurações do painel (banco, não ambiente)
@@ -97,6 +98,7 @@ Editadas em *Configurações → Execução* (exceto `workers.*`, só pela API `
 | Chave | Padrão | Faixa | Onde na UI |
 | --- | --- | --- | --- |
 | `panelPublicUrl` | `""` | `https://…` | Workers e AgentCore → URL pública do painel |
+| `shareClaudeLogin` | `false` | — | *Máquinas → Claude Code deste computador para os workers* (experimental): religa o proxy quando o painel sobe |
 | `agentcore.enabled` | `false` | — | AgentCore disponível no seletor "Onde rodar" |
 | `agentcore.region` | `sa-east-1` | região AWS | Região AWS |
 | `agentcore.runtimeArn` | `""` | `arn:aws:bedrock-agentcore:<região>:<conta>:runtime/<id>` | ARN do runtime |

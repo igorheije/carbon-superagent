@@ -11,6 +11,7 @@ import { PERSONAS } from "@/lib/domain/personas";
 import { CommandPalette } from "./CommandPalette";
 import { EngineControls } from "./EngineControls";
 import { ModeSwitch } from "./ModeSwitch";
+import { PendingAlerts } from "./PendingAlerts";
 import { PermissionBanner } from "./PermissionBanner";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
@@ -147,6 +148,7 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
           </AsciiReveal>
         </div>
       </div>
+      <PendingAlerts />
     </div>
   );
 }

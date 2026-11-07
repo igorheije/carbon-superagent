@@ -87,6 +87,8 @@ export interface NewTask {
   readonly runtime?: TaskRuntime;
   /** Allow the agent to split the task across parallel sub-agents (Claude Code only). */
   readonly multiAgent?: boolean;
+  /** See Ticket.autoApprove. */
+  readonly autoApprove?: boolean;
   /** Allow splitting the task into parts that run on other machines of the cluster. */
   readonly distributed?: boolean;
 }
@@ -115,6 +117,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     tokens: 0,
     model: task.modelLabel,
     ...(task.multiAgent && task.executor === "claude" ? { multiAgent: true, subagents: [] } : {}),
+    ...(task.autoApprove ? { autoApprove: true } : {}),
     ...(task.distributed ? { distributed: true } : {}),
     startedAtTick: null,
     endedAtTick: null,
@@ -166,6 +169,39 @@ export function nextQueuedLocalTask(): Task | null {
 
 export function saveSnapshot(id: string, snapshot: Ticket): void {
   getDb().prepare("UPDATE tasks SET snapshot = ?, status = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(snapshot), snapshot.status, nowIso(), id);
+}
+
+export interface TaskEdit {
+  readonly title: string;
+  readonly description: string;
+  /** Ignored for a distributed task (it always plans and integrates on this machine). */
+  readonly runtime?: TaskRuntime;
+  readonly autoApprove?: boolean;
+}
+
+export type EditOutcome = "ok" | "not_found" | "busy";
+
+/**
+ * Edits what the task asks for (title, description, where it runs). Refused while it runs or waits
+ * on a question/permission: the WHERE re-checks the status, so a claim racing the edit wins.
+ */
+export function editTask(id: string, edit: TaskEdit): EditOutcome {
+  const task = findTask(id);
+  if (!task) return "not_found";
+  const runtime = task.snapshot.distributed ? task.runtime : (edit.runtime ?? task.runtime);
+  const autoApprove = edit.autoApprove ?? task.snapshot.autoApprove === true;
+  const snapshot: Ticket = { ...task.snapshot, title: edit.title, runtime, autoApprove };
+  const result = getDb()
+    .prepare("UPDATE tasks SET title = ?, description = ?, runtime = ?, snapshot = ?, updated_at = ? WHERE id = ? AND status NOT IN ('running', 'waiting')")
+    .run(edit.title, edit.description, runtime, JSON.stringify(snapshot), nowIso(), id);
+  return Number(result.changes) > 0 ? "ok" : "busy";
+}
+
+/** Pins where the next run happens (conflict resolution needs this computer's local branches). */
+export function setTaskRuntime(id: string, runtime: TaskRuntime): void {
+  const task = findTask(id);
+  if (!task) return;
+  getDb().prepare("UPDATE tasks SET runtime = ?, snapshot = ?, updated_at = ? WHERE id = ?").run(runtime, JSON.stringify({ ...task.snapshot, runtime }), nowIso(), id);
 }
 
 export function moveToFront(id: string): void {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckCircle2, ExternalLink, FolderGit2, FolderInput, GitBranch, GitCommitHorizontal, GitMerge, GitPullRequest, Sparkles } from "lucide-react";
+import { CheckCircle2, ExternalLink, FolderGit2, FolderInput, GitBranch, GitCommitHorizontal, GitMerge, GitPullRequest, Sparkles, TriangleAlert, Wand2 } from "lucide-react";
 import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { useSession } from "@/components/session/SessionProvider";
 import { Button, CopyCommand } from "@/components/ui/Form";
@@ -173,19 +173,71 @@ function PrForm({ ticket, remote }: { ticket: Ticket; remote: RemoteTargets }) {
   );
 }
 
+/** Conflicts merging the task into `target` (GET …/merge?target=, read-only); null while unknown. */
+function useConflicts(ticketId: string, target: string, refreshKey: unknown): readonly string[] | null {
+  const [conflicts, setConflicts] = useState<readonly string[] | null>(null);
+  useEffect(() => {
+    if (!target) return undefined;
+    let isActive = true;
+    setConflicts(null);
+    api<{ conflicts: string[] }>(`/api/tasks/${ticketId}/merge?target=${encodeURIComponent(target)}`)
+      .then((d) => isActive && setConflicts(d.conflicts))
+      .catch(() => isActive && setConflicts(null));
+    return () => {
+      isActive = false;
+    };
+  }, [ticketId, target, refreshKey]);
+  return conflicts;
+}
+
+/** Conflict found: list the files and let the agent resolve them, then merge. */
+function ConflictResolver({ ticket, target, files }: { ticket: Ticket; target: string; files: readonly string[] }) {
+  const action = useAction(() =>
+    api<{ conflicts: string[] }>(`/api/tasks/${ticket.id}/resolve`, { body: { target, thenMerge: true } }).then(() => ({
+      detail: `o agente vai resolver o conflito e o Carbon faz o merge em ${target} ao terminar`,
+    })),
+  );
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-warn/50 bg-surface p-3">
+      <p className="flex items-center gap-1.5 text-[12px] text-warn"><TriangleAlert className="size-3.5" /> Conflito com {target} em {files.length === 1 ? "1 arquivo" : `${files.length} arquivos`}:</p>
+      <ul className="flex flex-wrap gap-1 font-mono text-[11px] text-muted">
+        {files.slice(0, 8).map((f) => <li key={f} className="rounded border border-line px-1.5 py-px">{f}</li>)}
+        {files.length > 8 && <li className="px-1.5 py-px text-subtle">+{files.length - 8}</li>}
+      </ul>
+      <p className="text-[11.5px] leading-snug text-muted">
+        A tarefa roda de novo neste computador, na mesma branch: o agente traz {target}, junta as duas versões (sem descartar nenhum lado), roda os testes e o Carbon faz o merge. Se algo precisar de decisão, ele pergunta.
+      </p>
+      <Button variant="accent" onClick={() => void action.go()} isLoading={action.isBusy} disabled={action.isBusy || action.message?.ok === true}>
+        <Wand2 className="size-4" /> Resolver com o agente e fazer o merge
+      </Button>
+      <Feedback message={action.message} />
+    </div>
+  );
+}
+
 function MergeForm({ ticket, local }: { ticket: Ticket; local: LocalTargets }) {
   const [target, setTarget] = useState(local.suggested ?? local.branches[0] ?? "");
   const action = useAction(() => api(`/api/tasks/${ticket.id}/merge`, { body: { target } }));
+  const conflicts = useConflicts(ticket.id, target, action.message);
   const isCurrent = target === local.current;
+  const hasConflicts = (conflicts?.length ?? 0) > 0;
+  const resolving = ticket.resolveConflicts;
+  if (resolving && (ticket.status === "queued" || ticket.status === "running" || ticket.status === "waiting")) {
+    return <p role="status" className="flex items-center gap-1.5 text-[12px] text-muted"><Wand2 className="size-3.5 text-accent" /> o agente está resolvendo o conflito com {resolving.target}…</p>;
+  }
   return (
     <>
       <BranchPicker branches={local.branches} suggested={local.suggested} value={target} onChange={setTarget} label="Branch local de destino" />
       <p className="text-[11.5px] leading-snug text-muted">
         {isCurrent ? `${target} é o branch aberto na sua pasta: ela precisa estar sem mudanças pendentes.` : `${target} recebe o merge sem mexer na sua pasta.`} Com conflito, nada é alterado.
       </p>
-      <Button variant="accent" onClick={() => void action.go()} isLoading={action.isBusy} disabled={!target || action.isBusy}>
-        <GitMerge className="size-4" /> Fazer merge em {target || "…"}
-      </Button>
+      {hasConflicts && conflicts ? (
+        <ConflictResolver ticket={ticket} target={target} files={conflicts} />
+      ) : (
+        <Button variant="accent" onClick={() => void action.go()} isLoading={action.isBusy} disabled={!target || action.isBusy}>
+          <GitMerge className="size-4" /> Fazer merge em {target || "…"}
+        </Button>
+      )}
       <Feedback message={action.message} />
     </>
   );

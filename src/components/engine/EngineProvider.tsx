@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/client/api";
+import { pickFocusTicket } from "./focus";
 import { subscribeLive } from "./sharedLive";
 import { useSession } from "@/components/session/SessionProvider";
 import type { EngineState, Ticket } from "@/lib/domain/types";
@@ -15,6 +16,9 @@ interface EngineContextValue {
   readonly state: EngineState;
   readonly dispatch: (action: EngineAction) => void;
   readonly activeTicket: Ticket | null;
+  /** Ticket the user picked in the queue to watch in the grid (null = follow automatically). */
+  readonly focusedTicketId: string | null;
+  readonly setFocusedTicketId: (id: string | null) => void;
   readonly mode: EngineMode;
   readonly setMode: (mode: EngineMode) => void;
   readonly isConnected: boolean;
@@ -56,6 +60,7 @@ export function EngineProvider({ children }: { readonly children: React.ReactNod
   const [mode, setModeState] = useState<EngineMode>("live");
   const [demoState, demoDispatch] = useReducer(engine.reduce, engine.initial);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [focusedTicketId, setFocusedTicketId] = useState<string | null>(null);
   const isPublic = PUBLIC_PATHS.includes(pathname);
   const { activeProject } = useSession();
   const live = useLiveSnapshot(mode === "live" && !isPublic, activeProject?.id ?? null);
@@ -105,13 +110,15 @@ export function EngineProvider({ children }: { readonly children: React.ReactNod
       state,
       dispatch: mode === "demo" ? demoDispatch : liveDispatch,
       activeTicket: state.tickets.find((t) => t.id === state.activeTicketId) ?? null,
+      focusedTicketId,
+      setFocusedTicketId,
       mode,
       setMode,
       isConnected: mode === "demo" || live.isConnected,
       isReady: mode === "demo" || live.snapshot !== null,
       lastError,
     }),
-    [state, mode, liveDispatch, setMode, live.isConnected, live.snapshot, lastError],
+    [state, mode, liveDispatch, setMode, live.isConnected, live.snapshot, lastError, focusedTicketId],
   );
 
   return <EngineContext.Provider value={value}>{children}</EngineContext.Provider>;
@@ -123,10 +130,7 @@ export function useEngine(): EngineContextValue {
   return ctx;
 }
 
-/** Latest ticket worth showing: the running one, else the most recently updated finished one. */
 export function useFocusTicket(): Ticket | null {
-  const { state, activeTicket } = useEngine();
-  if (activeTicket) return activeTicket;
-  const finished = state.tickets.filter((t) => t.status !== "queued");
-  return finished.at(-1) ?? null;
+  const { state, activeTicket, focusedTicketId } = useEngine();
+  return pickFocusTicket(state.tickets, activeTicket, focusedTicketId);
 }

@@ -49,6 +49,15 @@ async function startSplitReconciler(): Promise<void> {
   globalForSplits.carbonSplitReconciler = timer;
 }
 
+/** "Claude Code deste computador para os workers" survives restarts when left on. */
+async function startClaudeShareIfEnabled(): Promise<void> {
+  const { getSettings } = await import("./server/repo/settings");
+  if (!getSettings().shareClaudeLogin) return;
+  const { startClaudeShare } = await import("./server/claude-share");
+  const status = await startClaudeShare();
+  if (status.state === "error") console.warn(`[carbon] compartilhar Claude Code: ${status.error}`);
+}
+
 /** Boot hook: mark tasks interrupted by a restart as failed, then resume the queue. */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -57,6 +66,7 @@ export async function register(): Promise<void> {
   const { kick, shutdownRunner } = await import("./server/runner/runner");
   const { startIntegrations } = await import("./server/integrations/hub");
   startIntegrations();
+  void startClaudeShareIfEnabled();
   const globalForShutdown = globalThis as unknown as { carbonShutdownHooked?: boolean };
   if (!globalForShutdown.carbonShutdownHooked) {
     globalForShutdown.carbonShutdownHooked = true;

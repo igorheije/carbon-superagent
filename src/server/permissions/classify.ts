@@ -10,6 +10,11 @@ export type Verdict = "safe" | "ask" | "block";
 export interface Classification {
   readonly verdict: Verdict;
   readonly reason: string;
+  /**
+   * "ask" actions a task in "seguir sem pedir permissão" mode must STILL ask about: infrastructure,
+   * network access, anything outside the project, sensitive files, hidden command substitution.
+   */
+  readonly highRisk?: boolean;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -50,12 +55,12 @@ const SAFE_PREFIXES: readonly RegExp[] = [
 ];
 
 /** Needs network / runs third-party code: a human should know. */
-const ASK_PREFIXES: readonly (readonly [RegExp, string])[] = [
-  [/^(npm|pnpm|yarn|bun)\s+(i|install|add|ci|update|upgrade|remove|uninstall)\b/, "instala/remove dependências (rede + scripts de terceiros)"],
-  [/^(pip3?|poetry|uv|gem|bundle|cargo\s+add|go\s+get|brew|apt|apt-get)\b/, "instala pacotes"],
-  [/^(curl|wget|http|ssh|scp|rsync|nc)\b/, "acesso à rede"],
-  [/^docker\b|^docker-compose\b|^kubectl\b|^terraform\b/, "infraestrutura"],
-  [/^git\s+(commit|merge|rebase|cherry-pick|tag|remote)\b/, "altera o histórico do git"],
+const ASK_PREFIXES: readonly (readonly [RegExp, string, boolean])[] = [
+  [/^(npm|pnpm|yarn|bun)\s+(i|install|add|ci|update|upgrade|remove|uninstall)\b/, "instala/remove dependências (rede + scripts de terceiros)", false],
+  [/^(pip3?|poetry|uv|gem|bundle|cargo\s+add|go\s+get|brew|apt|apt-get)\b/, "instala pacotes", false],
+  [/^(curl|wget|http|ssh|scp|rsync|nc)\b/, "acesso à rede", true],
+  [/^docker\b|^docker-compose\b|^kubectl\b|^terraform\b/, "infraestrutura", true],
+  [/^git\s+(commit|merge|rebase|cherry-pick|tag|remote)\b/, "altera o histórico do git", false],
 ];
 
 /** Splits on ;, &&, ||, | — good enough for policy; quoted operators make it "ask" via the path checks. */
@@ -87,12 +92,12 @@ const GIT_INTERNALS = /(^|\/)\.git(\/|$)/;
 
 function classifyBash(command: string, root: string): Classification {
   for (const [re, why] of BLOCK_PATTERNS) if (re.test(command)) return { verdict: "block", reason: why };
-  if (/[`]|\$\(/.test(command)) return { verdict: "ask", reason: "usa substituição de comando" };
-  if (leavesWorktree(command, root)) return { verdict: "ask", reason: "mexe em caminhos fora do projeto" };
-  if (SENSITIVE_FILE.test(command.replace(/\s+/g, "/"))) return { verdict: "ask", reason: "toca arquivo sensível (.env, chaves)" };
+  if (/[`]|\$\(/.test(command)) return { verdict: "ask", reason: "usa substituição de comando", highRisk: true };
+  if (leavesWorktree(command, root)) return { verdict: "ask", reason: "mexe em caminhos fora do projeto", highRisk: true };
+  if (SENSITIVE_FILE.test(command.replace(/\s+/g, "/"))) return { verdict: "ask", reason: "toca arquivo sensível (.env, chaves)", highRisk: true };
   for (const seg of segments(command)) {
     const ask = ASK_PREFIXES.find(([re]) => re.test(seg));
-    if (ask) return { verdict: "ask", reason: ask[1] };
+    if (ask) return { verdict: "ask", reason: ask[1], highRisk: ask[2] };
     const first = seg.split(/\s+/)[0] ?? "";
     const isSafe = SAFE_COMMANDS.has(first) || SAFE_PREFIXES.some((re) => re.test(seg));
     if (!isSafe) return { verdict: "ask", reason: `comando não reconhecido como seguro: ${first}` };
@@ -104,8 +109,8 @@ function classifyFile(tool: string, filePath: string, root: string, isWrite: boo
   if (!filePath) return { verdict: "ask", reason: `${tool} sem caminho` };
   const resolved = path.resolve(root, filePath);
   if (isWrite && GIT_INTERNALS.test(path.relative(root, resolved))) return { verdict: "block", reason: "escrever dentro de .git" };
-  if (!isInside(root, resolved)) return { verdict: "ask", reason: `${isWrite ? "escreve" : "lê"} fora do projeto` };
-  if (SENSITIVE_FILE.test(resolved)) return { verdict: "ask", reason: "arquivo sensível (.env, chaves)" };
+  if (!isInside(root, resolved)) return { verdict: "ask", reason: `${isWrite ? "escreve" : "lê"} fora do projeto`, highRisk: true };
+  if (SENSITIVE_FILE.test(resolved)) return { verdict: "ask", reason: "arquivo sensível (.env, chaves)", highRisk: true };
   return { verdict: "safe", reason: `${isWrite ? "edita" : "lê"} arquivo do projeto` };
 }
 
@@ -138,6 +143,17 @@ export function classifyAction(tool: string, input: unknown, worktree: string): 
       return { verdict: "ask", reason: `ferramenta externa: ${tool}` };
   }
 }
+
+/**
+ * "Seguir até o final sem pedir permissão" (per task): approves everything except blocks and
+ * high-risk actions, which still reach a human.
+ */
+export function autoApprovedByTask(c: Classification): boolean {
+  return c.verdict === "safe" || (c.verdict === "ask" && c.highRisk !== true);
+}
+
+/** Who approved it, as recorded in the task log. */
+export const AUTO_APPROVE_LABEL = "tarefa sem pedir permissão";
 
 /** Applies the chosen policy on top of the raw classification. Blocks always win. */
 export function decide(policy: ApprovalPolicy, c: Classification): Verdict {

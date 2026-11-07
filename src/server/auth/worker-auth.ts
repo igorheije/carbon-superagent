@@ -192,6 +192,7 @@ function agentcoreWorker(taskId: string, now: number): Worker {
     availability: "active",
     joinedVia: "manual",
     hostname: null,
+    telemetry: null,
   };
 }
 

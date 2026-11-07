@@ -1,6 +1,6 @@
 import type { ExecutorEvent, PermissionDecision } from "../shared/executors";
 import { LEASE_LOST, type PermissionDecisionWire, type RemotePermissionRule, type RunSettings } from "../shared/worker-protocol";
-import { classifyAction, decide, ruleMatches } from "../server/permissions/classify";
+import { AUTO_APPROVE_LABEL, autoApprovedByTask, classifyAction, decide, ruleMatches } from "../server/permissions/classify";
 import { backoffMs, WorkerClientError, type SleepFn, type WorkerClient } from "./client";
 
 type PermissionRequest = Extract<ExecutorEvent, { type: "permission_request" }>;
@@ -16,7 +16,7 @@ export interface PermissionOutcome {
  * (classifyAction + approval policy + the repo's "always allow" rules + "allow all" for the task).
  * null when it needs a human: the worker forwards it to the panel and waits (RMT-01).
  */
-export function answerPermission(event: PermissionRequest, clone: string, settings: RunSettings, rules: readonly RemotePermissionRule[], allowAll = false): PermissionOutcome | null {
+export function answerPermission(event: PermissionRequest, clone: string, settings: RunSettings, rules: readonly RemotePermissionRule[], allowAll = false, autoApprove = false): PermissionOutcome | null {
   const classification = classifyAction(event.tool, event.input, clone);
   const verdict = decide(settings.approvalPolicy, classification);
   if (verdict === "block") {
@@ -24,7 +24,8 @@ export function answerPermission(event: PermissionRequest, clone: string, settin
     return { decision: { behavior: "deny", message }, report: { type: "permission_denied", tool: event.tool, message: `bloqueio: ${classification.reason}` } };
   }
   const rule = rules.find((r) => ruleMatches(r, event.tool, event.input));
-  const by = allowAll ? "tudo liberado nesta tarefa" : rule ? `regra: ${rule.tool} ${rule.pattern}`.trim() : verdict === "safe" ? `auto: ${classification.reason}` : null;
+  const byTask = autoApprove && autoApprovedByTask(classification) ? `${AUTO_APPROVE_LABEL} (${classification.reason})` : null;
+  const by = allowAll ? "tudo liberado nesta tarefa" : rule ? `regra: ${rule.tool} ${rule.pattern}`.trim() : verdict === "safe" ? `auto: ${classification.reason}` : byTask;
   if (!by) return null;
   return { decision: { behavior: "allow", input: event.input, remember: [] }, report: { type: "tool", name: event.tool, summary: `permitido (${by}): ${event.summary}`, path: null } };
 }

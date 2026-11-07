@@ -6,6 +6,7 @@ import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { Panel } from "@/components/ui/Panel";
 import { Cpu } from "lucide-react";
 import type { LogLevel } from "@/lib/domain/types";
+import { PlacementBadge } from "./PlacementBadge";
 
 /** Always-visible "agent · model · effort" for the ticket in focus (planned while queued). */
 function ExecutionBadge({ label, isPlanned, isDemo, hasTicket }: { label: string | null; isPlanned: boolean; isDemo: boolean; hasTicket: boolean }) {
@@ -47,7 +48,9 @@ export function LiveTerminal() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lines = ticket?.logs.slice(-VISIBLE_LINES) ?? [];
   const lastId = lines.at(-1)?.id;
-  const isLive = ticket?.status === "running" && state.running;
+  // A pool/AgentCore task streams from its worker even when the local runner is paused.
+  const isRemote = (ticket?.runtime ?? "local") !== "local";
+  const isLive = ticket?.status === "running" && (isRemote || state.running);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -65,6 +68,11 @@ export function LiveTerminal() {
         </span>
       }
     >
+      {ticket && mode === "live" && (
+        <div className="mb-2">
+          <PlacementBadge ticket={ticket} variant="full" />
+        </div>
+      )}
       <ExecutionBadge label={ticket?.model ?? null} isPlanned={ticket?.status === "queued"} isDemo={mode === "demo"} hasTicket={ticket !== null} />
       <div
         ref={scrollRef}

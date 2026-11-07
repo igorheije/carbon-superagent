@@ -96,6 +96,9 @@ Handshake. Registra capacidades e versão do worker (aparecem na frota).
 | `git` | boolean | O worker tem credencial git (informativo); padrão `false` |
 | `maxParallel` | inteiro 1–64 | padrão 1 |
 | `workerVersion` | string ≤ 200 | opcional; exibida em "Versão" |
+| `host` | objeto | opcional (aditivo); snapshot do host para *Máquinas → Carga*. Ver abaixo |
+
+**`host`** (também aceito no `claim` e no `heartbeat`): `{ "platform": "linux"|"darwin"|"win32"|"other", "form": "server"|"desktop"|"container", "osLabel": "Ubuntu 20.04.6 LTS", "arch": "x64", "cpus": 6, "cpuPercent": 8.7, "load1": 0.41, "memTotalBytes": …, "memUsedBytes": …, "uptimeSec": … }`. Todos os campos têm limites; um snapshot inválido é **descartado em silêncio** (nunca vira `400`), para telemetria não custar o lease de uma tarefa. O painel guarda só o último snapshot de cada máquina.
 
 Resposta `200`: `{ "protocol": 1, "leaseMs": 60000, "pollMs": 25000 }`.
 
@@ -103,7 +106,7 @@ Resposta `200`: `{ "protocol": 1, "leaseMs": 60000, "pollMs": 25000 }`.
 
 Long-poll (até 25 s) pela próxima tarefa `pool` em fila. Cada worker pode ter no máximo `max(maxParallel, 1) + 1` claims abertos ao mesmo tempo (`maxParallel` do `hello`), na ordem da fila, cujo executor esteja em `executors`. Claim é atômico (`UPDATE … WHERE status = 'queued'` sob `BEGIN IMMEDIATE`): duas chamadas concorrentes nunca recebem a mesma tarefa. Se a conexão cair, a espera termina.
 
-Corpo: `{ "executors": ["claude"] }` (1 a 2 itens). Resposta `204` sem tarefa, ou `200` com `ClaimedTask`:
+Corpo: `{ "executors": ["claude"], "host": { … } }` (1 a 2 executores; `host` opcional). Resposta `204` sem tarefa, ou `200` com `ClaimedTask`:
 
 ```json
 {
@@ -119,7 +122,8 @@ Corpo: `{ "executors": ["claude"] }` (1 a 2 itens). Resposta `204` sem tarefa, o
   "limits": { "maxRunMinutes": 45 },
   "permissionRules": [{ "tool": "Bash", "pattern": "npm test" }],
   "settings": { "permissionProfile": "guarded", "isolateClaudeConfig": true, "approvalPolicy": "smart" },
-  "files": [{ "path": ".carbon/PROJECT_MAP.md", "content": "…" }]
+  "files": [{ "path": ".carbon/PROJECT_MAP.md", "content": "…" }],
+  "autoApprove": true
 }
 ```
 
@@ -131,6 +135,7 @@ Corpo: `{ "executors": ["claude"] }` (1 a 2 itens). Resposta `204` sem tarefa, o
 | `permissionRules` | Regras "sempre neste repositório" já resolvidas |
 | `settings` | Perfil de permissão, isolamento da config do Claude e política de aprovação, para montar o comando da CLI |
 | `files` | Arquivos de contexto (skills, `.carbon/PROJECT_MAP.md`, memória) a escrever no clone antes de rodar; caminhos relativos sem `..`. **Não** entram no commit (`.claude/skills/carbon-*/`, `.codex/skills/carbon-*/`, `.carbon/`) |
+| `autoApprove` | Opcional (aditivo). `true` = tarefa "seguir até o final sem pedir permissão": aprove sozinho o que a classificação chama de "perguntar", **exceto** alto risco (infraestrutura, rede, fora do projeto, arquivos sensíveis, `$(…)`). Bloqueios seguem valendo. Workers antigos ignoram o campo e perguntam como antes |
 | `limits.maxRunMinutes` | Tempo máximo do agente; estourou → `failed` com `tempo limite (N min) atingido` |
 
 Se o painel não conseguir preparar uma tarefa (projeto removido etc.), ela é marcada `failed` e o long-poll continua.
@@ -143,7 +148,7 @@ Depois do claim, o mesmo `ctk_…` autentica **só** `/api/worker/tasks/<taskId>
 
 ### `POST /api/worker/tasks/:id/heartbeat`
 
-Corpo vazio. `200 {"cancel": false}` renova o lease. `409 lease_lost` se não é mais dono.
+Corpo vazio ou `{ "host": { … } }` (snapshot opcional, ver `hello`). `200 {"cancel": false}` renova o lease. `409 lease_lost` se não é mais dono.
 
 ### `POST /api/worker/tasks/:id/events`
 

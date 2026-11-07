@@ -232,7 +232,7 @@ export async function runClaimedTask(task: ClaimedTask, deps: RunTaskDeps): Prom
     const envOptions = { mode: "allowlist", extra: { TMPDIR: agentTmp, TMP: agentTmp, TEMP: agentTmp } } as const;
     const running = startExecutor(command, clone, task.limits.maxRunMinutes * 60_000, (event) => {
       if (event.type === "permission_request") {
-        const outcome = answerPermission(event, clone, task.settings, relay.rules(), relay.allowAll());
+        const outcome = answerPermission(event, clone, task.settings, relay.rules(), relay.allowAll(), task.autoApprove === true);
         if (outcome) {
           running.respond(event.requestId, outcome.decision);
           emit([outcome.report]);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireWorker } from "@/server/auth/worker-auth";
 import { handle, ok } from "@/server/http";
 import { getSettings } from "@/server/repo/settings";
+import { setTelemetry } from "@/server/repo/workers";
 import { claimRequestSchema } from "@/shared/worker-protocol";
 import { readWorkerJson } from "../_lib/body";
 import { CLAIM_CHECK_MS, claimWaitMs, pollClaim } from "../_lib/claim";
@@ -14,6 +15,7 @@ export function POST(request: Request) {
   return handle(async () => {
     const worker = requireWorker(request);
     const body = await readWorkerJson(request, claimRequestSchema);
+    if (body.host) setTelemetry(worker.id, body.host);
     const claimed = await withPollSlot(worker, "claim", () =>
       pollClaim(worker, body.executors, {
         waitMs: claimWaitMs(),

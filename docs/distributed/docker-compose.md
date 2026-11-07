@@ -4,7 +4,7 @@ O kit Compose sobe N containers do worker numa máquina. Não expõe portas: o w
 
 ## Gerar o kit
 
-Pré-requisito: URL pública do painel configurada (*Configurações → Execução → URL pública do painel*, `https://…`) e o listener exposto ([exposing-the-panel.md](exposing-the-panel.md)). Sem a URL, o painel responde `defina a URL pública do painel em Configurações → Execução antes de adicionar máquinas`.
+Pré-requisito: o listener de workers exposto ([exposing-the-panel.md](exposing-the-panel.md)). Em *Adicionar máquina → Como ela chega no painel* escolha **IP deste computador** (o kit sai com `https://<ip>:3418` e `CARBON_PANEL_FINGERPRINT`, sem URL pública; exige `CARBON_WORKER_LISTEN=0.0.0.0:3418`) ou **URL pública** (*Configurações → Execução → URL pública do painel*, `https://…`). Se a opção escolhida não é possível, o diálogo diz o motivo e o ajuste.
 
 **Pela UI** (admin): *Configurações → Máquinas → Adicionar máquina*.
 

@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { z } from "zod";
 import type { ExecutorEvent } from "../shared/executors/events";
+import type { HostTelemetry } from "../shared/host-telemetry";
 import {
   bundlePath,
   claimedTaskSchema,
@@ -92,6 +93,8 @@ export interface WorkerClientOptions {
   readonly now?: () => number;
   /** Jitter source in [0, 1). */
   readonly random?: () => number;
+  /** Host snapshot attached to hello/claim/heartbeat (pool workers). A failing probe is skipped. */
+  readonly hostProbe?: () => HostTelemetry;
 }
 
 export type HelloCaps = Omit<HelloRequest, "version">;
@@ -247,6 +250,14 @@ export function createWorkerClient(options: WorkerClientOptions): WorkerClient {
   const now = options.now ?? Date.now;
   const random = options.random ?? Math.random;
   const authorization = `Bearer ${options.token}`;
+  const host = (): { host?: HostTelemetry } => {
+    if (!options.hostProbe) return {};
+    try {
+      return { host: options.hostProbe() };
+    } catch {
+      return {}; // telemetry is best effort: never block a claim or a lease renewal on it
+    }
+  };
   const streams = new Map<string, Stream>();
 
   async function send(method: string, path: string, init: { body?: BodyInit; contentType?: string; signal?: AbortSignal; stream?: boolean } = {}): Promise<Response> {
@@ -404,14 +415,14 @@ export function createWorkerClient(options: WorkerClientOptions): WorkerClient {
 
   return {
     async hello(caps) {
-      const outcome = await callJson("POST", HELLO_PATH, { ...caps, version: PROTOCOL_VERSION });
+      const outcome = await callJson("POST", HELLO_PATH, { ...caps, ...host(), version: PROTOCOL_VERSION });
       if (outcome.kind !== "ok") throw new WorkerClientError(`${HELLO_PATH}: resposta inesperada`, null, false);
       return validate(helloResponseSchema, outcome.data, HELLO_PATH);
     },
 
     async claim(executors, signal) {
       try {
-        const outcome = await callJson("POST", CLAIM_PATH, { executors }, signal);
+        const outcome = await callJson("POST", CLAIM_PATH, { executors, ...host() }, signal);
         if (outcome.kind === "empty") return null;
         if (outcome.kind === "lease_lost") throw new WorkerClientError(`${CLAIM_PATH}: resposta inesperada`, 409, false);
         return validate(claimedTaskSchema, outcome.data, CLAIM_PATH);
@@ -423,7 +434,7 @@ export function createWorkerClient(options: WorkerClientOptions): WorkerClient {
 
     async heartbeat(taskId) {
       const path = taskPath(taskId, "heartbeat");
-      const outcome = await callJson("POST", path, {});
+      const outcome = await callJson("POST", path, host());
       if (outcome.kind === "lease_lost") return LEASE_LOST;
       if (outcome.kind === "empty") throw new WorkerClientError(`${path}: resposta vazia`, 204, true);
       return validate(heartbeatResponseSchema, outcome.data, path);

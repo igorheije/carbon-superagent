@@ -1,5 +1,6 @@
 import type { ExecutorId } from "../shared/executors";
 import type { ClaimedTask } from "../shared/worker-protocol";
+import { createHostProbe } from "./host-probe";
 import { backoffMs, createWorkerClient, ProtocolTooOld, WorkerClientError, type FetchLike, type SleepFn, type WorkerClient } from "./client";
 import { runClaimedTask, type RunOutcome, type RunTaskDeps } from "./run-task";
 
@@ -77,7 +78,7 @@ export async function runWorkerLoop(options: WorkerLoopOptions): Promise<number>
   const log = options.log ?? (() => undefined);
   const sleep = options.sleep ?? abortableSleep;
   const runTask = options.runTask ?? runClaimedTask;
-  const client = options.client ?? createWorkerClient({ panelUrl: options.panelUrl, token: options.token, fetchImpl: options.fetchImpl });
+  const client = options.client ?? createWorkerClient({ panelUrl: options.panelUrl, token: options.token, fetchImpl: options.fetchImpl, hostProbe: createHostProbe() });
   const { signal } = options;
   /** Aborted when the grace period is over: running tasks stop and report canceled. */
   const cancelTasks = new AbortController();

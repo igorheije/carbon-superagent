@@ -6,9 +6,11 @@ import { Ban, CheckCircle2, Cloud, Download, Eraser, Pause, Play, Plus, Server }
 import { Button } from "@/components/ui/Form";
 import { Panel } from "@/components/ui/Panel";
 import { api } from "@/lib/client/api";
+import { ClaudeSharePanel } from "./ClaudeSharePanel";
 import { ClusterJoinPanel } from "./ClusterJoinPanel";
+import { LoadPanel } from "./LoadPanel";
 import { MachineDialog } from "./MachineDialog";
-import { relativeTime, slotsLabel, STATUS_DOT, STATUS_LABEL, type Machine, type MachineAvailability } from "./machines-model";
+import { relativeTime, slotsLabel, STATUS_DOT, STATUS_LABEL, type ConnectionOptions, type Machine, type MachineAvailability } from "./machines-model";
 
 /** The list is refreshed this often so status and "última batida" stay current. */
 const REFRESH_MS = 15_000;
@@ -82,14 +84,16 @@ function EmptyState({ onAdd }: { readonly onAdd: () => void }) {
 /** Configurações → Máquinas: cluster join, fleet (FLT-01) with pause/resume/approve/remove, "Adicionar máquina" (SET-04) and the AgentCore kit. */
 export function MachinesTab() {
   const [machines, setMachines] = useState<readonly Machine[] | null>(null);
+  const [connection, setConnection] = useState<ConnectionOptions | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const load = useCallback(() => {
-    api<{ workers: Machine[] }>("/api/admin/workers")
+    api<{ workers: Machine[]; connection: ConnectionOptions }>("/api/admin/workers")
       .then((d) => {
         setMachines(d.workers);
+        setConnection(d.connection);
         setNow(Date.now());
         setError(null);
       })
@@ -131,6 +135,8 @@ export function MachinesTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      <LoadPanel />
+      <ClaudeSharePanel />
       <ClusterJoinPanel onChanged={load} />
       <Panel
         eyebrow="Máquinas"
@@ -179,7 +185,7 @@ export function MachinesTab() {
           </a>
         </div>
       </Panel>
-      <MachineDialog isOpen={isDialogOpen} onClose={closeDialog} onCreated={load} />
+      <MachineDialog isOpen={isDialogOpen} onClose={closeDialog} onCreated={load} connection={connection} />
     </div>
   );
 }
