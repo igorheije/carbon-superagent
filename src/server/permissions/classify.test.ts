@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyAction, decide, rulePatternFor, ruleMatches } from "./classify";
+import { autoApprovedByTask, classifyAction, decide, ruleMatches, rulePatternFor } from "./classify";
 
 const WT = "/work/repo";
 const bash = (command: string) => classifyAction("Bash", { command }, WT).verdict;
@@ -78,5 +78,33 @@ describe("rules", () => {
     expect(ruleMatches({ tool: "WebFetch", pattern: "docs.x.com" }, "WebFetch", { url: "https://docs.x.com/a" })).toBe(true);
     expect(ruleMatches({ tool: "Write", pattern: "/tmp/out" }, "Write", { file_path: "/tmp/out/b.txt" })).toBe(true);
     expect(ruleMatches({ tool: "Write", pattern: "/tmp/out" }, "Write", { file_path: "/tmp/outside.txt" })).toBe(false);
+  });
+});
+
+describe("autoApprovedByTask (\"seguir até o final sem pedir permissão\")", () => {
+  const root = "/repo";
+  const verdictOf = (tool: string, input: unknown) => autoApprovedByTask(classifyAction(tool, input, root));
+
+  it("approves ordinary project work the policy would otherwise ask about", () => {
+    expect(verdictOf("Bash", { command: "npm install lodash" })).toBe(true);
+    expect(verdictOf("Bash", { command: "git commit -m x" })).toBe(true);
+    expect(verdictOf("Bash", { command: "ffmpeg -i in.mov out.mp4" })).toBe(true); // unknown command, inside the project
+    expect(verdictOf("Write", { file_path: "/repo/src/a.ts" })).toBe(true);
+  });
+
+  it("still asks for infrastructure, network, outside the project, sensitive files and hidden substitution", () => {
+    expect(verdictOf("Bash", { command: "docker system df 2>&1; docker images 2>&1 | head -30" })).toBe(false);
+    expect(verdictOf("Bash", { command: "docker image prune -a -f" })).toBe(false);
+    expect(verdictOf("Bash", { command: "kubectl delete pod x" })).toBe(false);
+    expect(verdictOf("Bash", { command: "ssh root@host uptime" })).toBe(false);
+    expect(verdictOf("Bash", { command: "cat /etc/passwd" })).toBe(false);
+    expect(verdictOf("Bash", { command: "cat .env" })).toBe(false);
+    expect(verdictOf("Bash", { command: "echo $(whoami)" })).toBe(false);
+    expect(verdictOf("Write", { file_path: "/etc/hosts" })).toBe(false);
+  });
+
+  it("never approves what is blocked", () => {
+    expect(verdictOf("Bash", { command: "sudo rm x" })).toBe(false);
+    expect(verdictOf("Bash", { command: "git push origin main" })).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Button, Field } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import type { TaskRuntime, Ticket } from "@/lib/domain/types";
+import { AutoApproveOption } from "./AutoApproveOption";
 import { DraftField } from "./DraftField";
 import { effectiveRuntime, RuntimePicker, runtimeOptionsOf } from "./RuntimePicker";
 
@@ -19,6 +20,7 @@ interface EditableTask {
   readonly runtime: TaskRuntime;
   readonly status: Ticket["status"];
   readonly distributed: boolean;
+  readonly autoApprove: boolean;
 }
 
 interface EditTaskDialogProps {
@@ -35,6 +37,7 @@ export function EditTaskDialog({ ticket, onClose }: EditTaskDialogProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [runtime, setRuntime] = useState<TaskRuntime>("local");
+  const [autoApprove, setAutoApprove] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<"save" | "rerun" | null>(null);
 
@@ -47,6 +50,7 @@ export function EditTaskDialog({ ticket, onClose }: EditTaskDialogProps) {
         setTitle(loaded.title);
         setDescription(loaded.description);
         setRuntime(loaded.runtime);
+        setAutoApprove(loaded.autoApprove);
       })
       .catch((e: unknown) => isActive && setError(e instanceof Error ? e.message : "falha ao carregar a tarefa"));
     return () => {
@@ -73,7 +77,7 @@ export function EditTaskDialog({ ticket, onClose }: EditTaskDialogProps) {
     try {
       await api(`/api/tasks/${encodeURIComponent(ticket.id)}`, {
         method: "PATCH",
-        body: { title, description, runtime: task?.distributed ? undefined : chosenRuntime, rerun },
+        body: { title, description, runtime: task?.distributed ? undefined : chosenRuntime, autoApprove, rerun },
       });
       onClose();
     } catch (e) {
@@ -117,6 +121,7 @@ export function EditTaskDialog({ ticket, onClose }: EditTaskDialogProps) {
               ) : (
                 <RuntimePicker value={chosenRuntime} options={runtimeOptions} onChange={setRuntime} />
               )}
+              <AutoApproveOption checked={autoApprove} onChange={setAutoApprove} isRemote={task.distributed || chosenRuntime !== "local"} />
               {isFinished && (
                 <p className="text-[12px] text-subtle">
                   Rodar de novo recomeça a tarefa com o texto novo. As respostas que você já deu ao agente continuam valendo.

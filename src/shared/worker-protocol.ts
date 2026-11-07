@@ -113,6 +113,8 @@ export const claimedTaskSchema = z.object({
   settings: runSettingsSchema,
   /** Extension to design §2: context files the local runner writes into the worktree. */
   files: z.array(contextFileSchema),
+  /** Additive: "seguir sem pedir permissão" for this task (blocked/high-risk actions still ask). */
+  autoApprove: z.boolean().optional(),
 });
 export type ClaimedTask = z.infer<typeof claimedTaskSchema>;
 

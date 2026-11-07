@@ -41,6 +41,7 @@ export function POST(request: Request) {
       // A distributed task plans and integrates on this machine; only its parts go to the cluster.
       runtime: input.distributed ? "local" : (input.runtime ?? "local"),
       multiAgent: input.multiAgent,
+      autoApprove: input.autoApprove,
       distributed: input.distributed,
     });
     notifyChange();

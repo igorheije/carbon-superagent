@@ -44,6 +44,8 @@ export const newTaskSchema = z.object({
   runtime: z.enum(["local", "pool", "agentcore"]).optional(),
   /** Let the agent use parallel sub-agents when the task benefits (Claude Code only). */
   multiAgent: z.boolean().default(false),
+  /** Run to the end without asking: blocked and high-risk actions (infra, network, outside the project) still ask. */
+  autoApprove: z.boolean().default(false),
   /** Let the agent split the task into parts that run on other cluster machines (the task itself runs here). */
   distributed: z.boolean().default(false),
 });

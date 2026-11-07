@@ -87,6 +87,8 @@ export interface NewTask {
   readonly runtime?: TaskRuntime;
   /** Allow the agent to split the task across parallel sub-agents (Claude Code only). */
   readonly multiAgent?: boolean;
+  /** See Ticket.autoApprove. */
+  readonly autoApprove?: boolean;
   /** Allow splitting the task into parts that run on other machines of the cluster. */
   readonly distributed?: boolean;
 }
@@ -115,6 +117,7 @@ export function emptyTicket(id: string, task: NewTask, key: string): Ticket {
     tokens: 0,
     model: task.modelLabel,
     ...(task.multiAgent && task.executor === "claude" ? { multiAgent: true, subagents: [] } : {}),
+    ...(task.autoApprove ? { autoApprove: true } : {}),
     ...(task.distributed ? { distributed: true } : {}),
     startedAtTick: null,
     endedAtTick: null,
@@ -173,6 +176,7 @@ export interface TaskEdit {
   readonly description: string;
   /** Ignored for a distributed task (it always plans and integrates on this machine). */
   readonly runtime?: TaskRuntime;
+  readonly autoApprove?: boolean;
 }
 
 export type EditOutcome = "ok" | "not_found" | "busy";
@@ -185,7 +189,8 @@ export function editTask(id: string, edit: TaskEdit): EditOutcome {
   const task = findTask(id);
   if (!task) return "not_found";
   const runtime = task.snapshot.distributed ? task.runtime : (edit.runtime ?? task.runtime);
-  const snapshot: Ticket = { ...task.snapshot, title: edit.title, runtime };
+  const autoApprove = edit.autoApprove ?? task.snapshot.autoApprove === true;
+  const snapshot: Ticket = { ...task.snapshot, title: edit.title, runtime, autoApprove };
   const result = getDb()
     .prepare("UPDATE tasks SET title = ?, description = ?, runtime = ?, snapshot = ?, updated_at = ? WHERE id = ? AND status NOT IN ('running', 'waiting')")
     .run(edit.title, edit.description, runtime, JSON.stringify(snapshot), nowIso(), id);

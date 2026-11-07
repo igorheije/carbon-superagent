@@ -10,6 +10,7 @@ import { PERSONAS } from "@/lib/domain/personas";
 import { ModelPicker } from "@/components/ui/ModelPicker";
 import type { TaskRuntime } from "@/lib/domain/types";
 import { effectiveRuntime, RuntimePicker, runtimeOptionsOf } from "./RuntimePicker";
+import { AutoApproveOption } from "./AutoApproveOption";
 import { DraftField } from "./DraftField";
 
 type Tab = "manual" | "linear" | "github";
@@ -93,6 +94,7 @@ export function NewTaskDialog() {
   const [runtime, setRuntime] = useState<TaskRuntime>("local");
   const [multiAgent, setMultiAgent] = useState(false);
   const [distributed, setDistributed] = useState(false);
+  const [autoApprove, setAutoApprove] = useState(false);
 
   // Never send an executor that is not installed; fall back to the one that is.
   const chosen = installed.includes(executor) ? executor : (installed[0] ?? executor);
@@ -112,7 +114,7 @@ export function NewTaskDialog() {
     setIsSaving(true);
     setError(null);
     try {
-      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort, runtime: distributed ? "local" : chosenRuntime, multiAgent: chosen === "claude" && multiAgent, distributed } });
+      await api("/api/tasks", { body: { title, description, executor: chosen, model: currentModel, effort: currentEffort, runtime: distributed ? "local" : chosenRuntime, multiAgent: chosen === "claude" && multiAgent, distributed, autoApprove } });
       setTitle("");
       setDescription("");
       close();
@@ -184,6 +186,7 @@ export function NewTaskDialog() {
                         </span>
                       </span>
                     </label>
+                    <AutoApproveOption checked={autoApprove} onChange={setAutoApprove} isRemote={distributed || chosenRuntime !== "local"} />
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       {installed.length > 1 ? (
                         <div role="radiogroup" aria-label="Agente" className="flex gap-1 rounded-full border border-line p-0.5 font-mono text-[11px]">

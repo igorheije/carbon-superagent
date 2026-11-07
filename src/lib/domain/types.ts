@@ -182,6 +182,8 @@ export interface Ticket {
   readonly runtime?: TaskRuntime;
   /** Who claimed the current/last remote run, recorded on claim; absent on local and older tasks. */
   readonly placement?: TaskPlacement | null;
+  /** "Seguir até o final sem pedir permissão": only blocked and high-risk actions still ask. */
+  readonly autoApprove?: boolean;
   /** Execution history across machines (last few), attached by the live snapshot. */
   readonly runs?: readonly TicketRun[];
   readonly stage: StageId | null;

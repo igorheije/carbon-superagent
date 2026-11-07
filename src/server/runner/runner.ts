@@ -6,7 +6,7 @@ import { buildCommand, startExecutor, type PermissionDecision, type RunningExecu
 import { commentOnIssue } from "../integrations/linear";
 import { run } from "../proc";
 import { getSettings, type Settings } from "../repo/settings";
-import { classifyAction, decide, rulePatternFor } from "../permissions/classify";
+import { AUTO_APPROVE_LABEL, autoApprovedByTask, classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
 import { addLesson, findTask, moveToFront, nextQueuedLocalTask, saveSnapshot, type Task } from "../repo/tasks";
@@ -356,7 +356,8 @@ function autoAnswer(taskId: string, event: PermissionRequestEvent, worktree: str
     return true;
   }
   const rule = findMatchingRule(repoPath, event.tool, event.input);
-  const by = s.allowAll.has(taskId) ? "tudo liberado nesta tarefa" : rule ? `regra: ${rule.tool} ${rule.pattern}`.trim() : verdict === "safe" ? `auto: ${classification.reason}` : null;
+  const byTask = t.get().autoApprove === true && autoApprovedByTask(classification) ? `${AUTO_APPROVE_LABEL} (${classification.reason})` : null;
+  const by = s.allowAll.has(taskId) ? "tudo liberado nesta tarefa" : rule ? `regra: ${rule.tool} ${rule.pattern}`.trim() : verdict === "safe" ? `auto: ${classification.reason}` : byTask;
   if (!by) return false;
   s.executor.respond(event.requestId, { behavior: "allow", input: event.input, remember: [] });
   recordDecided(t, event, "allowed", by);

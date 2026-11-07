@@ -62,13 +62,13 @@ export function GET(_request: Request, { params }: Params) {
     const task = findTask(id);
     if (!task) throw new HttpError(404, "tarefa não encontrada");
     return ok({
-      task: { id: task.id, key: task.key, title: task.title, description: task.description, runtime: task.runtime, status: task.status, distributed: task.snapshot.distributed === true },
+      task: { id: task.id, key: task.key, title: task.title, description: task.description, runtime: task.runtime, status: task.status, distributed: task.snapshot.distributed === true, autoApprove: task.snapshot.autoApprove === true },
     });
   });
 }
 
 /** Same rules as creating a task; `rerun` queues it again right after saving. */
-const editSchema = newTaskSchema.pick({ title: true, description: true, runtime: true }).extend({ rerun: z.boolean().default(false) });
+const editSchema = newTaskSchema.pick({ title: true, description: true, runtime: true }).extend({ autoApprove: z.boolean().optional() }).extend({ rerun: z.boolean().default(false) });
 
 const EDIT_BUSY = "a tarefa está executando ou aguardando você: pare ou responda antes de editar";
 
