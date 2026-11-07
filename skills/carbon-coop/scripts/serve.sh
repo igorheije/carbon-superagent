@@ -25,7 +25,8 @@ case "$action" in
       pid=$!
       echo $pid > ~/.carbon-coop/serve.pid
       for i in $(seq 1 60); do
-        grep -q "orca://pair" ~/.carbon-coop/serve.log && { echo "orca serve no ar ($COOP_OS, pid $pid, 127.0.0.1:'"$port"')"; exit 0; }
+        # Ready = pairing link printed AND the port accepting connections (the link can come first).
+        if grep -q "orca://pair" ~/.carbon-coop/serve.log && coop_listening '"$port"'; then echo "orca serve no ar ($COOP_OS, pid $pid, 127.0.0.1:'"$port"')"; exit 0; fi
         kill -0 $pid 2>/dev/null || { grep -v "orca://pair" ~/.carbon-coop/serve.log | tail -15 >&2; echo "orca serve saiu (exit 3 = já existe Orca neste perfil)" >&2; exit 3; }
         sleep 1
       done
