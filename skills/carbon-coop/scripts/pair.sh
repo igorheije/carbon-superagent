@@ -10,7 +10,14 @@ source "$(dirname "$0")/lib.sh"
 [ $# -eq 1 ] || die "uso: pair.sh <nome>"
 name="$1"; dir="$(profile_dir "$name")"; env_name="$(cfg_get "$name" environment)"
 
+redact_server_log() {
+  remote "$name" 'sed -i.bak "/orca:\/\/pair/d" ~/.carbon-coop/serve.log 2>/dev/null; rm -f ~/.carbon-coop/serve.log.bak' \
+    || info "não consegui limpar o link do log do servidor: apague ~/.carbon-coop/serve.log lá"
+}
+
 if "$COOP_ORCA" environment list --json 2>/dev/null | grep -q "\"$env_name\""; then
+  # Every serve start prints a fresh link: drop it even when no new pairing is needed.
+  redact_server_log
   echo "já pareado: $env_name"; exit 0
 fi
 
@@ -28,5 +35,5 @@ unset code
 sed -E 's#orca://pair\?[^" ]*#orca://pair?<oculto>#g' "$dir/pair.out" >"$dir/pair.json" && rm -f "$dir/pair.out"
 
 # Drop the link from the server log so it does not stay on disk there.
-remote "$name" 'sed -i.bak "/orca:\/\/pair/d" ~/.carbon-coop/serve.log && rm -f ~/.carbon-coop/serve.log.bak' || info "não consegui limpar o link do log do servidor: apague ~/.carbon-coop/serve.log lá"
+redact_server_log
 echo "pareado: $env_name"

@@ -21,7 +21,7 @@ cd "$FAKE_HOME" && HOME="$FAKE_HOME" exec bash -c "$*"
 /** Fake `orca`: records its arguments, answers the two environment calls. */
 const FAKE_ORCA = `#!/bin/bash
 printf '%s\\n' "$*" >> "$FAKE_ORCA_LOG"
-case "$1 $2" in "environment list") echo '[]';; "environment add") echo '{"ok":true}';; esac
+case "$1 $2" in "environment list") if [ -n "$FAKE_PAIRED" ]; then echo '[{"name":"coop-vps"}]'; else echo '[]'; fi;; "environment add") echo '{"ok":true}';; esac
 `;
 
 let root;
@@ -132,6 +132,17 @@ describe("pair.sh", () => {
     expect(readFileSync(env.FAKE_ORCA_LOG, "utf8")).toContain(`environment add --name coop-vps --pairing-code ${SECRET}`);
     expect(readFileSync(log, "utf8")).not.toContain("orca://pair");
     expect(readFileSync(path.join(env.COOP_HOME, "vps", "pair.json"), "utf8")).not.toContain("S3CR3T");
+  });
+
+  it("still redacts the fresh link a restarted server printed when the environment is already paired", async () => {
+    const log = path.join(env.FAKE_HOME, ".carbon-coop", "serve.log");
+    mkdirSync(path.dirname(log), { recursive: true });
+    writeFileSync(log, `{"pairingUrl":"${SECRET}"}\n`);
+
+    const { stdout } = await run(script("pair.sh"), ["vps"], { env: { ...env, FAKE_PAIRED: "1" } });
+
+    expect(stdout).toContain("já pareado: coop-vps");
+    expect(readFileSync(log, "utf8")).not.toContain("orca://pair");
   });
 
   it("fails clearly when the server has no link", async () => {
