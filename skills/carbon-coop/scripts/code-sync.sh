@@ -12,7 +12,7 @@ action="$1"; name="$2"; slug="$3"
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{0,49}$ ]] || die "slug inválido: '$slug' (minúsculas, números e -)"
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || die "rode dentro de um repositório git"
 cd "$top"
-repo="$(basename "$top" | tr -c 'A-Za-z0-9._-\n' '-')"
+repo="$(basename "$top" | tr -c 'A-Za-z0-9._\n-' '-')"
 remote_name="coop-$name"
 target="$(cfg_get "$name" target)"
 
