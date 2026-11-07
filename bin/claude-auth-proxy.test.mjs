@@ -86,6 +86,17 @@ describe("createAuthProxy", () => {
     expect(seen).toEqual({ method: "POST", url: "/v1/messages", auth: "Bearer real", apiKey: undefined, body: '{"a":1}' });
   });
 
+  it("waits for an asynchronous token and counts requests by status", async () => {
+    const statuses = [];
+    const upstreamPort = await listen(http.createServer((req, res) => res.end(req.headers.authorization)));
+    const proxyPort = await listen(createAuthProxy({ upstream: `http://127.0.0.1:${upstreamPort}`, readToken: () => new Promise((r) => setTimeout(() => r("late"), 20)), onRequest: (s) => statuses.push(s) }));
+
+    const res = await request(proxyPort, { body: "x" });
+
+    expect(res).toEqual({ status: 200, body: "Bearer late" });
+    expect(statuses).toEqual([200]);
+  });
+
   it("answers 503 without contacting upstream when the credential is unavailable", async () => {
     let hits = 0;
     const upstreamPort = await listen(http.createServer((_q, r) => { hits += 1; r.end(); }));
@@ -125,11 +136,11 @@ describe("parseClaudeLogin", () => {
 describe("createClaudeLoginSource", () => {
   const login = (accessToken, expiresAt) => JSON.stringify({ claudeAiOauth: { accessToken, expiresAt } });
 
-  it("caches a valid token and reads the Keychain only once", () => {
+  it("caches a valid token and reads the Keychain once, even for concurrent requests", async () => {
     let reads = 0;
-    const read = createClaudeLoginSource({ readCredentials: () => { reads += 1; return login("a", 10 * EXPIRY_MARGIN_MS); }, renew: () => {}, now: () => 0 });
-    expect(read()).toBe("a");
-    expect(read()).toBe("a");
+    const read = createClaudeLoginSource({ readCredentials: async () => { reads += 1; return login("a", 10 * EXPIRY_MARGIN_MS); }, renew: () => {}, now: () => 0 });
+    expect(await Promise.all([read(), read()])).toEqual(["a", "a"]);
+    expect(await read()).toBe("a");
     expect(reads).toBe(1);
   });
 
@@ -144,13 +155,12 @@ describe("createClaudeLoginSource", () => {
       now: () => clock,
     });
 
-    expect(() => read()).toThrow(/renovando/);
-    expect(() => read()).toThrow(/renovando/);
-    await Promise.resolve();
+    await expect(read()).rejects.toThrow(/renovando/);
+    await expect(read()).rejects.toThrow(/renovando/);
     expect(renews).toBe(1); // concurrent requests share one renewal
 
     stored = login("new", clock + 10 * EXPIRY_MARGIN_MS);
     finishRenew();
-    expect(read()).toBe("new");
+    expect(await read()).toBe("new");
   });
 });

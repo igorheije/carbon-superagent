@@ -138,6 +138,8 @@ export const settingsSchema = z.object({
   /** HTTPS URL where remote workers and AgentCore containers reach this panel (/api/worker/*). */
   panelPublicUrl: httpsUrl.default(""),
   agentcore: agentcoreSettingsSchema.default(AGENTCORE_DEFAULTS),
+  /** EXPERIMENTAL: workers use this Mac's Claude Code login through the local auth proxy. */
+  shareClaudeLogin: z.boolean().default(false),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;

@@ -6,6 +6,7 @@ import { Ban, CheckCircle2, Cloud, Download, Eraser, Pause, Play, Plus, Server }
 import { Button } from "@/components/ui/Form";
 import { Panel } from "@/components/ui/Panel";
 import { api } from "@/lib/client/api";
+import { ClaudeSharePanel } from "./ClaudeSharePanel";
 import { ClusterJoinPanel } from "./ClusterJoinPanel";
 import { LoadPanel } from "./LoadPanel";
 import { MachineDialog } from "./MachineDialog";
@@ -133,6 +134,7 @@ export function MachinesTab() {
   return (
     <div className="flex flex-col gap-5">
       <LoadPanel />
+      <ClaudeSharePanel />
       <ClusterJoinPanel onChanged={load} />
       <Panel
         eyebrow="Máquinas"

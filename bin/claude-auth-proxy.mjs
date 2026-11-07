@@ -14,7 +14,7 @@
  * Usage: node bin/claude-auth-proxy.mjs [--port 8787] (--from-claude-login | --token-file <path>)
  *   --from-claude-login  usa o login do Claude Code deste Mac (Keychain); renovação fica com o `claude` local
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -55,16 +55,17 @@ export function forwardHeaders(incoming, token, upstreamHost) {
 }
 
 /**
- * @param {{ upstream?: string, readToken: () => string, log?: (line: string) => void }} options
+ * @param {{ upstream?: string, readToken: () => string | Promise<string>, log?: (line: string) => void, onRequest?: (status: number) => void }} options
  * @returns {http.Server}
  */
-export function createAuthProxy({ upstream = DEFAULT_UPSTREAM, readToken, log = () => {} }) {
+export function createAuthProxy({ upstream = DEFAULT_UPSTREAM, readToken, log = () => {}, onRequest = () => {} }) {
   const target = new URL(upstream);
   const transport = target.protocol === "https:" ? https : http;
 
-  return http.createServer((req, res) => {
+  return http.createServer(async (req, res) => {
     const reply = (status, message) => {
       log(`${req.method} ${req.url} -> ${status} (${message})`);
+      onRequest(status);
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify({ type: "error", error: { type: "proxy_error", message } }));
     };
@@ -72,9 +73,11 @@ export function createAuthProxy({ upstream = DEFAULT_UPSTREAM, readToken, log = 
     if (!LOOPBACK.has(req.socket.remoteAddress ?? "")) return reply(403, "somente loopback");
     if (!req.url?.startsWith("/")) return reply(400, "caminho inválido");
 
+    // Held until the token is known (the Keychain may be showing its permission prompt).
+    req.pause();
     let token;
     try {
-      token = readToken();
+      token = await readToken();
     } catch (error) {
       return reply(503, `credencial indisponível: ${error.message}`);
     }
@@ -90,6 +93,7 @@ export function createAuthProxy({ upstream = DEFAULT_UPSTREAM, readToken, log = 
       },
       (upstreamRes) => {
         log(`${req.method} ${req.url} -> ${upstreamRes.statusCode}`);
+        onRequest(upstreamRes.statusCode ?? 502);
         res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
         upstreamRes.pipe(res);
       },
@@ -109,9 +113,20 @@ export const KEYCHAIN_SERVICE = "Claude Code-credentials";
 /** Renew this long before expiry so an in-flight request never carries a dying token. */
 export const EXPIRY_MARGIN_MS = 60_000;
 
-/** Reads the login the local Claude Code keeps in the macOS Keychain (JSON). Prompts for access once. */
+/** How long the macOS permission prompt may stay open before the read gives up. */
+const KEYCHAIN_TIMEOUT_MS = 120_000;
+
+/**
+ * Reads the login the local Claude Code keeps in the macOS Keychain (JSON). Asynchronous: the first
+ * read shows the "allow access" prompt and the panel must keep serving while it is open.
+ */
 export function readKeychainCredentials() {
-  return execFileSync("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 });
+  return new Promise((resolve, reject) => {
+    execFile("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"], { encoding: "utf8", timeout: KEYCHAIN_TIMEOUT_MS }, (error, stdout) => {
+      if (!error) return resolve(stdout);
+      reject(new Error(error.killed ? "o macOS não liberou o acesso ao login do Claude Code a tempo" : "login do Claude Code não encontrado neste Mac (ou acesso negado): rode `claude` e faça /login"));
+    });
+  });
 }
 
 /** { accessToken, expiresAt } from the Keychain JSON; throws a clear message on any other shape. */
@@ -138,9 +153,16 @@ export function parseClaudeLogin(raw) {
 export function createClaudeLoginSource({ readCredentials = readKeychainCredentials, renew = renewWithLocalCli, now = Date.now } = {}) {
   let cached = null;
   let renewing = null;
-  return () => {
+  let reading = null;
+  return async () => {
     if (cached && cached.expiresAt - EXPIRY_MARGIN_MS > now()) return cached.accessToken;
-    const login = parseClaudeLogin(readCredentials());
+    // Concurrent requests share one Keychain read (and at most one permission prompt).
+    reading ??= Promise.resolve()
+      .then(readCredentials)
+      .finally(() => {
+        reading = null;
+      });
+    const login = parseClaudeLogin(await reading);
     if (login.expiresAt - EXPIRY_MARGIN_MS > now()) {
       cached = login;
       return login.accessToken;
@@ -182,7 +204,7 @@ function parseArgs(argv) {
 async function main() {
   const { port, tokenFile, fromClaudeLogin } = parseArgs(process.argv.slice(2));
   const readToken = fromClaudeLogin ? createClaudeLoginSource() : () => readTokenFile(tokenFile);
-  if (fromClaudeLogin) parseClaudeLogin(readKeychainCredentials()); // fail fast (and trigger the Keychain prompt) before listening
+  if (fromClaudeLogin) parseClaudeLogin(await readKeychainCredentials()); // fail fast (and trigger the Keychain prompt) before listening
   else readTokenFile(tokenFile);
   const server = createAuthProxy({
     readToken,
