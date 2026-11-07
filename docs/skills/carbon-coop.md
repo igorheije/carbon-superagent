@@ -100,7 +100,7 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 | Repo no servidor (`code-sync` + `orca repo add --environment`) | **Validado** |
 | Agente lançado pelo Orca no servidor recebe `ANTHROPIC_BASE_URL` e o token falso | **Validado** (ambiente do `orca-ide serve` é herdado) |
 | Worker Orca remoto concluir a tarefa | **Validado** (2026-11-07): worker no servidor criou `soma.test.mjs`, commitou, fez push de `coop/uat-soma-test`; o branch voltou com `code-sync fetch` e `node --test` passou 4/4 aqui. Pré-requisito: o passo 4 da preparação do servidor (1ª execução do Claude Code), feito pela pessoa |
-| Uma sessão nova conduzindo o fluxo só pelo `SKILL.md` | **Pendente**: nos testes acima os scripts foram conduzidos manualmente |
+| Uma sessão nova conduzindo o fluxo só pelo `SKILL.md` | **Parcial**: uma sessão `claude -p` independente, só com o plugin, achou a skill e rodou `init` + `preflight` na ordem certa. O fluxo completo numa sessão interativa (acordada pelo Orca) ainda não foi feito |
 | Permissões do worker remoto | O Orca abre o worker com `--dangerously-skip-permissions` (segue a configuração de novas abas de agente do Orca): **não há pedidos de permissão** para chegar ao coordenador. A proteção é a conta sem sudo/docker e a spec do worker |
 
 Especificação e design: [`.specs/features/coop-skill/`](../../.specs/features/coop-skill/spec.md).
