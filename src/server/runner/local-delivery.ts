@@ -121,6 +121,23 @@ async function merge(cwd: string, branch: string, message: string): Promise<Loca
 }
 
 /**
+ * Files that would conflict if the task branch were merged into `target`, computed with
+ * `git merge-tree` (no worktree, index or ref is touched). Empty when it merges cleanly.
+ */
+export async function conflictsWith(taskId: string, target: string): Promise<{ readonly files: readonly string[] } | { readonly error: string }> {
+  if (!BRANCH_RE.test(target) || target.startsWith("agent/")) return { error: "branch de destino inválido" };
+  const loaded = load(taskId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { workspace, repoPath } = loaded;
+  const tree = await git(repoPath, ["merge-tree", "--write-tree", "--name-only", "--no-messages", target, workspace.branch]);
+  // Exit 0 = clean, 1 = conflicts; anything else (or no output) is an error.
+  const lines = tree.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (tree.ok) return { files: [] };
+  if (lines.length > 1) return { files: [...new Set(lines.slice(1))] };
+  return { error: `não consegui verificar os conflitos: ${firstLine(tree.stderr || tree.stdout)}` };
+}
+
+/**
  * Merges the task branch into a local branch. When the target is the branch checked out in the
  * repo folder, that folder must be clean; any other target is merged in a temporary worktree, so
  * the person's folder is never touched. Conflicts abort the merge.

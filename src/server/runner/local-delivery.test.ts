@@ -141,3 +141,31 @@ describe("releaseWorktree", () => {
     expect(await m.worktree.releaseWorktree(dir, workspace.path)).toBe("missing");
   });
 });
+
+describe("conflictsWith (\"Resolver conflito com o agente\")", () => {
+  it("lists the conflicting files without touching the repo, and is empty for a clean merge", async () => {
+    const dir = repo("conflict-preview", true);
+    const { taskId } = await deliveredTask(dir, "cf-1", "linha do agente\n");
+    // Someone changes the same line on main after the task branched.
+    writeFileSync(path.join(dir, "README.md"), "# projeto\nlinha original\nlinha da main\n");
+    git(dir, "commit", "-q", "-am", "main mexeu no README");
+    const head = git(dir, "rev-parse", "HEAD");
+
+    expect(await m.local.conflictsWith(taskId, "main")).toEqual({ files: ["README.md"] });
+    // Nothing changed: same HEAD, clean folder, no merge in progress.
+    expect(git(dir, "rev-parse", "HEAD")).toBe(head);
+    expect(git(dir, "status", "--porcelain")).toBe("");
+    expect(existsSync(path.join(dir, ".git", "MERGE_HEAD"))).toBe(false);
+
+    const clean = repo("conflict-none", true);
+    const { taskId: cleanTask } = await deliveredTask(clean, "cf-2");
+    expect(await m.local.conflictsWith(cleanTask, "main")).toEqual({ files: [] });
+  });
+
+  it("rejects agent branches and invalid names as the target", async () => {
+    const dir = repo("conflict-bad", true);
+    const { taskId } = await deliveredTask(dir, "cf-3");
+    expect(await m.local.conflictsWith(taskId, "agent/x")).toEqual({ error: "branch de destino inválido" });
+    expect(await m.local.conflictsWith(taskId, "a b")).toEqual({ error: "branch de destino inválido" });
+  });
+});

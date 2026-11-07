@@ -63,6 +63,7 @@ export function taskPrompt(task: Task, projectId: string, parts: PromptParts): s
     claudeMemory: parts.memory ? memoryPromptSection(parts.memory) : null,
     multiAgent: task.snapshot.multiAgent === true,
     distributedSection: distributedSectionFor(task.snapshot, parts.mergeReport),
+    resolveConflicts: task.snapshot.resolveConflicts ?? null,
     decisions: decisionsSection(parts.decisions),
   });
 }

@@ -197,6 +197,13 @@ export function editTask(id: string, edit: TaskEdit): EditOutcome {
   return Number(result.changes) > 0 ? "ok" : "busy";
 }
 
+/** Pins where the next run happens (conflict resolution needs this computer's local branches). */
+export function setTaskRuntime(id: string, runtime: TaskRuntime): void {
+  const task = findTask(id);
+  if (!task) return;
+  getDb().prepare("UPDATE tasks SET runtime = ?, snapshot = ?, updated_at = ? WHERE id = ?").run(runtime, JSON.stringify({ ...task.snapshot, runtime }), nowIso(), id);
+}
+
 export function moveToFront(id: string): void {
   const db = getDb();
   const min = db.prepare("SELECT COALESCE(MIN(position), 0) AS p FROM tasks").get() as { p: number };

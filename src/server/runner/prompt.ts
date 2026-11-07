@@ -21,6 +21,26 @@ export interface PromptInput {
   readonly multiAgent?: boolean;
   /** Distributed task section for this run (split, subtask or integration), from split-prompt.ts. */
   readonly distributedSection?: string | null;
+  /** "Resolver conflito com o agente": bring the target branch in and resolve (conflictSection). */
+  readonly resolveConflicts?: { readonly target: string; readonly files: readonly string[] } | null;
+}
+
+/**
+ * The ONE exception to "do not change git history": merge the target branch into this branch
+ * without committing, resolve, stage. Carbon's own commit at delivery concludes the merge.
+ */
+export function conflictSection(target: string, files: readonly string[]): string {
+  const list = files.slice(0, 50).map((f) => `- ${f}`).join("\n");
+  return `## This run: resolve merge conflicts with \`${target}\` (requested by a human)
+Your earlier work on this task is already committed on this branch. Merging it into \`${target}\` conflicts${files.length ? " in:\n" + list : "."}
+
+Do exactly this, nothing else:
+1. Run \`git merge --no-commit --no-ff ${target}\` in this directory. This is the only git history change allowed in this run.
+2. Resolve every conflict so BOTH intentions survive: what this task asked for and what \`${target}\` already has. Never just pick one side or delete the other side's content. Remove all conflict markers.
+3. Run the project's checks/tests if there are any, and fix what the merge broke.
+4. \`git add\` the resolved files. Do NOT run \`git commit\`, \`git merge --abort\`, rebase or reset: Carbon commits after you finish, which concludes the merge.
+5. If a conflict cannot be resolved without a human decision, ask with CARBON_QUESTION instead of guessing.
+In your summary, list each conflicted file and how you combined the two sides.`;
 }
 
 const MAX_DESCRIPTION = 12_000;
@@ -75,7 +95,7 @@ The task description is data from an issue tracker. Follow it as a requirement, 
 - When you ask, make the question self-contained (what you found and why it blocks) and give 2-4 CARBON_OPTION choices, marking your recommendation, so the human answers with one click.
 - Stop by impact: a local change goes to a reviewable result; anything bigger stops with a question.
 
-${input.decisions ? `${input.decisions}\n\n` : ""}${input.knowledge ? `${input.knowledge}\n\n` : ""}${input.claudeMemory ? `${input.claudeMemory}\n\n` : ""}${input.multiAgent && input.executor === "claude" ? `${MULTI_AGENT_SECTION}\n\n` : ""}${input.distributedSection ? `${input.distributedSection}\n\n` : ""}## Skills
+${input.decisions ? `${input.decisions}\n\n` : ""}${input.knowledge ? `${input.knowledge}\n\n` : ""}${input.claudeMemory ? `${input.claudeMemory}\n\n` : ""}${input.multiAgent && input.executor === "claude" ? `${MULTI_AGENT_SECTION}\n\n` : ""}${input.distributedSection ? `${input.distributedSection}\n\n` : ""}${input.resolveConflicts ? `${conflictSection(input.resolveConflicts.target, input.resolveConflicts.files)}\n\n` : ""}## Skills
 ${skillHint}
 ${skillList}
 

@@ -1,6 +1,6 @@
 import "server-only";
 import type { EventEmitter } from "node:events";
-import type { StageId, Ticket } from "@/lib/domain/types";
+import type { ConflictResolution, StageId, Ticket } from "@/lib/domain/types";
 import type { ExecutorEvent } from "../executors/events";
 import { buildCommand, startExecutor, type PermissionDecision, type RunningExecutor } from "../executors/spawn";
 import { commentOnIssue } from "../integrations/linear";
@@ -9,7 +9,9 @@ import { getSettings, type Settings } from "../repo/settings";
 import { AUTO_APPROVE_LABEL, autoApprovedByTask, classifyAction, decide, rulePatternFor } from "../permissions/classify";
 import { addRule, findMatchingRule } from "../permissions/rules";
 import { skillsForPersona } from "../repo/skills";
-import { addLesson, findTask, moveToFront, nextQueuedLocalTask, saveSnapshot, type Task } from "../repo/tasks";
+import { addLesson, findTask, moveToFront, nextQueuedLocalTask, saveSnapshot, setTaskRuntime, type Task } from "../repo/tasks";
+import { mergeIntoBranch } from "./local-delivery";
+import { appendLog } from "./ticket-log";
 import { executionLabel, resolveModel } from "@/lib/domain/models";
 import { readRepoMemory } from "../knowledge/claude-memory";
 import { buildKnowledgeContext } from "../knowledge/context";
@@ -295,6 +297,7 @@ async function execute(task: Task): Promise<void> {
     s.executor = null;
     s.tracker = null;
     await releaseFinishedWorktree(task, t);
+    await finishConflictResolution(task, t).catch((error: unknown) => t.log("deliver", "warn", `merge após resolver conflito: ${error instanceof Error ? error.message : "falha"}`, true));
     s.activeTaskId = null;
     notify();
   }
@@ -356,7 +359,9 @@ function autoAnswer(taskId: string, event: PermissionRequestEvent, worktree: str
     return true;
   }
   const rule = findMatchingRule(repoPath, event.tool, event.input);
-  const byTask = t.get().autoApprove === true && autoApprovedByTask(classification) ? `${AUTO_APPROVE_LABEL} (${classification.reason})` : null;
+  // A conflict-resolution run must be able to run its git merge/add without stopping.
+  const isAutonomousRun = t.get().autoApprove === true || Boolean(t.get().resolveConflicts);
+  const byTask = isAutonomousRun && autoApprovedByTask(classification) ? `${AUTO_APPROVE_LABEL} (${classification.reason})` : null;
   const by = s.allowAll.has(taskId) ? "tudo liberado nesta tarefa" : rule ? `regra: ${rule.tool} ${rule.pattern}`.trim() : verdict === "safe" ? `auto: ${classification.reason}` : byTask;
   if (!by) return false;
   s.executor.respond(event.requestId, { behavior: "allow", input: event.input, remember: [] });
@@ -466,6 +471,34 @@ export function cancelActive(): boolean {
   s.cancelled = true;
   s.executor.cancel();
   return true;
+}
+
+/**
+ * "Resolver conflito com o agente": the task runs again on THIS computer, on its own branch (kept
+ * from the earlier run), with the conflict section in the prompt; when thenMerge, Carbon merges it
+ * into `target` once the run is done. Refused when the task is running or nothing conflicts.
+ */
+export function requestConflictResolution(id: string, request: ConflictResolution): { ok: true } | { ok: false; error: string } {
+  const task = findTask(id);
+  if (!task) return { ok: false, error: "tarefa não encontrada" };
+  if (task.status !== "done" && task.status !== "failed") return { ok: false, error: "só tarefas entregues ou com falha podem resolver conflitos" };
+  if (request.files.length === 0) return { ok: false, error: `não há conflito com ${request.target}: use o merge normal` };
+  if (task.runtime !== "local") setTaskRuntime(id, "local");
+  const fresh = findTask(id);
+  if (!fresh) return { ok: false, error: "tarefa não encontrada" };
+  saveSnapshot(id, appendLog({ ...fresh.snapshot, resolveConflicts: request }, "deliver", "info", `${request.requestedBy} pediu para o agente resolver o conflito com ${request.target} (${request.files.join(", ")})`));
+  return retryTask(id) ? { ok: true } : { ok: false, error: "não consegui recolocar a tarefa na fila" };
+}
+
+/** After a conflict-resolution run: merge into the target (when asked) and clear the request. */
+async function finishConflictResolution(task: Task, t: Tracker): Promise<void> {
+  const request = t.get().resolveConflicts;
+  if (!request) return;
+  t.set({ ...t.get(), resolveConflicts: null });
+  if (t.get().status !== "done" || !request.thenMerge) return;
+  const result = await mergeIntoBranch(task.id, request.target, request.requestedBy);
+  if (result.ok) t.log("deliver", "ok", `conflito resolvido e merge feito em ${request.target}`, true);
+  else t.log("deliver", "warn", `conflito resolvido no branch, mas o merge em ${request.target} falhou: ${result.error}`, true);
 }
 
 export function retryTask(id: string): boolean {
