@@ -29,8 +29,15 @@ case "$action" in
     fi
     if [ -n "${COOP_PROXY_TOKEN_FILE:-}" ]; then source_args=(--token-file "$COOP_PROXY_TOKEN_FILE"); else source_args=(--from-claude-login); fi
     info "o macOS pode perguntar se o 'security' pode ler 'Claude Code-credentials': clique em Permitir sempre"
-    nohup node "$SCRIPT_DIR/claude-auth-proxy.mjs" --port "$port" "${source_args[@]}" >>"$dir/proxy.log" 2>&1 &
-    echo $! >"$pidfile"
+    # Detached into its own session/process group: a caller that kills its command's process group when
+    # the command returns (e.g. an agent's shell tool) must not take the proxy down with it.
+    node -e '
+      const { spawn } = require("node:child_process"); const fs = require("node:fs");
+      const [script, log, pidfile, ...args] = process.argv.slice(1);
+      const out = fs.openSync(log, "a");
+      const child = spawn(process.execPath, [script, ...args], { detached: true, stdio: ["ignore", out, out] });
+      fs.writeFileSync(pidfile, String(child.pid)); child.unref();
+    ' "$SCRIPT_DIR/claude-auth-proxy.mjs" "$dir/proxy.log" "$pidfile" --port "$port" "${source_args[@]}"
     for _ in 1 2 3 4 5 6 7 8 9 10; do port_in_use "$port" && break; sleep 0.5; done
     running && port_in_use "$port" || { tail -5 "$dir/proxy.log" >&2; die "proxy não subiu"; }
     echo "proxy em 127.0.0.1:$port (pid $(cat "$pidfile"))"
