@@ -2,17 +2,96 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Download, KeyRound, X } from "lucide-react";
+import { Download, Globe, KeyRound, Network, TriangleAlert, X } from "lucide-react";
 import { Button, CopyCommand, Field } from "@/components/ui/Form";
 import { api } from "@/lib/client/api";
 import { version } from "../../../package.json";
-import { downloadBase64, nextCommands, TARGET_LABEL, type CreatedMachine, type MachineExecutor, type MachineTarget } from "./machines-model";
+import { formatFingerprint } from "@/shared/fingerprint";
+import { defaultConnection, downloadBase64, nextCommands, TARGET_LABEL, type ConnectionOptions, type CreatedMachine, type MachineConnection, type MachineExecutor, type MachineTarget } from "./machines-model";
 
 interface MachineDialogProps {
   readonly isOpen: boolean;
   readonly onClose: () => void;
   /** Called after the worker exists (list must refresh even if the dialog stays open). */
   readonly onCreated: () => void;
+  /** What this panel offers right now (listener IPs/fingerprint, public URL); null while loading. */
+  readonly connection: ConnectionOptions | null;
+}
+
+const OTHER_ADDRESS = "__other__";
+
+function ConnectionOption({ isSelected, onSelect, icon, title, detail, children }: {
+  readonly isSelected: boolean;
+  readonly onSelect: () => void;
+  readonly icon: React.ReactNode;
+  readonly title: string;
+  readonly detail: string;
+  readonly children?: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-xl border transition-colors ${isSelected ? "border-accent bg-accent-weak" : "border-line hover:border-line-strong"}`}>
+      <button type="button" role="radio" aria-checked={isSelected} onClick={onSelect} className="flex w-full items-start gap-3 p-3 text-left">
+        <span className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${isSelected ? "border-accent" : "border-line-strong"}`} aria-hidden>
+          {isSelected && <span className="size-2 rounded-full bg-accent" />}
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">{icon}{title}</span>
+          <span className="text-[12px] text-muted">{detail}</span>
+        </span>
+      </button>
+      {isSelected && children && <div className="flex flex-col gap-2 px-3 pb-3 pl-10">{children}</div>}
+    </div>
+  );
+}
+
+/** "Como ela chega no painel": direct by IP (pinned certificate) or the configured public URL. */
+function ConnectionPicker({ options, value, onChange, address, onAddress }: {
+  readonly options: ConnectionOptions | null;
+  readonly value: MachineConnection;
+  readonly onChange: (c: MachineConnection) => void;
+  readonly address: string;
+  readonly onAddress: (a: string) => void;
+}) {
+  const direct = options?.direct;
+  const known = direct?.available ? direct.addresses : [];
+  const isOther = address === OTHER_ADDRESS || (address !== "" && !known.includes(address));
+  return (
+    <div role="radiogroup" aria-label="Como ela chega no painel" className="flex flex-col gap-1.5">
+      <p className="eyebrow">Como ela chega no painel</p>
+      <ConnectionOption isSelected={value === "direct"} onSelect={() => onChange("direct")} icon={<Network className="size-3.5" />} title="IP deste computador" detail="Rede local ou IP público. Sem domínio nem túnel: o worker fixa o certificado deste painel.">
+        {!direct && <p className="font-mono text-[11px] text-subtle">carregando…</p>}
+        {direct && !direct.available && (
+          <p className="flex gap-1.5 text-[12px] text-warn"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" />{direct.reason}</p>
+        )}
+        {direct?.available && (
+          <>
+            <div className="flex flex-wrap gap-1 font-mono text-[11px]">
+              {known.map((ip) => (
+                <button key={ip} type="button" aria-pressed={address === ip} onClick={() => onAddress(ip)} className={`rounded-full border px-3 py-1 ${address === ip ? "border-ink bg-btn text-btn-text" : "border-line text-muted hover:text-ink"}`}>
+                  {ip}:{direct.port}
+                </button>
+              ))}
+              <button type="button" aria-pressed={isOther} onClick={() => onAddress(OTHER_ADDRESS)} className={`rounded-full border px-3 py-1 ${isOther ? "border-ink bg-btn text-btn-text" : "border-line text-muted hover:text-ink"}`}>
+                outro (IP público)
+              </button>
+            </div>
+            {isOther && (
+              <Field label="IP ou nome" placeholder="200.150.10.20" value={address === OTHER_ADDRESS ? "" : address} onChange={(e) => onAddress(e.target.value.trim() || OTHER_ADDRESS)} maxLength={253} hint={`Pela internet: libere a porta ${direct.port} no roteador (port forwarding) para este computador.`} />
+            )}
+            {direct.fingerprint && <p className="break-all font-mono text-[10px] text-subtle">certificado {formatFingerprint(direct.fingerprint)}</p>}
+            <p className="text-[11px] text-subtle">O firewall do macOS pode perguntar se o Node aceita conexões: permita.</p>
+          </>
+        )}
+      </ConnectionOption>
+      <ConnectionOption
+        isSelected={value === "public"}
+        onSelect={() => onChange("public")}
+        icon={<Globe className="size-3.5" />}
+        title="URL pública"
+        detail={options?.panelPublicUrl ? options.panelPublicUrl : "Domínio, Cloudflare Tunnel ou Tailscale. Não configurada: defina em Configurações → Execução."}
+      />
+    </div>
+  );
 }
 
 const TARGETS: readonly MachineTarget[] = ["compose", "k8s"];
@@ -91,8 +170,10 @@ function CreatedKit({ created, image }: { readonly created: CreatedMachine; read
 }
 
 /** "Adicionar máquina": generates a pool worker + its Compose/Kubernetes kit; shows the token once. */
-export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps) {
+export function MachineDialog({ isOpen, onClose, onCreated, connection }: MachineDialogProps) {
   const [name, setName] = useState("");
+  const [connectionChoice, setConnectionChoice] = useState<MachineConnection | null>(null);
+  const [address, setAddress] = useState("");
   const [target, setTarget] = useState<MachineTarget>("compose");
   const [replicas, setReplicas] = useState("1");
   const [parallel, setParallel] = useState("1");
@@ -107,6 +188,8 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     setCreated(null);
     setError(null);
     setName("");
+    setConnectionChoice(null);
+    setAddress("");
     setImage("");
     onClose();
   }, [onClose]);
@@ -118,6 +201,12 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, close]);
 
+  // Until the admin picks, follow what the panel can do; the first LAN address is preselected.
+  const chosenConnection = connectionChoice ?? defaultConnection(connection);
+  const firstAddress = connection?.direct.available ? (connection.direct.addresses[0] ?? "") : "";
+  const chosenAddress = address || firstAddress;
+  const sentAddress = chosenAddress === OTHER_ADDRESS ? "" : chosenAddress;
+
   const toggleExecutor = (value: MachineExecutor) =>
     setExecutors((current) => (current.includes(value) ? current.filter((e) => e !== value) : [...current, value]));
 
@@ -126,7 +215,16 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
     setError(null);
     try {
       const data = await api<Omit<CreatedMachine, "target">>("/api/admin/workers", {
-        body: { name, target, replicas: Number(replicas), parallel: Number(parallel), executors, image: image.trim() || undefined },
+        body: {
+          name,
+          target,
+          connection: chosenConnection,
+          address: chosenConnection === "direct" ? sentAddress : undefined,
+          replicas: Number(replicas),
+          parallel: Number(parallel),
+          executors,
+          image: image.trim() || undefined,
+        },
       });
       setCreated({ ...data, target });
       onCreated();
@@ -154,6 +252,10 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
             ) : (
               <div className="flex flex-col gap-4">
                 <Field label="Nome da máquina" placeholder="servidor-sp-01" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} hint="Aparece no painel e nas tarefas; vira o nome dos recursos (minúsculas e hífens)" />
+                <p className="rounded-xl border border-line bg-surface-muted px-3 py-2 text-[12px] text-muted">
+                  Gera um kit <span className="font-mono">Docker Compose</span>/<span className="font-mono">Kubernetes</span>. Sem Docker na outra máquina? Feche e use <span className="font-medium text-ink">Entrar no cluster</span>: um único comando <span className="font-mono">carbon join</span>.
+                </p>
+                <ConnectionPicker options={connection} value={chosenConnection} onChange={setConnectionChoice} address={chosenAddress} onAddress={setAddress} />
                 <ChipGroup label="Onde vai rodar" options={TARGETS} isSelected={(t) => t === target} onToggle={setTarget} labelOf={(t) => TARGET_LABEL[t]} />
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Réplicas" type="number" min={1} max={100} value={replicas} onChange={(e) => setReplicas(e.target.value)} hint="Processos de worker" />
@@ -164,7 +266,7 @@ export function MachineDialog({ isOpen, onClose, onCreated }: MachineDialogProps
                 {error && <p role="alert" className="font-mono text-[12px] text-danger">{error}</p>}
                 <div className="flex justify-end gap-2">
                   <Button variant="ghost" onClick={close}>Cancelar</Button>
-                  <Button onClick={() => void submit()} isLoading={isSaving} disabled={!name.trim() || executors.length === 0}>Gerar kit</Button>
+                  <Button onClick={() => void submit()} isLoading={isSaving} disabled={!name.trim() || executors.length === 0 || (chosenConnection === "direct" && !sentAddress)}>Gerar kit</Button>
                 </div>
               </div>
             )}

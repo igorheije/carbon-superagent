@@ -53,3 +53,16 @@ describe("efficiencyVerdict", () => {
     expect(efficiencyVerdict(local, local).tone).toBe("muted");
   });
 });
+
+describe("defaultConnection", () => {
+  it("prefers the direct IP connection and falls back to the public URL only when IP is impossible", async () => {
+    const { defaultConnection } = await import("./machines-model");
+    const direct = { available: true, port: 3418, fingerprint: null, addresses: ["192.168.0.12"] } as const;
+    const off = { available: false, reason: "x" } as const;
+    expect(defaultConnection(null)).toBe("direct");
+    expect(defaultConnection({ panelPublicUrl: "", direct })).toBe("direct");
+    expect(defaultConnection({ panelPublicUrl: "https://p.exemplo.com", direct })).toBe("direct");
+    expect(defaultConnection({ panelPublicUrl: "https://p.exemplo.com", direct: off })).toBe("public");
+    expect(defaultConnection({ panelPublicUrl: "", direct: off })).toBe("direct");
+  });
+});

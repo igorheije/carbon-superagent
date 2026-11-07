@@ -51,6 +51,7 @@ function renderSecret(opts: WorkerKitOptions): string {
 function containerOf(opts: WorkerKitOptions): YamlValue {
   const env: Record<string, string> = {
     CARBON_PANEL_URL: opts.panelUrl,
+    ...(opts.panelFingerprint ? { CARBON_PANEL_FINGERPRINT: opts.panelFingerprint } : {}),
     CARBON_WORKER_PARALLEL: String(opts.parallel),
     CARBON_WORKER_EXECUTORS: opts.executors.join(","),
     CARBON_WORKER_DIR: CONTAINER_WORK_DIR,
