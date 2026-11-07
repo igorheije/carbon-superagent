@@ -16,7 +16,22 @@ Cada máquina cadastrada aparece com: nome, tipo, status, última batida, tarefa
 - Várias réplicas/processos com o mesmo token formam **uma** máquina.
 - Sessões AgentCore não aparecem na frota (não têm registro em `workers`); o card da tarefa mostra a sessão.
 
-Cada tarefa registra onde rodou (placement): esta máquina, nome do worker ou sessão AgentCore.
+Cada tarefa registra onde rodou (placement): esta máquina, nome do worker ou sessão AgentCore. Cada **execução** também fica registrada (`task_runs`: máquina, início, fim, resultado), então uma tarefa que falhou aqui e rodou de novo num worker mostra a trilha no selo da fila e no terminal (`esta máquina ✗ → vps-sp-01 ●`, com ⇄ quando passou por mais de uma máquina).
+
+## Carga (*Configurações → Máquinas → Carga*)
+
+Atualiza a cada 5 s. Uma entrada para este computador (o runner local, 1 slot) e uma por worker não revogado:
+
+| Dado | De onde vem |
+| --- | --- |
+| Tipo e animação (servidor, Mac, Linux, Windows, container, AgentCore) | `host.platform` + `host.form` enviados pelo worker; AgentCore = nuvem; sem telemetria = genérico |
+| CPU, load, memória | Último `host` (claim, a cada ~25 s, e heartbeat, a cada `leaseMs/3`). Mais velho que 2 min = "sem dado"; a animação passa a seguir os slots |
+| Slots | Tarefas sob lease ÷ `maxParallel` |
+| Utilização 24 h | Tempo rodando tarefas nas últimas 24 h ÷ (24 h × slots) |
+| Concluídas, tempo médio, sucesso | `task_runs` das últimas 24 h; lease perdido conta como falha |
+| Comparação | Fatia das entregas da máquina e tempo médio contra este computador |
+
+A animação acelera com a CPU e fica estática com *reduzir movimento* do sistema.
 
 ## Fila e claim
 
@@ -69,7 +84,7 @@ Códigos de saída do worker: `0` parada normal · `1` erro fatal (configuraçã
 Funciona como localmente (Claude Code em `guarded`/`auto`):
 
 1. O worker responde sozinho o que a política de aprovação e as regras do repositório permitem (mesma lógica do painel).
-2. O resto vira `permission_request` no painel: card no Mission Control e aviso no topo, com ferramenta e comando/arquivo exatos.
+2. O resto vira `permission_request` no painel: card no Mission Control, aviso no topo e alerta fixo no canto de qualquer página (com Permitir/Negar), com ferramenta e comando/arquivo exatos. Tarefa com **sem pedir permissão** aprova sozinha o que não é alto risco (ver `autoApprove` em [protocol.md](protocol.md)).
 3. O worker espera a resposta por long-poll. **Permitir**, **Negar**, **Liberar tudo nesta tarefa** e **Sempre neste repositório** funcionam; para comandos de shell, interpretador ou rede (`bash`, `python`, `node`, `curl`, `ssh`, `sudo`, `env`…), "sempre neste repositório" vira "permitir uma vez" e nenhuma regra é salva.
 4. Uma tarefa remota pode ter no máximo 50 pedidos pendentes; acima disso o lote de eventos é recusado (`413`) e a tarefa falha.
 5. Sem resposta em `permissionTimeoutMinutes` (padrão 15): negado, com `permissão expirou após N min sem resposta` no log.
