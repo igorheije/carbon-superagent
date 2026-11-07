@@ -289,6 +289,16 @@ Como expor, em ordem de preferência — sempre com **HTTPS** (o worker recusa `
 
 Detalhes em [docs/distributed/exposing-the-panel.md](docs/distributed/exposing-the-panel.md). Revogue em *Configurações → Máquinas* os tokens de máquinas que você não usa mais.
 
+## Skill de trabalho cooperativo (Orca, experimental)
+
+A skill `carbon-coop` leva a ideia do túnel SSH para **qualquer sessão do Claude Code**, sem o painel: a sessão vira coordenadora, um servidor seu roda `orca-ide serve` (só em `127.0.0.1`) e é pareado como **servidor Orca**, e os workers lá usam o Claude Code **deste computador** por um proxy local (a credencial não sai daqui). Só o código commitado viaja; o resultado volta como branch `coop/<slug>`.
+
+```text
+/plugin install carbon-coop --marketplace leolegends/carbon-superagent
+```
+
+Depois, na sessão: *"conecta no meu servidor usuario@host"* e *"manda a parte X pro servidor"*. Depende só de Orca, `ssh`, `git` e Node 22+. Preparação do servidor, riscos e limites: [`skills/carbon-coop/`](skills/carbon-coop/SKILL.md).
+
 ## Segurança
 
 - A UI e a API do painel escutam só em `127.0.0.1`. **Não exponha a porta do painel (3417) na internet**: quem acessa o painel dispara agentes com acesso de escrita ao seu repositório. Para as integrações, use um túnel só enquanto precisar dele (ver acima).

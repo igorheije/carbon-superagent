@@ -1,0 +1,11 @@
+{
+  "name": "carbon-superagent",
+  "owner": { "name": "Leonardo Ribeiro" },
+  "plugins": [
+    {
+      "name": "carbon-coop",
+      "source": "./",
+      "description": "Trabalho cooperativo com um servidor Orca pareado (experimental)."
+    }
+  ]
+}
