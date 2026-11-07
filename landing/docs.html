@@ -185,6 +185,7 @@
         <li><a href="#agentcore">AgentCore <span class="exp">EXP</span></a></li>
         <li><a href="#expor">Expor o painel</a></li>
         <li><a href="#tunel">Túnel SSH + Claude Code compartilhado <span class="exp">EXP</span></a></li>
+        <li><a href="#skill-coop">Skill <code>carbon-coop</code> (Orca) <span class="exp">EXP</span></a></li>
         <li><a href="#maquinas">Máquinas, carga e <code>worker init</code></a></li>
       </ol>
       <p class="group">Referência</p>
@@ -406,6 +407,34 @@ CLAUDE_CODE_OAUTH_TOKEN=placeholder-proxy-injects-real</code></pre>
         </tbody>
       </table></div>
       <p>Receita completa: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/distributed/ssh-tunnel-shared-claude.md" rel="noopener noreferrer">ssh-tunnel-shared-claude.md</a>.</p>
+    </section>
+
+    <!-- ============================================================ skill coop -->
+    <section class="doc" id="skill-coop">
+      <h2>Skill <code>carbon-coop</code>: trabalho cooperativo pelo Orca <span class="badge">experimental</span></h2>
+      <p>A mesma ideia do túnel, <b>sem o painel</b>: qualquer sessão do Claude Code vira coordenadora, um servidor seu roda <code>orca-ide serve</code> (só em <code>127.0.0.1</code>) e é pareado como <b>servidor Orca</b>. Os workers lá usam o Claude Code <b>deste computador</b> pelo proxy local; só o código commitado viaja e o resultado volta como branch <code>coop/&lt;slug&gt;</code>. Depende só de Orca, <code>ssh</code>, <code>git</code> e Node 22+.</p>
+      <pre><code><span class="c"># instalar (Claude Code 2.1.275+)</span>
+/plugin install carbon-coop --marketplace leolegends/carbon-superagent
+
+<span class="c"># versões anteriores</span>
+/plugin marketplace add leolegends/carbon-superagent
+/plugin install carbon-coop@carbon-superagent
+
+<span class="c"># usar, na sessão</span>
+/carbon-coop connect usuario@host
+<span class="c"># "manda a parte X pro servidor" → worker no servidor → branch coop/&lt;slug&gt; volta aqui</span>
+/carbon-coop status
+/carbon-coop disconnect</code></pre>
+      <div class="table"><table>
+        <thead><tr><th>Ponto</th><th>O que significa</th></tr></thead>
+        <tbody>
+          <tr><td>Rede</td><td>Uma conexão SSH daqui: <code>-L</code> para o Orca do servidor, <code>-R</code> para o proxy. Nenhuma porta pública</td></tr>
+          <tr><td>Credencial</td><td>Fica no Keychain deste Mac; o link de pareamento nunca é impresso e é apagado do log do servidor</td></tr>
+          <tr><td>Servidor</td><td>Conta sem sudo e fora do <code>docker</code>, acesso por chave, <code>orca-ide</code> na mesma versão do Orca daqui</td></tr>
+          <tr><td>Status</td><td>Scripts testados com servidor simulado; teste ponta a ponta num servidor real pendente</td></tr>
+        </tbody>
+      </table></div>
+      <p>Guia completo: <a href="https://github.com/leolegends/carbon-superagent/blob/main/docs/skills/carbon-coop.md" rel="noopener noreferrer">docs/skills/carbon-coop.md</a>.</p>
     </section>
 
     <!-- ============================================================ maquinas -->
