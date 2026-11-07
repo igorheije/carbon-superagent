@@ -3,7 +3,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { createAuthProxy, forwardHeaders, readTokenFile } from "./claude-auth-proxy.mjs";
+import { createAuthProxy, createClaudeLoginSource, EXPIRY_MARGIN_MS, forwardHeaders, parseClaudeLogin, readTokenFile } from "./claude-auth-proxy.mjs";
 
 const sandbox = mkdtempSync(path.join(tmpdir(), "carbon-auth-proxy-"));
 afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
@@ -108,5 +108,49 @@ describe("createAuthProxy", () => {
     const res = await request(proxyPort);
 
     expect(res.status).toBe(502);
+  });
+});
+
+describe("parseClaudeLogin", () => {
+  it("extracts the access token and expiry from the Keychain JSON", () => {
+    expect(parseClaudeLogin(JSON.stringify({ claudeAiOauth: { accessToken: "tok", refreshToken: "r", expiresAt: 5 } }))).toEqual({ accessToken: "tok", expiresAt: 5 });
+  });
+
+  it("rejects other shapes with a clear message", () => {
+    expect(() => parseClaudeLogin("nope")).toThrow(/não é JSON/);
+    expect(() => parseClaudeLogin(JSON.stringify({ claudeAiOauth: { accessToken: "" } }))).toThrow(/\/login/);
+  });
+});
+
+describe("createClaudeLoginSource", () => {
+  const login = (accessToken, expiresAt) => JSON.stringify({ claudeAiOauth: { accessToken, expiresAt } });
+
+  it("caches a valid token and reads the Keychain only once", () => {
+    let reads = 0;
+    const read = createClaudeLoginSource({ readCredentials: () => { reads += 1; return login("a", 10 * EXPIRY_MARGIN_MS); }, renew: () => {}, now: () => 0 });
+    expect(read()).toBe("a");
+    expect(read()).toBe("a");
+    expect(reads).toBe(1);
+  });
+
+  it("never refreshes by itself: asks the local CLI once and fails until the Keychain has a new token", async () => {
+    let clock = 0;
+    let stored = login("old", EXPIRY_MARGIN_MS / 2);
+    let renews = 0;
+    let finishRenew;
+    const read = createClaudeLoginSource({
+      readCredentials: () => stored,
+      renew: () => { renews += 1; return new Promise((r) => { finishRenew = r; }); },
+      now: () => clock,
+    });
+
+    expect(() => read()).toThrow(/renovando/);
+    expect(() => read()).toThrow(/renovando/);
+    await Promise.resolve();
+    expect(renews).toBe(1); // concurrent requests share one renewal
+
+    stored = login("new", clock + 10 * EXPIRY_MARGIN_MS);
+    finishRenew();
+    expect(read()).toBe("new");
   });
 });
