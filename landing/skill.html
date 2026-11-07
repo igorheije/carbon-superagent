@@ -487,15 +487,15 @@
       <div class="guard reveal"><b>Só o commitado viaja</b><span>Repositórios sensíveis entram em <code>blockedRepos</code> e não saem da máquina.</span></div>
       <div class="guard risk reveal"><b>Root no servidor</b><span>Enquanto o túnel estiver aberto, consegue usar a sua conta (sem levar a credencial) e lê o código enviado. Use servidores que você controla.</span></div>
       <div class="guard risk reveal"><b>Mesma conta, mesma quota</b><span>Mais máquinas trazem paralelismo e CPU, não mais limite de uso do plano.</span></div>
-      <div class="guard risk reveal"><b>Servidor com produção</b><span>A conta do worker não tem sudo nem docker; a spec do worker proíbe mexer em infraestrutura.</span></div>
+      <div class="guard risk reveal"><b>Worker sem pedir permissão</b><span>O Orca abre o worker em modo sem permissões. O limite é a conta sem sudo e fora do docker, e a spec que proíbe mexer em infraestrutura.</span></div>
     </div>
     <div class="status reveal" aria-label="Status da skill">
       <span class="pill ok">scripts com 9 testes automatizados</span>
       <span class="pill ok">pareamento por túnel documentado pelo Orca</span>
       <span class="pill ok">túnel + proxy validados num servidor real</span>
       <span class="pill ok">envio do código e retorno do branch validados</span>
-      <span class="pill wait">pareamento e worker Orca no servidor</span>
-      <span class="pill wait">permissões do worker remoto chegando à sessão</span>
+      <span class="pill ok">pareamento e Orca no servidor validados</span>
+      <span class="pill wait">worker remoto concluindo a tarefa</span>
     </div>
     <div class="cta reveal">
       <a class="btn btn-primary" href="https://github.com/leolegends/carbon-superagent/blob/main/docs/skills/carbon-coop.md" rel="noopener noreferrer">Guia completo →</a>

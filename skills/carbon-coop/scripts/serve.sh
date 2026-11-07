@@ -17,13 +17,14 @@ case "$action" in
     remote "$name" "$REMOTE_PATH"'
       set -e
       command -v orca-ide >/dev/null || { echo "orca-ide não está no PATH do servidor (references/server-setup.md)" >&2; exit 2; }
-      if pgrep -u "$(id -u)" -f "'"$match"'" >/dev/null; then echo "orca-ide serve já rodando"; exit 0; fi
+      if ss -tlnH "sport = :'"$port"'" | grep -q .; then echo "porta '"$port"' já escutando no servidor (orca-ide serve já rodando?)"; exit 0; fi
       mkdir -p ~/.carbon-coop && chmod 700 ~/.carbon-coop
       umask 077; : > ~/.carbon-coop/serve.log
       ANTHROPIC_BASE_URL=http://127.0.0.1:'"$proxy_port"' \
       CLAUDE_CODE_OAUTH_TOKEN=placeholder-proxy-injects-real \
         nohup '"$match"' --pairing-address 127.0.0.1 --json >> ~/.carbon-coop/serve.log 2>&1 < /dev/null &
       pid=$!
+      echo $pid > ~/.carbon-coop/serve.pid
       for i in $(seq 1 60); do
         grep -q "orca://pair" ~/.carbon-coop/serve.log && { echo "orca-ide serve no ar (pid $pid, 127.0.0.1:'"$port"')"; exit 0; }
         kill -0 $pid 2>/dev/null || { grep -v "orca://pair" ~/.carbon-coop/serve.log | tail -15 >&2; echo "orca-ide serve saiu (exit 3 = já existe Orca neste perfil)" >&2; exit 3; }
@@ -32,10 +33,17 @@ case "$action" in
       echo "orca-ide serve não mostrou o link de pareamento em 60 s" >&2; exit 4'
     ;;
   stop)
-    remote "$name" 'pkill -u "$(id -u)" -f "'"$match"'" && echo "orca-ide serve parado" || echo "orca-ide serve não estava rodando"'
+    remote "$name" '
+      stopped=0
+      if [ -f ~/.carbon-coop/serve.pid ] && kill "$(cat ~/.carbon-coop/serve.pid)" 2>/dev/null; then stopped=1; fi
+      sleep 2
+      # orcad (the runtime) is a child with its own name: stop whatever of ours still listens on the port.
+      for pid in $(ss -tlnpH "sport = :'"$port"'" | grep -o "pid=[0-9]*" | cut -d= -f2 | sort -u); do kill "$pid" 2>/dev/null && stopped=1; done
+      rm -f ~/.carbon-coop/serve.pid
+      [ $stopped = 1 ] && echo "orca-ide serve parado" || echo "orca-ide serve não estava rodando"'
     ;;
   status)
-    remote "$name" 'pgrep -u "$(id -u)" -f "'"$match"'" >/dev/null && echo "orca-ide serve: rodando" || echo "orca-ide serve: parado"'
+    remote "$name" 'ss -tlnH "sport = :'"$port"'" | grep -q . && echo "orca-ide serve: rodando (127.0.0.1:'"$port"')" || echo "orca-ide serve: parado"'
     ;;
   *) die "ação desconhecida: $action" ;;
 esac

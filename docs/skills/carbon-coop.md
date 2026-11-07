@@ -93,8 +93,12 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 | `preflight` contra servidor real (Ubuntu 20.04) | **Validado** (2026-11-07): detecta conta sem chave, sem sudo/docker, Orca faltando |
 | Túnel + proxy: Claude Code do servidor usando o login deste computador | **Validado**: `claude -p` na conta do worker respondeu pelo proxy, sem credencial no servidor |
 | Envio do código e retorno do branch (`code-sync`) | **Validado**: só o commitado viajou; `coop/<slug>` voltou com o commit do servidor |
-| `orca-ide` no servidor (AppImage 1.4.253, sha256 conferido) | Baixado; precisa das bibliotecas do Electron + `xvfb` (ver preparação do servidor) |
-| Pareamento, worker Orca remoto e permissões chegando ao coordenador | **Pendente** até o `orca-ide` rodar no servidor |
+| `orca-ide serve` no servidor (AppImage 1.4.253 + bibliotecas do Electron + `xvfb`) | **Validado**: sobe só em `127.0.0.1` |
+| Pareamento (`pair.sh`) | **Validado**: environment `coop-vps` criado; o link não apareceu e saiu do log do servidor |
+| Repo no servidor (`code-sync` + `orca repo add --environment`) | **Validado** |
+| Agente lançado pelo Orca no servidor recebe `ANTHROPIC_BASE_URL` e o token falso | **Validado** (ambiente do `orca-ide serve` é herdado) |
+| Worker Orca remoto concluir a tarefa | **Pendente**: o Claude Code do servidor para na tela de boas-vindas na 1ª execução interativa (ver preparação do servidor, passo 3) |
+| Permissões do worker remoto | O Orca abre o worker com `--dangerously-skip-permissions` (segue a configuração de novas abas de agente do Orca): **não há pedidos de permissão** para chegar ao coordenador. A proteção é a conta sem sudo/docker e a spec do worker |
 
 Especificação e design: [`.specs/features/coop-skill/`](../../.specs/features/coop-skill/spec.md).
 Relacionado: [túnel SSH + Claude Code compartilhado no Carbon](../distributed/ssh-tunnel-shared-claude.md), a mesma ideia usando o painel.

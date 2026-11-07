@@ -55,6 +55,23 @@ lançado pelo Orca não herdar esse ambiente (o `smoke test` falha com erro de a
 
 Não é segredo: o proxy descarta esse valor e injeta a credencial real no computador coordenador.
 
-## 4. Conferir
+## 4. Primeira execução do Claude Code na conta do worker
+
+O Orca abre o `claude` interativo. Na primeira vez ele mostra a tela de boas-vindas (tema) e, como o
+Orca usa `--dangerously-skip-permissions`, pede para aceitar o modo sem permissões — e o worker fica
+parado esperando (`agent_readiness: timeout`). Rode uma vez, **você**, como o usuário do worker, com o
+túnel aberto, e responda às telas:
+
+```bash
+su - carbon    # ou ssh carbon@servidor
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787 CLAUDE_CODE_OAUTH_TOKEN=placeholder-proxy-injects-real claude --dangerously-skip-permissions
+# escolha o tema, aceite o aviso do modo sem permissões, saia com /exit
+```
+
+Aceitar esse modo é uma decisão sua: o worker vai rodar comandos sem pedir confirmação. O que limita o
+estrago é a conta sem sudo e fora do `docker`, e a spec do worker. Se preferir que ele peça permissão,
+mude em **Orca → Settings** o modo das novas abas de agente no servidor (os pedidos ficam no terminal remoto).
+
+## 5. Conferir
 
 No coordenador: `"$S/scripts/preflight.sh" <nome>` deve mostrar só `OK` (e no máximo `AVISO`).
