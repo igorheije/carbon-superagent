@@ -23,6 +23,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const DEFAULT_PORT = 8787;
+/**
+ * Identity route answered by the proxy itself (never forwarded, no credential involved). Lets a
+ * caller that finds the port busy (e.g. the carbon-coop skill) tell this proxy apart from any other
+ * program on the same port before pointing remote workers at it.
+ */
+export const IDENTITY_PATH = "/__carbon-auth-proxy";
+export const IDENTITY_BODY = "carbon-auth-proxy";
 export const DEFAULT_UPSTREAM = "https://api.anthropic.com";
 export const DEFAULT_TOKEN_FILE = path.join(os.homedir(), ".carbon-proxy", "claude-oauth-token");
 
@@ -72,6 +79,10 @@ export function createAuthProxy({ upstream = DEFAULT_UPSTREAM, readToken, log = 
 
     if (!LOOPBACK.has(req.socket.remoteAddress ?? "")) return reply(403, "somente loopback");
     if (!req.url?.startsWith("/")) return reply(400, "caminho inválido");
+    if (req.method === "GET" && req.url === IDENTITY_PATH) {
+      res.writeHead(200, { "content-type": "text/plain" });
+      return res.end(IDENTITY_BODY);
+    }
 
     // Held until the token is known (the Keychain may be showing its permission prompt).
     req.pause();

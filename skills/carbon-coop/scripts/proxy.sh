@@ -12,14 +12,20 @@ dir="$(profile_dir "$name")"; port="$(cfg_get "$name" proxyPort)"
 pidfile="$dir/proxy.pid"
 
 running() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
+# The proxy answers GET /__carbon-auth-proxy with "carbon-auth-proxy" itself (no upstream, no credential).
+is_auth_proxy() { [ "$(curl -s -m 3 "http://127.0.0.1:$1/__carbon-auth-proxy" 2>/dev/null)" = "carbon-auth-proxy" ]; }
 
 case "$action" in
   start)
     if running; then echo "proxy já rodando (pid $(cat "$pidfile")) em 127.0.0.1:$port"; exit 0; fi
     if port_in_use "$port"; then
-      # Another proxy (e.g. the Carbon panel's) already serves this port: reuse it, do not fight.
-      echo "porta $port já em uso — reaproveitando o proxy que está lá ($(lsof -nP -iTCP:"$port" -sTCP:LISTEN | awk 'NR==2{print $1" pid "$2}'))"
-      exit 0
+      # Reuse only a carbon auth proxy (e.g. the Carbon panel's), proven by its identity route: any
+      # other program on this port would receive the remote workers' Claude API calls.
+      if is_auth_proxy "$port"; then
+        echo "porta $port já tem um carbon-auth-proxy — reaproveitando ($(lsof -nP -iTCP:"$port" -sTCP:LISTEN | awk 'NR==2{print $1" pid "$2}'))"
+        exit 0
+      fi
+      die "porta $port ocupada por outro programa ($(lsof -nP -iTCP:"$port" -sTCP:LISTEN | awk 'NR==2{print $1" pid "$2}')), que não é um carbon-auth-proxy: escolha outra porta com init.sh $name $(cfg_get "$name" target) --proxy-port <porta>"
     fi
     if [ -n "${COOP_PROXY_TOKEN_FILE:-}" ]; then source_args=(--token-file "$COOP_PROXY_TOKEN_FILE"); else source_args=(--from-claude-login); fi
     info "o macOS pode perguntar se o 'security' pode ler 'Claude Code-credentials': clique em Permitir sempre"
@@ -35,7 +41,8 @@ case "$action" in
     ;;
   status)
     if running; then echo "proxy: ligado (pid $(cat "$pidfile"), 127.0.0.1:$port)"
-    elif port_in_use "$port"; then echo "proxy: porta $port ocupada por outro processo (reaproveitado)"
+    elif port_in_use "$port" && is_auth_proxy "$port"; then echo "proxy: carbon-auth-proxy de outro processo em 127.0.0.1:$port (reaproveitado)"
+    elif port_in_use "$port"; then echo "proxy: porta $port ocupada por outro programa (não é um carbon-auth-proxy)"
     else echo "proxy: desligado"; fi
     ;;
   *) die "ação desconhecida: $action" ;;

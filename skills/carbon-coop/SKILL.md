@@ -48,7 +48,9 @@ Siga o guia: inicie os workers e **encerre o turno**; o Orca acorda a sessão. N
 1. `nome` padrão = host curto (letras, números, `-`). `"$S/scripts/init.sh" <nome> <usuario@host>`.
 2. `"$S/scripts/preflight.sh" <nome>`. Para cada `FALTA`, explique e pare. `FALTA ssh` → a pessoa roda
    `ssh-copy-id <usuario@host>` no terminal dela. `FALTA remoto-*` → `references/server-setup.md`.
-3. `"$S/scripts/proxy.sh" start <nome>` — avise do prompt do Keychain ("Permitir sempre").
+3. `"$S/scripts/proxy.sh" start <nome>` — avise do prompt do Keychain ("Permitir sempre"). Se a porta
+   estiver ocupada por um programa que não é um carbon-auth-proxy, ele recusa: refaça o `init.sh` com
+   `--proxy-port <outra porta livre>` (ex.: 8790) e siga. Nunca aponte os workers para um programa desconhecido.
 4. `"$S/scripts/tunnel.sh" start <nome>`.
 5. `"$S/scripts/serve.sh" start <nome>`. Exit 3 = já existe um Orca nesse perfil no servidor: pare e pergunte.
 6. `"$S/scripts/pair.sh" <nome>` → environment `coop-<nome>`.
