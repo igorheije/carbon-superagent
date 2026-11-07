@@ -89,7 +89,9 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 
 | Item | Estado |
 | --- | --- |
-| Scripts (`init`, `preflight`, `proxy`, `tunnel`, `serve`, `pair`, `code-sync`) | Prontos, 9 testes automatizados |
+| Scripts (`init`, `preflight`, `proxy`, `tunnel`, `serve`, `pair`, `code-sync`) | Prontos, 10 testes automatizados |
+| Instalação pelo plugin (`claude plugin install carbon-coop --marketplace leolegends/carbon-superagent`, Claude Code 2.1.319) | **Validado**: skill instalada do GitHub, scripts executáveis, preflight rodando da cópia instalada |
+| Proxy embutido sem o painel do Carbon | **Validado**: `proxy.sh` leu o login do Keychain e uma chamada real do Claude Code com token falso passou (`POST /v1/messages -> 200`) |
 | `preflight` contra servidor real (Ubuntu 20.04) | **Validado** (2026-11-07): detecta conta sem chave, sem sudo/docker, Orca faltando |
 | Túnel + proxy: Claude Code do servidor usando o login deste computador | **Validado**: `claude -p` na conta do worker respondeu pelo proxy, sem credencial no servidor |
 | Envio do código e retorno do branch (`code-sync`) | **Validado**: só o commitado viajou; `coop/<slug>` voltou com o commit do servidor |
@@ -98,6 +100,7 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 | Repo no servidor (`code-sync` + `orca repo add --environment`) | **Validado** |
 | Agente lançado pelo Orca no servidor recebe `ANTHROPIC_BASE_URL` e o token falso | **Validado** (ambiente do `orca-ide serve` é herdado) |
 | Worker Orca remoto concluir a tarefa | **Validado** (2026-11-07): worker no servidor criou `soma.test.mjs`, commitou, fez push de `coop/uat-soma-test`; o branch voltou com `code-sync fetch` e `node --test` passou 4/4 aqui. Pré-requisito: o passo 4 da preparação do servidor (1ª execução do Claude Code), feito pela pessoa |
+| Uma sessão nova conduzindo o fluxo só pelo `SKILL.md` | **Pendente**: nos testes acima os scripts foram conduzidos manualmente |
 | Permissões do worker remoto | O Orca abre o worker com `--dangerously-skip-permissions` (segue a configuração de novas abas de agente do Orca): **não há pedidos de permissão** para chegar ao coordenador. A proteção é a conta sem sudo/docker e a spec do worker |
 
 Especificação e design: [`.specs/features/coop-skill/`](../../.specs/features/coop-skill/spec.md).
