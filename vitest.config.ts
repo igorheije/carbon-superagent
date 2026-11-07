@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "bin/**/*.test.mjs"],
+    include: ["src/**/*.test.ts", "bin/**/*.test.mjs", "skills/**/*.test.mjs"],
     environment: "node",
     // Many tests drive real git and child processes; under CI or parallel load the 5 s default
     // produced timeouts that were not failures.
