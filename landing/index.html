@@ -177,6 +177,67 @@
     .hero { padding-top: 40px; }
     section { padding-top: 80px; }
   }
+
+  /* skill carbon-coop */
+  .coop { margin-top: 44px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; align-items: stretch; }
+  .session { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; box-shadow: 0 30px 90px -50px rgba(34,197,94,.35); }
+  .session .bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: var(--subtle); }
+  .session .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+  .session .bar span { margin-left: 8px; }
+  .session ol { list-style: none; margin: 0; padding: 18px 20px 20px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
+  .session li { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+  .session li.you { color: var(--ink); margin-top: 12px; }
+  .session li.you:first-child { margin-top: 0; }
+  .session li.you::before { content: "› "; color: var(--accent); }
+  .session li.ok::before { content: "✓ "; color: var(--accent); }
+  .session li.wait::before { content: "… "; color: var(--subtle); }
+  .session li.br { color: var(--accent); }
+  .session.reveal li { opacity: 0; transform: translateY(4px); }
+  .session.reveal.in li { animation: coop-line .35s ease forwards; animation-delay: calc(var(--i) * 170ms + 200ms); }
+  @keyframes coop-line { to { opacity: 1; transform: none; } }
+  .coop-side { display: grid; gap: 14px; grid-template-rows: auto 1fr; }
+  .coop > *, .coop-side > *, .uses > *, .guards > * { min-width: 0; }
+  .install-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .install-card .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+  .install-card h3 { margin: 10px 0 12px; font-size: 19px; letter-spacing: -.015em; font-weight: 600; }
+  .cmd { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 10px 12px; margin-top: 8px; }
+  .cmd code { flex: 1; font-family: var(--mono); font-size: 12.5px; overflow-x: auto; white-space: nowrap; }
+  .cmd button { font: 500 11px var(--mono); color: var(--muted); background: transparent; border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; cursor: pointer; flex: none; }
+  .cmd button:hover, .cmd button:focus-visible { color: var(--ink); border-color: var(--accent); outline: none; }
+  .install-card details { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .install-card summary { cursor: pointer; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .install-card summary:hover { color: var(--ink); }
+  .install-card .note { color: var(--subtle); font-size: 13px; margin: 10px 0 0; }
+  .wire { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; }
+  .wire .cap { font-size: 11px; letter-spacing: .1em; color: var(--accent); margin-bottom: 8px; }
+  .wire .row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; padding: 7px 0; }
+  .wire .row + .row { border-top: 1px dashed var(--line); }
+  .wire .end { color: var(--ink); }
+  .wire .end:last-child { text-align: right; }
+  .wire .via { color: var(--accent); white-space: nowrap; }
+  .uses { margin-top: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .use { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; transition: border-color .25s; }
+  .use:hover { border-color: var(--line-strong); }
+  .use .n { font-family: var(--mono); font-size: 10px; color: var(--subtle); letter-spacing: .12em; }
+  .use > code { display: block; font-family: var(--mono); font-size: 12px; color: var(--accent); margin-top: 10px; word-break: break-word; }
+  .use p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+  .guards { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .guard { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); }
+  .guard b { display: block; font-weight: 600; font-size: 15px; }
+  .guard span { display: block; color: var(--muted); font-size: 14px; margin-top: 6px; }
+  @media (prefers-reduced-motion: reduce) {
+    .session.reveal li, .session.reveal.in li { opacity: 1; transform: none; animation: none; }
+  }
+  @media (max-width: 900px) {
+    .coop { grid-template-columns: 1fr; }
+    .uses { grid-template-columns: repeat(2, 1fr); }
+    .guards { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .uses { grid-template-columns: 1fr; }
+    .wire .row { grid-template-columns: 1fr; gap: 2px; }
+    .wire .end:last-child { text-align: left; }
+  }
 </style>
 <link rel="stylesheet" href="assets/flows.css">
 <script src="assets/flows.js" defer></script>
@@ -196,6 +257,7 @@
       <a class="btn btn-ghost hide-sm" href="#como-funciona">Como funciona</a>
       <a class="btn btn-ghost hide-sm" href="#integracoes">Integrações</a>
       <a class="btn btn-ghost hide-sm" href="#inspiracao">Inspiração</a>
+      <a class="btn btn-ghost hide-sm" href="#skill">Skill</a>
       <a class="btn btn-ghost" href="docs.html">Docs</a>
       <a class="btn" href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">GitHub</a>
     </div>
@@ -534,6 +596,69 @@
     </div>
   </section>
 
+  <section id="skill" class="wrap" aria-labelledby="skill-title">
+    <p class="eyebrow reveal"><span class="dot"></span>skill para claude code · experimental</p>
+    <h2 class="reveal" id="skill-title">Sua sessão do Claude Code chama reforço.</h2>
+    <p class="sub reveal">A skill <code>carbon-coop</code> pareia um servidor seu como <b>servidor Orca</b> e manda partes do trabalho para lá. Os workers usam o Claude Code <b>deste computador</b>, e o resultado volta como branch para você revisar. Não precisa do painel do Carbon: só de Orca, <code>ssh</code>, <code>git</code> e Node 22+.</p>
+
+    <div class="coop">
+      <div class="session reveal" role="img" aria-label="Exemplo de sessão: conectar ao servidor, mandar uma tarefa e receber o branch de volta">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>claude · sessão coordenadora</span></div>
+        <ol aria-hidden="true">
+          <li class="you" style="--i:0">/carbon-coop connect carbon@meu-servidor</li>
+          <li class="ok" style="--i:1">preflight: orca 1.4.253 · ssh por chave · node 22</li>
+          <li class="ok" style="--i:2">proxy do Claude Code em 127.0.0.1:8787 (login fica aqui)</li>
+          <li class="ok" style="--i:3">túnel SSH aberto · orca-ide serve em 127.0.0.1</li>
+          <li class="ok" style="--i:4">pareado como coop-meu-servidor</li>
+          <li class="you" style="--i:5">manda os testes do módulo de auth pro servidor</li>
+          <li class="ok" style="--i:6">enviado o commit a1f3c9e (mudanças não commitadas ficam aqui)</li>
+          <li class="wait" style="--i:7">worker rodando no servidor · encerro o turno, o Orca me acorda</li>
+          <li class="ok" style="--i:8">worker terminou: 3 commits, 14 testes passando</li>
+          <li class="br" style="--i:9">branch coop-meu-servidor/coop/auth-tests pronto para revisar</li>
+        </ol>
+      </div>
+
+      <div class="coop-side">
+        <div class="install-card reveal">
+          <span class="k">INSTALAR</span>
+          <h3>Um comando no Claude Code</h3>
+          <div class="cmd"><code>/plugin install carbon-coop --marketplace leolegends/carbon-superagent</code><button type="button" data-copy="/plugin install carbon-coop --marketplace leolegends/carbon-superagent" aria-label="Copiar comando de instalação">copiar</button></div>
+          <details>
+            <summary>Claude Code anterior à 2.1.275 ou sem plugin</summary>
+            <div class="cmd"><code>/plugin marketplace add leolegends/carbon-superagent</code><button type="button" data-copy="/plugin marketplace add leolegends/carbon-superagent" aria-label="Copiar comando do marketplace">copiar</button></div>
+            <div class="cmd"><code>/plugin install carbon-coop@carbon-superagent</code><button type="button" data-copy="/plugin install carbon-coop@carbon-superagent" aria-label="Copiar comando de instalação pelo marketplace">copiar</button></div>
+            <p class="note">Sem plugin: copie <code>skills/carbon-coop/</code> do repositório para <code>~/.claude/skills/</code>.</p>
+          </details>
+        </div>
+        <div class="wire reveal" aria-label="Conexões entre este computador e o servidor">
+          <span class="cap">UMA CONEXÃO SSH, ABERTA DAQUI</span>
+          <div class="row"><span class="end">sessão + Orca</span><span class="via">─ ssh -L →</span><span class="end">orca-ide serve</span></div>
+          <div class="row"><span class="end">proxy (seu login)</span><span class="via">← ssh -R ─</span><span class="end">claude do worker</span></div>
+          <div class="row"><span class="end">repo local</span><span class="via">⇄ git/ssh</span><span class="end">~/coop/&lt;repo&gt;.git</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="uses">
+      <div class="use reveal"><span class="n">01 · CONECTAR</span><code>/carbon-coop connect usuario@host</code><p>Checa tudo, liga o proxy, abre o túnel e pareia o servidor.</p></div>
+      <div class="use reveal"><span class="n">02 · MANDAR</span><code>"manda a parte X pro servidor"</code><p>Envia o código commitado e inicia um worker lá com uma spec clara.</p></div>
+      <div class="use reveal"><span class="n">03 · ACOMPANHAR</span><code>/carbon-coop status</code><p>Perguntas do worker chegam na sua sessão. O que for decisão sua, ele pergunta.</p></div>
+      <div class="use reveal"><span class="n">04 · TRAZER E DESLIGAR</span><code>/carbon-coop disconnect</code><p>O branch <code>coop/&lt;slug&gt;</code> volta para revisar. Desligou, o servidor perde o acesso.</p></div>
+    </div>
+
+    <div class="guards">
+      <div class="guard reveal"><b>O login fica aqui</b><span>O worker manda um token falso; o proxy deste Mac injeta o real. O link de pareamento nunca aparece.</span></div>
+      <div class="guard reveal"><b>Nenhuma porta pública</b><span>Uma conexão SSH aberta daqui. No servidor, tudo escuta só em 127.0.0.1.</span></div>
+      <div class="guard reveal"><b>Só o commitado viaja</b><span>Repositórios sensíveis entram em <code>blockedRepos</code> e não saem da máquina.</span></div>
+    </div>
+
+    <div class="cta reveal">
+      <a class="btn btn-primary" href="https://github.com/leolegends/carbon-superagent/blob/main/docs/skills/carbon-coop.md" rel="noopener noreferrer">Guia da skill →</a>
+      <a class="btn" href="docs.html#skill-coop">Na documentação</a>
+      <a class="btn" href="https://github.com/leolegends/carbon-superagent/blob/main/skills/carbon-coop/references/server-setup.md" rel="noopener noreferrer">Preparar o servidor</a>
+    </div>
+  </section>
+
   <section id="comecar" class="wrap">
     <p class="eyebrow reveal"><span class="dot"></span>começar</p>
     <h2 class="reveal">Dois minutos, um terminal.</h2>
@@ -615,6 +740,18 @@
       current = (current + 1) % stages.length;
     }, WALK_MS);
   };
+
+  document.querySelectorAll("[data-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        button.textContent = "copiado";
+      } catch {
+        button.textContent = "selecione e copie";
+      }
+      setTimeout(() => (button.textContent = "copiar"), 1800);
+    });
+  });
 
   const copy = document.getElementById("copy");
   copy.addEventListener("click", async () => {
