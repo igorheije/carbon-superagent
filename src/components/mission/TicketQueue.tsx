@@ -3,11 +3,12 @@
 import { AsciiReveal, AsciiSkeleton } from "ascii-reveal";
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ArrowUp, RotateCcw, Square, Trash2 } from "lucide-react";
+import { ArrowUp, Pencil, RotateCcw, Square, Trash2 } from "lucide-react";
 import { api } from "@/lib/client/api";
 import { useEngine, useFocusTicket } from "@/components/engine/EngineProvider";
 import { Panel } from "@/components/ui/Panel";
 import { STAGES, type Ticket, type TicketStatus } from "@/lib/domain/types";
+import { EditTaskDialog } from "./EditTaskDialog";
 import { PlacementBadge } from "./PlacementBadge";
 import { runningCount } from "./SubagentPanel";
 
@@ -39,6 +40,7 @@ function PriorityGlyph({ priority }: { priority: Ticket["priority"] }) {
 function LiveActions({ ticket }: { ticket: Ticket }) {
   const [error, setError] = useState<string | null>(null);
   const [isStopping, setIsStopping] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const isRemote = (ticket.runtime ?? "local") !== "local";
   const act = (path: string, body?: unknown, method = "POST") =>
     api(path, { method, body }).then(
@@ -51,6 +53,8 @@ function LiveActions({ ticket }: { ticket: Ticket }) {
     void act(`/api/tasks/${ticket.id}`, { action: "cancel" }).finally(() => setIsStopping(false));
   };
   const canStop = ticket.status === "running" || (isRemote && ticket.status === "waiting");
+  // Editing while it runs or waits for an answer would change the task under the agent.
+  const canEdit = ticket.status === "queued" || ticket.status === "done" || ticket.status === "failed";
   const button = "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-muted hover:text-ink disabled:opacity-50";
   return (
     <span className="flex shrink-0 items-center gap-1">
@@ -58,6 +62,10 @@ function LiveActions({ ticket }: { ticket: Ticket }) {
       {canStop && (
         <button type="button" className={button} disabled={isStopping} onClick={stop}><Square className="size-3" /> {isStopping ? "parando…" : "parar"}</button>
       )}
+      {canEdit && (
+        <button type="button" className={button} aria-label={`Editar ${ticket.key}`} title="Editar o pedido e onde roda" onClick={() => setIsEditing(true)}><Pencil className="size-3" /></button>
+      )}
+      {isEditing && <EditTaskDialog ticket={ticket} onClose={() => setIsEditing(false)} />}
       {(ticket.status === "failed" || ticket.status === "done" || ticket.status === "waiting") && (
         <button type="button" className={button} onClick={() => void act(`/api/tasks/${ticket.id}`, { action: "retry" })}><RotateCcw className="size-3" /> rodar de novo</button>
       )}

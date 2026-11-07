@@ -168,6 +168,30 @@ export function saveSnapshot(id: string, snapshot: Ticket): void {
   getDb().prepare("UPDATE tasks SET snapshot = ?, status = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(snapshot), snapshot.status, nowIso(), id);
 }
 
+export interface TaskEdit {
+  readonly title: string;
+  readonly description: string;
+  /** Ignored for a distributed task (it always plans and integrates on this machine). */
+  readonly runtime?: TaskRuntime;
+}
+
+export type EditOutcome = "ok" | "not_found" | "busy";
+
+/**
+ * Edits what the task asks for (title, description, where it runs). Refused while it runs or waits
+ * on a question/permission: the WHERE re-checks the status, so a claim racing the edit wins.
+ */
+export function editTask(id: string, edit: TaskEdit): EditOutcome {
+  const task = findTask(id);
+  if (!task) return "not_found";
+  const runtime = task.snapshot.distributed ? task.runtime : (edit.runtime ?? task.runtime);
+  const snapshot: Ticket = { ...task.snapshot, title: edit.title, runtime };
+  const result = getDb()
+    .prepare("UPDATE tasks SET title = ?, description = ?, runtime = ?, snapshot = ?, updated_at = ? WHERE id = ? AND status NOT IN ('running', 'waiting')")
+    .run(edit.title, edit.description, runtime, JSON.stringify(snapshot), nowIso(), id);
+  return Number(result.changes) > 0 ? "ok" : "busy";
+}
+
 export function moveToFront(id: string): void {
   const db = getDb();
   const min = db.prepare("SELECT COALESCE(MIN(position), 0) AS p FROM tasks").get() as { p: number };

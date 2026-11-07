@@ -24,21 +24,28 @@ export function PlacementBadge({ ticket, variant = "compact" }: PlacementBadgePr
   const Icon = ICONS[placement.runtime];
   const tooltip = trail.length > 1 ? `${placement.label}\nexecuções: ${trailText(trail)}` : placement.label;
   const tone = isRunningNow ? "border-accent/60 bg-accent-weak text-ink" : "border-line text-subtle";
-  return (
-    <span className={`inline-flex min-w-0 flex-col gap-0.5 ${variant === "full" ? "max-w-full" : ""}`}>
-      <span title={tooltip} className={`inline-flex ${variant === "full" ? "max-w-full" : "min-w-[64px] max-w-[160px]"} items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[10px] ${tone}`}>
+  const mixedMark = mixed && <ArrowLeftRight className="size-3 shrink-0 text-warn" aria-label="rodou em mais de uma máquina" />;
+
+  if (variant === "compact") {
+    // Never shrinks: the text next to it (repo · requester · model) is what truncates.
+    return (
+      <span title={tooltip} className={`inline-flex max-w-[150px] shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[10px] ${tone}`}>
         <Icon className="size-3 shrink-0" aria-hidden />
-        {variant === "full" ? (
-          <span className="truncate">{placement.label}</span>
-        ) : (
-          <>
-            <span className="truncate" aria-hidden>{placement.short}</span>
-            <span className="sr-only">{tooltip}</span>
-          </>
-        )}
-        {mixed && <ArrowLeftRight className="size-3 shrink-0 text-warn" aria-label="rodou em mais de uma máquina" />}
+        <span className="truncate" aria-hidden>{placement.short}</span>
+        <span className="sr-only">{tooltip}</span>
+        {mixedMark}
       </span>
-      {variant === "full" && trail.length > 1 && <span className="truncate font-mono text-[10px] text-subtle" title={trailText(trail)}>{trailText(trail)}</span>}
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 max-w-full flex-col items-start gap-0.5">
+      <span title={tooltip} className={`inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[10px] ${tone}`}>
+        <Icon className="size-3 shrink-0" aria-hidden />
+        <span className="truncate">{placement.label}</span>
+        {mixedMark}
+      </span>
+      {trail.length > 1 && <span className="max-w-full truncate font-mono text-[10px] text-subtle" title={trailText(trail)}>execuções: {trailText(trail)}</span>}
     </span>
   );
 }
