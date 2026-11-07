@@ -90,10 +90,11 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 | Item | Estado |
 | --- | --- |
 | Scripts (`init`, `preflight`, `proxy`, `tunnel`, `serve`, `pair`, `code-sync`) | Prontos, 9 testes automatizados |
-| Pareamento por túnel SSH | Documentado pelo Orca (`--bind 127.0.0.1`) |
-| Teste ponta a ponta num servidor real | **Pendente** |
-| Agente do `orca-ide serve` herdar `ANTHROPIC_BASE_URL` | A confirmar (alternativa: `env` no `~/.claude/settings.json` do worker) |
-| Pedidos de permissão do worker remoto chegarem ao coordenador | A confirmar |
+| `preflight` contra servidor real (Ubuntu 20.04) | **Validado** (2026-11-07): detecta conta sem chave, sem sudo/docker, Orca faltando |
+| Túnel + proxy: Claude Code do servidor usando o login deste computador | **Validado**: `claude -p` na conta do worker respondeu pelo proxy, sem credencial no servidor |
+| Envio do código e retorno do branch (`code-sync`) | **Validado**: só o commitado viajou; `coop/<slug>` voltou com o commit do servidor |
+| `orca-ide` no servidor (AppImage 1.4.253, sha256 conferido) | Baixado; precisa das bibliotecas do Electron + `xvfb` (ver preparação do servidor) |
+| Pareamento, worker Orca remoto e permissões chegando ao coordenador | **Pendente** até o `orca-ide` rodar no servidor |
 
 Especificação e design: [`.specs/features/coop-skill/`](../../.specs/features/coop-skill/spec.md).
 Relacionado: [túnel SSH + Claude Code compartilhado no Carbon](../distributed/ssh-tunnel-shared-claude.md), a mesma ideia usando o painel.

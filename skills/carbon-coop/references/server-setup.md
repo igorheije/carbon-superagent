@@ -12,7 +12,11 @@ diferentes nas duas pontas podem recusar o pareamento.
 useradd -m -s /bin/bash carbon && chmod 700 /home/carbon      # conta do worker: sem sudo, fora do grupo docker
 install -d -m 700 -o carbon -g carbon /home/carbon/.ssh
 # cole a chave PÚBLICA do coordenador (~/.ssh/id_ed25519.pub) em /home/carbon/.ssh/authorized_keys (0600, dono carbon)
-apt-get install -y git xvfb        # xvfb: o orca-ide sem tela usa um display virtual
+apt-get install -y git
+# bibliotecas do Electron + display virtual que o orca-ide sem tela precisa (Ubuntu 20.04: 50 pacotes novos,
+# nenhum removido/atualizado — confira antes com apt-get install -s)
+apt-get install -y --no-install-recommends libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
+  libcups2 libgbm1 libgtk-3-0 libxcomposite1 libxdamage1 libasound2 xvfb
 ```
 
 Alternativa ao AppImage (passo 2): `apt-get install -y ./orca-ide_1.4.253_amd64.deb`, baixado de
@@ -31,13 +35,13 @@ npm i -g @anthropic-ai/claude-code          # NÃO faça login aqui: o login fic
 # Orca (AppImage extraído: não precisa de libfuse2)
 mkdir -p ~/.local/orca ~/.local/bin && cd ~/.local/orca
 curl -fLO https://github.com/stablyai/orca/releases/download/v1.4.253/orca-linux.AppImage
-sha256sum orca-linux.AppImage               # compare com o publicado na release antes de executar
+sha256sum orca-linux.AppImage               # 1.4.253: fce9baedb617c03dde941c6a4408d5bab92d17d2bed1def4015ddbd8fa74efdc (digest da release)
 chmod +x orca-linux.AppImage && ./orca-linux.AppImage --appimage-extract >/dev/null
-find ~/.local/orca/squashfs-root -name 'orca-ide' -type f    # ache o CLI empacotado
-ln -sf <caminho-achado> ~/.local/bin/orca-ide && orca-ide --version
+ln -sf ~/.local/orca/squashfs-root/resources/bin/orca-ide ~/.local/bin/orca-ide && orca-ide --version
 ```
 
-[Incerto] O caminho do CLI dentro do AppImage não está documentado; se o `find` não achar nada, use o `.deb`.
+Na 1.4.253 o CLI fica em `squashfs-root/resources/bin/orca-ide`. Se `orca-ide --version` acusar
+`error while loading shared libraries`, faltam as bibliotecas do passo 1 (`ldd ~/.local/orca/squashfs-root/orca-ide | grep "not found"`).
 
 ## 3. Claude Code do worker apontando para o proxy
 

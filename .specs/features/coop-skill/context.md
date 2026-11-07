@@ -26,7 +26,7 @@
 | # | Pergunta | Confiança atual |
 | --- | --- | --- |
 | Q1 | O `orca serve` roda headless em Linux (VPS sem desktop) e como se instala lá? | [Certo] pela doc oficial: `orca-ide serve` (AppImage/.deb, v1.4.253), `orca serve service install` para systemd. [Incerto] no Ubuntu 20.04 do VPS (glibc 2.31, libfuse2/Xvfb) — não testado: download bloqueado pelo modo automático |
-| Q2 | O agente `claude` lançado pelo runtime remoto herda `ANTHROPIC_BASE_URL`? Ou é preciso `env` no `~/.claude/settings.json` do usuário `carbon`? | [Incerto] |
+| Q2 | O agente `claude` lançado pelo runtime remoto herda `ANTHROPIC_BASE_URL`? | [Certo] o `claude` da conta do worker funciona pelo proxy com as variáveis (validado). [Incerto] se o `orca-ide serve` repassa o ambiente ao agente |
 | Q3 | Pareamento atravessando `ssh -L`? | [Certo] pela doc: `orca-ide serve --bind 127.0.0.1 --pairing-address 127.0.0.1` é o exemplo oficial para túnel SSH |
 | Q4 | Pedidos de permissão do Claude Code no worker remoto chegam ao coordenador (ask/escalation) ou travam no terminal remoto? | [Incerto] |
 | Q5 | Versões do Orca precisam ser iguais nas duas pontas? | [Incerto] |
