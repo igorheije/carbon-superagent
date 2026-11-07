@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill carbon-coop · Carbon SuperAgent</title>
+<meta name="description" content="Skill do Claude Code para trabalho cooperativo: pareie um servidor seu pelo Orca, mande partes do trabalho para lá usando o Claude Code deste computador e receba o resultado como branch.">
+<meta property="og:title" content="Skill carbon-coop · Carbon SuperAgent">
+<meta property="og:description" content="Sua sessão do Claude Code chama reforço: um servidor seu trabalha junto, com o seu login daqui e sem porta pública.">
+<meta property="og:image" content="https://carbon-superagent.vercel.app/assets/mission-control.png">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="assets/carbon-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  // Same theme key as docs.html / como-funciona.html, applied before first paint. Storage may be unavailable: ignore.
+  try { const t = localStorage.getItem("carbon-docs-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<style>
+  /* Same tokens as index.html / docs.html / como-funciona.html */
+  :root {
+    --bg: #0a0a0b; --surface: #111113; --surface-2: #17171a;
+    --line: #232327; --line-strong: #34343a;
+    --ink: #f4f4f5; --muted: #9b9ba3; --subtle: #6b6b73;
+    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
+    --warn: #f59e0b; --warn-soft: rgba(245,158,11,.14);
+    --danger: #ef4444;
+    --radius: 14px;
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+      --line: #e6e6e8; --line-strong: #d4d4d8;
+      --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+      --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+      --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+      --danger: #dc2626;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #fafafa; --surface: #ffffff; --surface-2: #f3f3f4;
+    --line: #e6e6e8; --line-strong: #d4d4d8;
+    --ink: #0b0b0c; --muted: #5d5d66; --subtle: #8a8a93;
+    --accent: #16a34a; --accent-soft: rgba(22,163,74,.10);
+    --warn: #b45309; --warn-soft: rgba(180,83,9,.10);
+    --danger: #dc2626;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 72px 72px; background-position: -1px -1px; background-attachment: fixed;
+  }
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 0%, transparent 0%, var(--bg) 72%); }
+  header, main, footer { position: relative; z-index: 1; }
+  a { color: inherit; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--ink); overflow-wrap: anywhere; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* top bar + scroll progress */
+  .top { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1180px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand { display: flex; align-items: baseline; gap: 8px; text-decoration: none; font-weight: 600; font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
+  .brand small { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--accent); font-weight: 500; }
+  .brand .tag { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .top-links { display: flex; gap: 8px; align-items: center; }
+  .progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(var(--p, 0)); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 500; text-decoration: none; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); cursor: pointer; font-family: var(--sans); transition: border-color .2s, transform .2s; }
+  .btn:hover { border-color: var(--muted); transform: translateY(-1px); }
+  .btn-ghost { color: var(--muted); }
+  .btn-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #04130a; }
+  .icon-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0; }
+  .eyebrow .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 10px var(--accent); }
+
+  /* hero */
+  .hero { padding: 88px 0 40px; display: grid; grid-template-columns: 1.45fr 1fr; gap: 40px; align-items: end; }
+  h1 { font-size: clamp(40px, 5.4vw, 76px); letter-spacing: -.05em; line-height: .95; margin: 18px 0 0; font-weight: 700; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { color: var(--muted); font-size: clamp(17px, 1.6vw, 20px); margin: 26px 0 0; max-width: 620px; }
+  .lede b { color: var(--ink); font-weight: 500; }
+  .hero-card { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 22px; box-shadow: 0 40px 120px -50px rgba(34,197,94,.35); }
+  .hero-card .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .12em; }
+  .hero-card ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+  .hero-card li { font-size: 14px; color: var(--muted); }
+  .hero-card li::before { content: "✓"; color: var(--accent); font-family: var(--mono); margin-right: 10px; }
+  .scroll-hint { margin-top: 36px; font-family: var(--mono); font-size: 12px; color: var(--subtle); display: inline-flex; gap: 10px; align-items: center; }
+  .scroll-hint i { width: 1px; height: 28px; background: linear-gradient(var(--accent), transparent); display: inline-block; animation: hint 1.8s var(--ease) infinite; transform-origin: top; }
+  @keyframes hint { 0% { transform: scaleY(0); } 60% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+  /* story: sticky diagram + scrolling steps */
+  .story { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; padding-top: 40px; }
+  .stage-col { position: relative; }
+  .story > *, .hero > *, .steps > * { min-width: 0; }
+  .stage { position: sticky; top: 88px; height: calc(100vh - 120px); min-height: 460px; display: flex; flex-direction: column; justify-content: center; }
+  .stage-frame { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 18px; padding: 14px; box-shadow: 0 40px 120px -60px rgba(34,197,94,.4); }
+  .stage-frame .bar { display: flex; align-items: center; gap: 6px; padding: 0 4px 10px; font-family: var(--mono); font-size: 11px; color: var(--subtle); }
+  .stage-frame .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+  .stage-frame .bar span { margin-left: 8px; }
+  .stage-frame .bar b { margin-left: auto; font-weight: 500; color: var(--accent); }
+  svg.diagram { width: 100%; height: auto; display: block; }
+  .stage-caption { margin: 14px 4px 0; font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 2.6em; }
+
+  /* diagram pieces */
+  .diagram text { font-family: var(--mono); fill: var(--muted); font-size: 12px; }
+  .diagram .title { fill: var(--ink); font-family: var(--sans); font-weight: 600; font-size: 17px; }
+  .diagram .box { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.2; transition: stroke .6s, opacity .6s; }
+  .diagram .chip { fill: var(--surface); stroke: var(--line); }
+  .diagram .chip-on { fill: var(--accent-soft); stroke: var(--accent); }
+  .diagram .lane { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 150; stroke-dashoffset: 150; transition: stroke-dashoffset 1s var(--ease), opacity .5s; }
+  .diagram .lane-ghost { fill: none; stroke: var(--line-strong); stroke-width: 1.2; stroke-dasharray: 3 5; }
+  .diagram .lane-label { font-size: 11px; fill: var(--subtle); transition: fill .5s; }
+  .diagram .server { transition: opacity .7s var(--ease); opacity: .38; }
+  .diagram .badge, .diagram .lock, .diagram .key, .diagram .askbubble, .diagram .worker-bar-wrap { opacity: 0; transition: opacity .5s var(--ease), transform .7s var(--ease); }
+  .diagram .cpu-fill { transform-box: fill-box; transform-origin: left; transform: scaleX(.18); transition: transform 1s var(--ease), fill .6s; fill: var(--accent); }
+  .diagram .worker-fill { transform-box: fill-box; transform-origin: left; transform: scaleX(0); fill: var(--accent); }
+  .diagram .pkt { opacity: 0; transition: transform 1.6s var(--ease), opacity .4s; }
+  .diagram .pkt rect { fill: var(--accent); }
+  .diagram .pkt text { fill: #04130a; font-size: 11px; font-weight: 500; }
+  .diagram .pkt.warn rect { fill: var(--warn); }
+
+  /* step 1: overloaded */
+  .stage.at-1 .cpu-fill { transform: scaleX(.96); fill: var(--danger); }
+  .stage.at-1 .cpu-label-hot { opacity: 1; }
+  .cpu-label-hot, .cpu-label-ok { transition: opacity .5s; }
+  .stage .cpu-label-hot, .stage .cpu-label-ok { opacity: 0; }
+  /* step 2: tunnel */
+  .stage.at-2 .lane-l, .stage.at-2 .lane-r { stroke-dashoffset: 0; }
+  .stage.at-2 .lane-label.l, .stage.at-2 .lane-label.r { fill: var(--accent); }
+  .stage.at-2 .key { opacity: 1; }
+  /* step 3: paired */
+  .stage.at-3 .server { opacity: 1; }
+  .stage.at-3 .server .box { stroke: var(--accent); }
+  .stage.at-3 .badge { opacity: 1; }
+  /* step 4: code travels */
+  .stage.at-4 .lane-g { stroke-dashoffset: 0; }
+  .stage.at-4 .lane-label.g { fill: var(--accent); }
+  .stage.now-4 .pkt-commit { opacity: 1; transform: translateX(300px); }
+  .stage.at-4 .repo-remote { fill: var(--accent-soft); stroke: var(--accent); }
+  /* step 5: worker runs, asks */
+  .stage.at-5 .worker-bar-wrap { opacity: 1; }
+  .stage.at-5 .worker-fill { animation: work 2.6s var(--ease) forwards; }
+  .stage.now-5 .pkt-token { opacity: 1; transform: translateX(-300px); }
+  .stage.now-5 .askbubble { opacity: 1; }
+  .stage.at-5 .cpu-fill { transform: scaleX(.42); fill: var(--accent); }
+  .stage.at-5 .cpu-label-hot { opacity: 0; }
+  .stage.at-5 .cpu-label-ok { opacity: 1; }
+  @keyframes work { to { transform: scaleX(1); } }
+  /* step 6: branch back */
+  .stage.now-6 .pkt-branch { opacity: 1; transform: translateX(-300px); }
+  .stage.at-6 .repo-local { fill: var(--accent-soft); stroke: var(--accent); }
+  .stage.at-6 .worker-fill { transform: scaleX(1); animation: none; }
+  /* step 7: disconnect */
+  .stage.at-7 .lane { opacity: .12; }
+  .stage.at-7 .lane-label { fill: var(--subtle); }
+  .stage.at-7 .server { opacity: .38; }
+  .stage.at-7 .server .box { stroke: var(--line-strong); }
+  .stage.at-7 .badge, .stage.at-7 .key, .stage.at-7 .worker-bar-wrap { opacity: 0; }
+  .stage.at-7 .lock { opacity: 1; }
+  .stage.at-7 .repo-remote { fill: var(--surface); stroke: var(--line); }
+
+  .steps { padding: 0 0 30vh; }
+  .step { min-height: 78vh; display: flex; flex-direction: column; justify-content: center; opacity: .28; transition: opacity .5s var(--ease), transform .6s var(--ease); transform: translateY(12px); }
+  .step.is-active { opacity: 1; transform: none; }
+  .step .n { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--accent); }
+  .step h2 { font-size: clamp(26px, 3.2vw, 40px); letter-spacing: -.035em; line-height: 1.05; margin: 12px 0 0; font-weight: 650; }
+  .step p { color: var(--muted); margin: 14px 0 0; max-width: 520px; }
+  .step p b { color: var(--ink); font-weight: 500; }
+  .term { margin: 18px 0 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.8; overflow-x: auto; color: var(--muted); white-space: pre; }
+  .term .p { color: var(--accent); user-select: none; }
+  .term b { color: var(--ink); font-weight: 500; }
+  .term .ok { color: var(--accent); }
+
+  /* after the story */
+  section.block { padding: 120px 0 0; }
+  section.block h2 { font-size: clamp(30px, 4.4vw, 52px); letter-spacing: -.035em; line-height: 1.02; font-weight: 650; margin: 14px 0 0; max-width: 760px; }
+  .sub { color: var(--muted); max-width: 640px; margin: 18px 0 0; }
+  .install-grid { margin-top: 40px; display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 14px; }
+  .opt { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+  .opt.main { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), var(--surface) 60%); }
+  .opt .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .12em; }
+  .opt h3 { margin: 0; font-size: 19px; letter-spacing: -.015em; font-weight: 600; }
+  .opt p { margin: 0; color: var(--muted); font-size: 14px; }
+  .cmd { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 10px 12px; }
+  .cmd code { flex: 1; background: none; border: 0; padding: 0; font-size: 12.5px; overflow-x: auto; white-space: nowrap; overflow-wrap: normal; }
+  .cmd button { font: 500 11px var(--mono); color: var(--muted); background: transparent; border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; cursor: pointer; flex: none; }
+  .cmd button:hover { color: var(--ink); border-color: var(--accent); }
+  .install-grid > *, .reqs > *, .guards > * { min-width: 0; }
+
+  .cmds { margin-top: 40px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  .cmds .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 20px; padding: 18px 22px; border-top: 1px solid var(--line); align-items: baseline; transition: background .3s; }
+  .cmds .row:first-child { border-top: 0; }
+  .cmds .row:hover { background: var(--accent-soft); }
+  .cmds .row code { color: var(--accent); background: none; border: 0; padding: 0; font-size: 13px; }
+  .cmds .row span { color: var(--muted); font-size: 15px; }
+
+  .reqs { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .req { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .req h3 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  .req ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 15px; display: grid; gap: 6px; }
+
+  .guards { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .guard { border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; background: linear-gradient(180deg, var(--accent-soft), transparent 70%); }
+  .guard.risk { background: linear-gradient(180deg, var(--warn-soft), transparent 70%); }
+  .guard b { display: block; font-weight: 600; font-size: 16px; }
+  .guard span { display: block; color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .guard.risk b::before { content: "! "; color: var(--warn); font-family: var(--mono); }
+
+  .status { margin-top: 40px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 12px; color: var(--muted); }
+  .pill.ok { border-color: var(--accent); color: var(--ink); }
+  .pill.ok::before { content: "✓ "; color: var(--accent); }
+  .pill.wait::before { content: "… "; color: var(--warn); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+
+  footer { margin-top: 120px; border-top: 1px solid var(--line); padding: 28px 0 44px; }
+  .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: var(--subtle); font-size: 13px; font-family: var(--mono); }
+  .foot a { text-decoration: none; } .foot a:hover { color: var(--ink); }
+
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .7s ease, transform .7s var(--ease); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal, .step { opacity: 1; transform: none; transition: none; }
+    .diagram * { transition: none !important; animation: none !important; }
+    .diagram .pkt { display: none; }
+    .scroll-hint i { animation: none; }
+  }
+  @media (max-width: 980px) {
+    .hero { grid-template-columns: 1fr; padding-top: 56px; }
+    .story { grid-template-columns: 1fr; gap: 0; }
+    .stage-col { display: contents; }
+    .stage { align-self: start; }
+    .stage { top: 64px; height: auto; min-height: 0; padding: 10px 0; background: color-mix(in srgb, var(--bg) 92%, transparent); z-index: 5; }
+    .stage-caption { display: none; }
+    .steps { padding-bottom: 20vh; }
+    .step { min-height: 70vh; }
+    .install-grid, .guards { grid-template-columns: 1fr; }
+    .reqs { grid-template-columns: 1fr; }
+    .cmds .row { grid-template-columns: 1fr; gap: 4px; }
+  }
+  @media (max-width: 560px) {
+    .wrap, .top-in { padding: 0 16px; }
+    .hide-sm { display: none; }
+    .brand .tag { display: none; }
+    .diagram .item { display: none; }
+    .diagram .title { font-size: 22px; }
+    .step h2 { font-size: 26px; }
+    section.block { padding-top: 88px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="index.html">Carbon <small>SUPERAGENT</small> <span class="tag">/ skill carbon-coop</span></a>
+    <nav class="top-links" aria-label="Principal">
+      <a class="btn btn-ghost hide-sm" href="#instalar">Instalar</a>
+      <a class="btn btn-ghost hide-sm" href="#usar">Usar</a>
+      <a class="btn btn-ghost" href="docs.html#skill-coop">Docs</a>
+      <button type="button" class="btn icon-btn" id="theme" aria-label="Alternar tema claro/escuro" title="Alternar tema">◐</button>
+    </nav>
+  </div>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <p class="eyebrow"><span class="dot"></span>skill para claude code · experimental</p>
+      <h1>Sua sessão do Claude Code <em>chama reforço.</em></h1>
+      <p class="lede">A skill <code>carbon-coop</code> pareia um servidor seu como <b>servidor Orca</b> e manda partes do trabalho para lá. Os workers usam o Claude Code <b>deste computador</b>, nenhuma porta fica aberta na internet e o resultado volta como <b>branch</b> para você revisar.</p>
+      <span class="scroll-hint"><i></i>role para ver o caminho completo</span>
+    </div>
+    <div class="hero-card">
+      <span class="k">DEPENDE SÓ DE</span>
+      <ul>
+        <li>Orca (aqui e no servidor, mesma versão)</li>
+        <li><code>ssh</code> por chave e <code>git</code></li>
+        <li>Node 22+ e Claude Code logado aqui</li>
+        <li>Nada do painel do Carbon</li>
+      </ul>
+      <div class="cmd" style="margin-top:16px"><code>/plugin install carbon-coop --marketplace leolegends/carbon-superagent</code><button type="button" data-copy="/plugin install carbon-coop --marketplace leolegends/carbon-superagent" aria-label="Copiar comando de instalação">copiar</button></div>
+    </div>
+  </div>
+
+  <div class="wrap story" id="usar">
+    <div class="stage-col">
+      <div class="stage" id="stage" data-step="0">
+        <div class="stage-frame">
+          <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>carbon-coop</span><b id="stage-step">01 / 07</b></div>
+          <svg class="diagram" viewBox="0 0 640 430" role="img" aria-labelledby="diagram-title">
+            <title id="diagram-title">Este computador e o servidor ligados por uma conexão SSH com três caminhos: ssh -L para o Orca do servidor, ssh -R para o proxy de login e git por SSH para o código.</title>
+            <!-- este computador -->
+            <g class="local">
+              <rect class="box" x="16" y="20" width="236" height="390" rx="16"/>
+              <text class="title" x="36" y="54">este computador</text>
+              <text class="item" x="36" y="76">sessão coordenadora</text>
+              <rect class="chip" x="36" y="122" width="196" height="40" rx="9"/>
+              <text x="50" y="147">Orca</text>
+              <rect class="chip" x="36" y="202" width="196" height="40" rx="9"/>
+              <text x="50" y="227">proxy :8787</text>
+              <g class="key"><rect class="chip-on" x="164" y="210" width="58" height="24" rx="6"/><text x="172" y="226" style="fill:var(--accent)">login</text></g>
+              <rect class="chip repo-local" x="36" y="282" width="196" height="40" rx="9"/>
+              <text x="50" y="307">repo local</text>
+              <text class="item" x="36" y="356">CPU</text>
+              <rect x="72" y="346" width="160" height="12" rx="6" style="fill:var(--surface)"/>
+              <rect class="cpu-fill" x="72" y="346" width="160" height="12" rx="6"/>
+              <text class="cpu-label-hot" x="36" y="388" style="fill:var(--danger)">tudo rodando aqui · 100%</text>
+              <text class="cpu-label-ok" x="36" y="388" style="fill:var(--accent)">dividido com o servidor</text>
+            </g>
+
+            <!-- lanes -->
+            <path class="lane-ghost" d="M252 142 H388"/>
+            <path class="lane-ghost" d="M252 222 H388"/>
+            <path class="lane-ghost" d="M252 302 H388"/>
+            <path class="lane lane-l" d="M252 142 H388"/>
+            <path class="lane lane-r" d="M388 222 H252"/>
+            <path class="lane lane-g" d="M252 302 H388"/>
+            <text class="lane-label l" x="320" y="132" text-anchor="middle">ssh -L →</text>
+            <text class="lane-label r" x="320" y="212" text-anchor="middle">← ssh -R</text>
+            <text class="lane-label g" x="320" y="292" text-anchor="middle">git / ssh</text>
+
+            <!-- servidor -->
+            <g class="server">
+              <rect class="box" x="388" y="20" width="236" height="390" rx="16"/>
+              <text class="title" x="408" y="54">servidor</text>
+              <text class="item" x="408" y="76">conta sem sudo</text>
+              <rect class="chip" x="408" y="122" width="196" height="40" rx="9"/>
+              <text x="422" y="147">orca-ide serve</text>
+              <g class="badge"><rect class="chip-on" x="524" y="36" width="80" height="24" rx="6"/><text x="564" y="52" text-anchor="middle" style="fill:var(--accent)">pareado</text></g>
+              <rect class="chip" x="408" y="202" width="196" height="40" rx="9"/>
+              <text x="422" y="227">worker claude</text>
+              <rect class="chip repo-remote" x="408" y="282" width="196" height="40" rx="9"/>
+              <text x="422" y="307">~/coop/&lt;repo&gt;.git</text>
+              <g class="worker-bar-wrap">
+                <text class="item" x="408" y="356">worker</text>
+                <rect x="462" y="346" width="142" height="12" rx="6" style="fill:var(--surface)"/>
+                <rect class="worker-fill" x="462" y="346" width="142" height="12" rx="6"/>
+              </g>
+              <text class="item" x="408" y="388">só escuta em 127.0.0.1</text>
+            </g>
+            <g class="askbubble"><rect x="268" y="152" width="104" height="26" rx="13" style="fill:var(--warn-soft);stroke:var(--warn)"/><text x="320" y="169" text-anchor="middle" style="fill:var(--warn)">? pergunta</text></g>
+            <g class="lock"><rect x="436" y="168" width="140" height="34" rx="10" style="fill:var(--surface);stroke:var(--danger)"/><text x="506" y="190" text-anchor="middle" style="fill:var(--danger)">acesso cortado</text></g>
+            <!-- packets (drawn last, travel from box to box) -->
+            <g class="pkt pkt-commit"><rect x="150" y="290" width="72" height="24" rx="12"/><text x="186" y="306" text-anchor="middle">a1f3c9e</text></g>
+            <g class="pkt pkt-token"><rect x="450" y="210" width="72" height="24" rx="12"/><text x="486" y="226" text-anchor="middle">API call</text></g>
+            <g class="pkt pkt-branch"><rect x="446" y="290" width="80" height="24" rx="12"/><text x="486" y="306" text-anchor="middle">coop/…</text></g>
+          </svg>
+        </div>
+        <p class="stage-caption" id="stage-caption" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div class="steps">
+      <article class="step" data-step="1" data-caption="Tudo roda aqui. O servidor está do lado, parado.">
+        <span class="n">01 · O PROBLEMA</span>
+        <h2>Sua máquina no limite, o servidor parado.</h2>
+        <p>Várias tarefas abertas, build e testes disputando CPU. Você tem um servidor com folga, mas o <b>código</b> e o <b>login do Claude Code</b> estão aqui.</p>
+      </article>
+      <article class="step" data-step="2" data-caption="Uma conexão SSH aberta daqui: -L para o Orca do servidor, -R para o proxy de login.">
+        <span class="n">02 · CONECTAR</span>
+        <h2>Uma conexão SSH, dois sentidos.</h2>
+        <p>A skill checa tudo e liga um <b>proxy local</b> que lê o seu login do Claude Code no Keychain. Depois abre uma única conexão SSH: <code>-L</code> leva até o Orca do servidor e <code>-R</code> devolve o caminho até o proxy. Nenhuma porta pública.</p>
+<pre class="term"><span class="p">› </span><b>/carbon-coop connect carbon@servidor</b>
+<span class="ok">✓</span> preflight: orca · ssh por chave · node 22
+<span class="ok">✓</span> proxy em 127.0.0.1:8787 (login fica aqui)
+<span class="ok">✓</span> túnel aberto</pre>
+      </article>
+      <article class="step" data-step="3" data-caption="orca-ide serve em 127.0.0.1, pareado como servidor Orca. O link de pareamento nunca aparece.">
+        <span class="n">03 · PAREAR</span>
+        <h2>O servidor vira um servidor Orca.</h2>
+        <p>No servidor sobe <code>orca-ide serve</code> escutando só em <code>127.0.0.1</code>. O link de pareamento vai direto para <code>orca environment add</code>: <b>nunca é impresso</b> e é apagado do log do servidor.</p>
+<pre class="term"><span class="ok">✓</span> orca-ide serve em 127.0.0.1:16768
+<span class="ok">✓</span> pareado como coop-servidor</pre>
+      </article>
+      <article class="step" data-step="4" data-caption="git push do commit para ~/coop/<repo>.git. O que não está commitado fica aqui.">
+        <span class="n">04 · MANDAR</span>
+        <h2>Só o commitado viaja.</h2>
+        <p>Você pede em linguagem natural. A skill envia <b>o commit atual</b> por git/SSH para um repositório no servidor e inicia um worker lá com uma spec clara. Mudanças não commitadas ficam aqui; repositórios em <code>blockedRepos</code> nunca saem.</p>
+<pre class="term"><span class="p">› </span><b>manda os testes do módulo de auth pro servidor</b>
+<span class="ok">✓</span> enviado a1f3c9e → coop/base-auth-tests
+<span class="ok">✓</span> worker iniciado em coop-servidor</pre>
+      </article>
+      <article class="step" data-step="5" data-caption="O worker chama o proxy pelo túnel; o login é injetado aqui. Perguntas voltam para a sua sessão.">
+        <span class="n">05 · TRABALHAR</span>
+        <h2>O worker usa o seu login, sem levá-lo.</h2>
+        <p>O Claude Code do servidor manda um <b>token falso</b> para <code>127.0.0.1:8787</code>; o túnel entrega no proxy daqui, que troca pelo login real. Se o worker tiver dúvida, a <b>pergunta chega na sua sessão</b>, e o que for decisão sua ele pergunta a você.</p>
+      </article>
+      <article class="step" data-step="6" data-caption="git fetch traz coop/<slug>. Revisar, mesclar ou descartar é com você.">
+        <span class="n">06 · TRAZER</span>
+        <h2>O resultado volta como branch.</h2>
+        <p>Quando o worker termina, a skill busca o branch <code>coop/&lt;slug&gt;</code> e mostra commits e diff. Revisar, mesclar aqui ou descartar é decisão sua; <b>a skill não faz push</b>.</p>
+<pre class="term"><span class="ok">✓</span> worker terminou · 3 commits
+<span class="ok">✓</span> coop-servidor/coop/auth-tests pronto para revisar</pre>
+      </article>
+      <article class="step" data-step="7" data-caption="Túnel e proxy fechados: o servidor perde o acesso à conta na hora.">
+        <span class="n">07 · DESLIGAR</span>
+        <h2>Desligou, acabou o acesso.</h2>
+        <p><code>/carbon-coop disconnect</code> para o servidor Orca, fecha o túnel e o proxy. Sem túnel, o servidor <b>não alcança mais a sua conta</b>, e a credencial nunca esteve lá.</p>
+      </article>
+    </div>
+  </div>
+
+  <section class="wrap block" id="instalar">
+    <p class="eyebrow reveal"><span class="dot"></span>instalar</p>
+    <h2 class="reveal">Um comando no Claude Code.</h2>
+    <p class="sub reveal">A skill vem como plugin do repositório público. Escolha o caminho da sua versão.</p>
+    <div class="install-grid">
+      <div class="opt main reveal">
+        <span class="k">RECOMENDADO · 2.1.275+</span>
+        <h3>Um passo</h3>
+        <div class="cmd"><code>/plugin install carbon-coop --marketplace leolegends/carbon-superagent</code><button type="button" data-copy="/plugin install carbon-coop --marketplace leolegends/carbon-superagent" aria-label="Copiar">copiar</button></div>
+        <p>Abra uma sessão nova: <code>/carbon-coop</code> aparece nas skills.</p>
+      </div>
+      <div class="opt reveal">
+        <span class="k">VERSÕES ANTERIORES</span>
+        <h3>Pelo marketplace</h3>
+        <div class="cmd"><code>/plugin marketplace add leolegends/carbon-superagent</code><button type="button" data-copy="/plugin marketplace add leolegends/carbon-superagent" aria-label="Copiar">copiar</button></div>
+        <div class="cmd"><code>/plugin install carbon-coop@carbon-superagent</code><button type="button" data-copy="/plugin install carbon-coop@carbon-superagent" aria-label="Copiar">copiar</button></div>
+      </div>
+      <div class="opt reveal">
+        <span class="k">SEM PLUGIN</span>
+        <h3>Copiar a pasta</h3>
+        <p>Copie <code>skills/carbon-coop/</code> do repositório para <code>~/.claude/skills/</code>.</p>
+        <div class="cmd"><code>cp -R carbon-superagent/skills/carbon-coop ~/.claude/skills/</code><button type="button" data-copy="cp -R carbon-superagent/skills/carbon-coop ~/.claude/skills/" aria-label="Copiar">copiar</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap block">
+    <p class="eyebrow reveal"><span class="dot"></span>comandos</p>
+    <h2 class="reveal">Fale normal. Ou use os atalhos.</h2>
+    <div class="cmds reveal">
+      <div class="row"><code>/carbon-coop connect usuario@host</code><span>Checa tudo, liga o proxy, abre o túnel, sobe o Orca no servidor e pareia.</span></div>
+      <div class="row"><code>"manda a parte X pro servidor"</code><span>Envia o commit atual, inicia um worker lá e encerra o turno; o Orca acorda a sessão.</span></div>
+      <div class="row"><code>/carbon-coop status</code><span>Proxy, túnel, servidor, workers ativos e branches ainda não integrados.</span></div>
+      <div class="row"><code>/carbon-coop disconnect</code><span>Para o Orca do servidor, fecha túnel e proxy. Pede confirmação se houver worker ativo.</span></div>
+    </div>
+  </section>
+
+  <section class="wrap block">
+    <p class="eyebrow reveal"><span class="dot"></span>antes de conectar</p>
+    <h2 class="reveal">O que precisa estar pronto.</h2>
+    <div class="reqs">
+      <div class="req reveal">
+        <h3>Este computador</h3>
+        <ul>
+          <li>macOS (o login do Claude Code fica no Keychain)</li>
+          <li>Orca, <code>ssh</code>, <code>git</code>, Node 22+</li>
+          <li>Claude Code instalado e logado</li>
+        </ul>
+      </div>
+      <div class="req reveal">
+        <h3>Servidor</h3>
+        <ul>
+          <li>Conta própria, <b>sem sudo</b> e fora do grupo <code>docker</code></li>
+          <li>Acesso por <b>chave</b> SSH (nunca senha)</li>
+          <li>Node 22+, Claude Code <b>sem login</b>, <code>orca-ide</code> na mesma versão do Orca daqui</li>
+        </ul>
+      </div>
+    </div>
+    <div class="cta reveal">
+      <a class="btn" href="https://github.com/leolegends/carbon-superagent/blob/main/skills/carbon-coop/references/server-setup.md" rel="noopener noreferrer">Preparar o servidor, passo a passo →</a>
+    </div>
+  </section>
+
+  <section class="wrap block">
+    <p class="eyebrow reveal"><span class="dot"></span>segurança</p>
+    <h2 class="reveal">O que fica aqui, e o que você precisa saber.</h2>
+    <div class="guards">
+      <div class="guard reveal"><b>O login fica aqui</b><span>O worker manda um token falso; o proxy deste Mac injeta o real e só fala com api.anthropic.com.</span></div>
+      <div class="guard reveal"><b>Nenhuma porta pública</b><span>Uma conexão SSH aberta daqui. No servidor, Orca e proxy escutam só em 127.0.0.1.</span></div>
+      <div class="guard reveal"><b>Só o commitado viaja</b><span>Repositórios sensíveis entram em <code>blockedRepos</code> e não saem da máquina.</span></div>
+      <div class="guard risk reveal"><b>Root no servidor</b><span>Enquanto o túnel estiver aberto, consegue usar a sua conta (sem levar a credencial) e lê o código enviado. Use servidores que você controla.</span></div>
+      <div class="guard risk reveal"><b>Mesma conta, mesma quota</b><span>Mais máquinas trazem paralelismo e CPU, não mais limite de uso do plano.</span></div>
+      <div class="guard risk reveal"><b>Servidor com produção</b><span>A conta do worker não tem sudo nem docker; a spec do worker proíbe mexer em infraestrutura.</span></div>
+    </div>
+    <div class="status reveal" aria-label="Status da skill">
+      <span class="pill ok">scripts com 9 testes automatizados</span>
+      <span class="pill ok">pareamento por túnel documentado pelo Orca</span>
+      <span class="pill wait">teste ponta a ponta num servidor real</span>
+      <span class="pill wait">permissões do worker remoto chegando à sessão</span>
+    </div>
+    <div class="cta reveal">
+      <a class="btn btn-primary" href="https://github.com/leolegends/carbon-superagent/blob/main/docs/skills/carbon-coop.md" rel="noopener noreferrer">Guia completo →</a>
+      <a class="btn" href="https://github.com/leolegends/carbon-superagent/tree/main/skills/carbon-coop" rel="noopener noreferrer">Código da skill</a>
+      <a class="btn btn-ghost" href="index.html#skill">Voltar ao início</a>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    <div class="foot">
+      <span>Carbon SuperAgent · MIT</span>
+      <span><a href="index.html">início</a> · <a href="docs.html">docs</a> · <a href="como-funciona.html">como funciona</a> · <a href="https://github.com/leolegends/carbon-superagent" rel="noopener noreferrer">github</a></span>
+    </div>
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------------------------------------------------------------- theme (same key as docs.html)
+  document.getElementById("theme").addEventListener("click", () => {
+    const isDark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+    const next = isDark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("carbon-docs-theme", next); } catch {}
+  });
+
+  // ---------------------------------------------------------------- scroll progress
+  const progress = document.getElementById("progress");
+  let ticking = false;
+  const paint = () => {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    progress.style.setProperty("--p", max > 0 ? Math.min(1, scrollY / max).toFixed(4) : "0");
+    ticking = false;
+  };
+  addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }, { passive: true });
+  paint();
+
+  // ---------------------------------------------------------------- story: the step in the middle of the viewport drives the diagram
+  const stage = document.getElementById("stage");
+  const counter = document.getElementById("stage-step");
+  const caption = document.getElementById("stage-caption");
+  const steps = [...document.querySelectorAll(".step")];
+  const TOTAL = steps.length;
+  const setStep = (n) => {
+    if (stage.dataset.step === String(n)) return;
+    stage.dataset.step = String(n);
+    const classes = [...stage.classList].filter((c) => !/^(at|now)-\d+$/.test(c));
+    for (let i = 1; i <= n; i += 1) classes.push(`at-${i}`);
+    classes.push(`now-${n}`);
+    stage.className = classes.join(" ");
+    counter.textContent = `${String(n).padStart(2, "0")} / ${String(TOTAL).padStart(2, "0")}`;
+    steps.forEach((s) => s.classList.toggle("is-active", Number(s.dataset.step) === n));
+    caption.textContent = steps[n - 1]?.dataset.caption ?? "";
+  };
+  const storyIo = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => { if (entry.isIntersecting) setStep(Number(entry.target.dataset.step)); });
+  }, { rootMargin: "-45% 0px -45% 0px" });
+  steps.forEach((s) => storyIo.observe(s));
+  setStep(1);
+
+  // ---------------------------------------------------------------- reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.classList.add("in"); io.unobserve(entry.target); } });
+  }, { threshold: 0.15 });
+  document.querySelectorAll(".reveal").forEach((el) => (reduce ? el.classList.add("in") : io.observe(el)));
+
+  // ---------------------------------------------------------------- copy buttons
+  document.querySelectorAll("[data-copy]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(button.dataset.copy); button.textContent = "copiado"; }
+      catch { button.textContent = "selecione e copie"; }
+      setTimeout(() => (button.textContent = "copiar"), 1800);
+    });
+  });
+})();
+</script>
+</body>
+</html>
