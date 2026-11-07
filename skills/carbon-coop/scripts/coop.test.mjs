@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,6 +156,28 @@ describe("preflight.sh", () => {
     const result = await run(script("preflight.sh"), ["vps"], { env: { ...env, FAKE_SSH_FAIL: "1" } }).catch((error) => error);
     expect(result.stdout).toMatch(/^FALTA ssh carbon@example\.test não entra por chave/m);
     expect(result.code).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("proxy.sh with the port already taken", () => {
+  async function occupy(handler) {
+    const server = http.createServer(handler);
+    const port = await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
+    await run(script("init.sh"), ["busy", "carbon@example.test", "--proxy-port", String(port)], { env }).catch(() => {});
+    return { server, port };
+  }
+
+  it("refuses a program that is not a carbon auth proxy", async () => {
+    const { server } = await occupy((_q, r) => r.end("outra coisa"));
+    await expect(run(script("proxy.sh"), ["start", "busy"], { env })).rejects.toMatchObject({ stderr: expect.stringContaining("não é um carbon-auth-proxy") });
+    server.close();
+  });
+
+  it("reuses a carbon auth proxy proven by its identity route", async () => {
+    const { server, port } = await occupy((q, r) => r.end(q.url === "/__carbon-auth-proxy" ? "carbon-auth-proxy" : "x"));
+    const { stdout } = await run(script("proxy.sh"), ["start", "busy"], { env });
+    expect(stdout).toContain(`porta ${port} já tem um carbon-auth-proxy`);
+    server.close();
   });
 });
 

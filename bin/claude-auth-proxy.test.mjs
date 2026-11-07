@@ -3,7 +3,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { createAuthProxy, createClaudeLoginSource, EXPIRY_MARGIN_MS, forwardHeaders, parseClaudeLogin, readTokenFile } from "./claude-auth-proxy.mjs";
+import { createAuthProxy, createClaudeLoginSource, EXPIRY_MARGIN_MS, forwardHeaders, IDENTITY_BODY, IDENTITY_PATH, parseClaudeLogin, readTokenFile } from "./claude-auth-proxy.mjs";
 
 const sandbox = mkdtempSync(path.join(tmpdir(), "carbon-auth-proxy-"));
 afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
@@ -95,6 +95,19 @@ describe("createAuthProxy", () => {
 
     expect(res).toEqual({ status: 200, body: "Bearer late" });
     expect(statuses).toEqual([200]);
+  });
+
+  it("answers its identity route itself, without the credential or the upstream", async () => {
+    let hits = 0;
+    let reads = 0;
+    const upstreamPort = await listen(http.createServer((_q, r) => { hits += 1; r.end(); }));
+    const proxyPort = await listen(createAuthProxy({ upstream: `http://127.0.0.1:${upstreamPort}`, readToken: () => { reads += 1; return "real"; } }));
+
+    const res = await request(proxyPort, { method: "GET", path: IDENTITY_PATH });
+
+    expect(res).toEqual({ status: 200, body: IDENTITY_BODY });
+    expect(hits).toBe(0);
+    expect(reads).toBe(0);
   });
 
   it("answers 503 without contacting upstream when the credential is unavailable", async () => {
