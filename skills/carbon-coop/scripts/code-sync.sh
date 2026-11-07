@@ -41,7 +41,7 @@ case "$action" in
       git remote add "$remote_name" "$target:coop/$repo.git"
     fi
     git push -q --force "$remote_name" "HEAD:refs/heads/coop/base-$slug"
-    remote_path="$(remote "$name" "{ [ -d ~/coop/$repo/.git ] || git clone -q ~/coop/$repo.git ~/coop/$repo; } \
+    remote_path="$(remote "$name" "{ [ -d ~/coop/$repo/.git ] || git clone -q --no-checkout ~/coop/$repo.git ~/coop/$repo; } \
       && git -C ~/coop/$repo fetch -q origin '+refs/heads/coop/*:refs/remotes/origin/coop/*' && cd ~/coop/$repo && pwd")"
     echo "REPO_PATH=$remote_path"
     echo "BASE=origin/coop/base-$slug"

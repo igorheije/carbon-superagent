@@ -68,8 +68,11 @@ Siga o guia: inicie os workers e **encerre o turno**; o Orca acorda a sessão. N
      --task-title "<título curto>" --spec-file <arquivo>
    ```
    Falhou? **Não repita**: leia `failedStage` e siga o guia de recovery do Orca.
-   Primeiro despacho depois de um `connect`: se o worker falhar com erro de autenticação, aplique o
-   passo 3 de `references/server-setup.md` e tente de novo.
+   Primeiro despacho depois de um `connect`: se o worker falhar com `agent_readiness: timeout`, o Claude
+   Code do servidor está na tela de boas-vindas (passo 4 de `references/server-setup.md`, feito pela pessoa);
+   com erro de autenticação, passo 3. Retome com `--retry-of`, nunca com um start novo.
+   O Orca abre o worker sem pedidos de permissão (`--dangerously-skip-permissions`): diga isso à pessoa
+   antes do primeiro despacho.
 5. Encerre o turno.
 
 ### Quando o Orca acordar a sessão
