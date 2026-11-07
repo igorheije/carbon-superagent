@@ -137,39 +137,60 @@
   .cpu-label-hot, .cpu-label-ok { transition: opacity .5s; }
   .stage .cpu-label-hot, .stage .cpu-label-ok { opacity: 0; }
   /* step 2: tunnel */
-  .stage.at-2 .lane-l, .stage.at-2 .lane-r { stroke-dashoffset: 0; }
-  .stage.at-2 .lane-label.l, .stage.at-2 .lane-label.r { fill: var(--accent); }
-  .stage.at-2 .key { opacity: 1; }
+  .stage.at-3 .lane-l, .stage.at-3 .lane-r { stroke-dashoffset: 0; }
+  .stage.at-3 .lane-label.l, .stage.at-3 .lane-label.r { fill: var(--accent); }
+  .stage.at-3 .key { opacity: 1; }
   /* step 3: paired */
-  .stage.at-3 .server { opacity: 1; }
-  .stage.at-3 .server .box { stroke: var(--accent); }
-  .stage.at-3 .badge { opacity: 1; }
+  .stage.at-4 .server { opacity: 1; }
+  .stage.at-4 .server .box { stroke: var(--accent); }
+  .stage.at-4 .badge { opacity: 1; }
   /* step 4: code travels */
-  .stage.at-4 .lane-g { stroke-dashoffset: 0; }
-  .stage.at-4 .lane-label.g { fill: var(--accent); }
-  .stage.now-4 .pkt-commit { opacity: 1; transform: translateX(300px); }
-  .stage.at-4 .repo-remote { fill: var(--accent-soft); stroke: var(--accent); }
+  .stage.at-5 .lane-g { stroke-dashoffset: 0; }
+  .stage.at-5 .lane-label.g { fill: var(--accent); }
+  .stage.now-5 .pkt-commit { opacity: 1; transform: translateX(300px); }
+  .stage.at-5 .repo-remote { fill: var(--accent-soft); stroke: var(--accent); }
   /* step 5: worker runs, asks */
-  .stage.at-5 .worker-bar-wrap { opacity: 1; }
-  .stage.at-5 .worker-fill { animation: work 2.6s var(--ease) forwards; }
-  .stage.now-5 .pkt-token { opacity: 1; transform: translateX(-300px); }
-  .stage.now-5 .askbubble { opacity: 1; }
-  .stage.at-5 .cpu-fill { transform: scaleX(.42); fill: var(--accent); }
-  .stage.at-5 .cpu-label-hot { opacity: 0; }
-  .stage.at-5 .cpu-label-ok { opacity: 1; }
+  .stage.at-6 .worker-bar-wrap { opacity: 1; }
+  .stage.at-6 .worker-fill { animation: work 2.6s var(--ease) forwards; }
+  .stage.now-6 .pkt-token { opacity: 1; transform: translateX(-300px); }
+  .stage.now-6 .askbubble { opacity: 1; }
+  .stage.at-6 .cpu-fill { transform: scaleX(.42); fill: var(--accent); }
+  .stage.at-6 .cpu-label-hot { opacity: 0; }
+  .stage.at-6 .cpu-label-ok { opacity: 1; }
   @keyframes work { to { transform: scaleX(1); } }
   /* step 6: branch back */
-  .stage.now-6 .pkt-branch { opacity: 1; transform: translateX(-300px); }
-  .stage.at-6 .repo-local { fill: var(--accent-soft); stroke: var(--accent); }
-  .stage.at-6 .worker-fill { transform: scaleX(1); animation: none; }
+  .stage.now-7 .pkt-branch { opacity: 1; transform: translateX(-300px); }
+  .stage.at-7 .repo-local { fill: var(--accent-soft); stroke: var(--accent); }
+  .stage.at-7 .worker-fill { transform: scaleX(1); animation: none; }
   /* step 7: disconnect */
-  .stage.at-7 .lane { opacity: .12; }
-  .stage.at-7 .lane-label { fill: var(--subtle); }
-  .stage.at-7 .server { opacity: .38; }
-  .stage.at-7 .server .box { stroke: var(--line-strong); }
-  .stage.at-7 .badge, .stage.at-7 .key, .stage.at-7 .worker-bar-wrap { opacity: 0; }
-  .stage.at-7 .lock { opacity: 1; }
-  .stage.at-7 .repo-remote { fill: var(--surface); stroke: var(--line); }
+  .stage.at-8 .lane { opacity: .12; }
+  .stage.at-8 .lane-label { fill: var(--subtle); }
+  .stage.at-8 .server { opacity: .38; }
+  .stage.at-8 .server .box { stroke: var(--line-strong); }
+  .stage.at-8 .badge, .stage.at-8 .key, .stage.at-8 .worker-bar-wrap { opacity: 0; }
+  .stage.at-8 .lock { opacity: 1; }
+  .stage.at-8 .repo-remote { fill: var(--surface); stroke: var(--line); }
+
+  /* server mode: VPS Linux or a Mac on the same network */
+  body[data-server="linux"] .only-mac, body[data-server="mac"] .only-linux { display: none; }
+  .mode-switch { display: inline-flex; gap: 2px; margin-left: auto; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; }
+  .mode-switch button { white-space: nowrap; font: 500 11px var(--mono); color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer; transition: background .25s, color .25s; }
+  .mode-switch button[aria-pressed="true"] { background: var(--accent); color: #04130a; }
+  .stage-frame .bar b { margin-left: 10px; white-space: nowrap; }
+  .diagram .net { opacity: 0; transition: opacity .6s var(--ease); }
+  .diagram .net text { fill: var(--accent); font-size: 11px; }
+  .diagram .net .wave { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; }
+  .diagram .dev { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+  .stage.at-2 .net { opacity: 1; }
+  .stage.now-2 .server { opacity: 1; }
+  .stage.now-2 .server .box { stroke: var(--accent); }
+  .stage.now-2 .net .wave { animation: wave 1.6s var(--ease) infinite; }
+  .stage.now-2 .net .wave:nth-of-type(2) { animation-delay: .2s; }
+  .stage.now-2 .net .wave:nth-of-type(3) { animation-delay: .4s; }
+  @keyframes wave { 0% { opacity: .15; } 50% { opacity: 1; } 100% { opacity: .15; } }
+  .diagram .swap { transition: opacity .35s; }
+  body.swapping .diagram .swap { opacity: .2; }
+  .step .pick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 
   .steps { padding: 0 0 30vh; }
   .step { min-height: 78vh; display: flex; flex-direction: column; justify-content: center; opacity: .28; transition: opacity .5s var(--ease), transform .6s var(--ease); transform: translateY(12px); }
@@ -236,6 +257,7 @@
     html { scroll-behavior: auto; }
     .reveal, .step { opacity: 1; transform: none; transition: none; }
     .diagram * { transition: none !important; animation: none !important; }
+    body.swapping .diagram .swap { opacity: 1; }
     .diagram .pkt { display: none; }
     .scroll-hint i { animation: none; }
   }
@@ -257,13 +279,16 @@
     .hide-sm { display: none; }
     .brand .tag { display: none; }
     .diagram .item { display: none; }
+    .stage-frame .bar > i, .stage-frame .bar > span { display: none; }
+    .stage-frame .bar { justify-content: space-between; }
+    .mode-switch { margin-left: 0; }
     .diagram .title { font-size: 22px; }
     .step h2 { font-size: 26px; }
     section.block { padding-top: 88px; }
   }
 </style>
 </head>
-<body>
+<body data-server="linux">
 <header class="top">
   <div class="top-in">
     <a class="brand" href="index.html">Carbon <small>SUPERAGENT</small> <span class="tag">/ skill carbon-coop</span></a>
@@ -302,9 +327,9 @@
     <div class="stage-col">
       <div class="stage" id="stage" data-step="0">
         <div class="stage-frame">
-          <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>carbon-coop</span><b id="stage-step">01 / 07</b></div>
+          <div class="bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">carbon-coop</span><div class="mode-switch" role="group" aria-label="Tipo de servidor"><button type="button" data-mode="linux" aria-pressed="true">VPS Linux</button><button type="button" data-mode="mac" aria-pressed="false">Mac na rede</button></div><b id="stage-step">01 / 08</b></div>
           <svg class="diagram" viewBox="0 0 640 430" role="img" aria-labelledby="diagram-title">
-            <title id="diagram-title">Este computador e o servidor ligados por uma conexão SSH com três caminhos: ssh -L para o Orca do servidor, ssh -R para o proxy de login e git por SSH para o código.</title>
+            <title id="diagram-title">Este computador e o servidor (um VPS Linux ou outro Mac na mesma rede) ligados por uma conexão SSH com três caminhos: ssh -L para o Orca do servidor, ssh -R para o proxy de login e git por SSH para o código.</title>
             <!-- este computador -->
             <g class="local">
               <rect class="box" x="16" y="20" width="236" height="390" rx="16"/>
@@ -324,6 +349,21 @@
               <text class="cpu-label-ok" x="36" y="388" style="fill:var(--accent)">dividido com o servidor</text>
             </g>
 
+            <!-- network between the machines -->
+            <g class="net">
+              <g class="only-linux">
+                <circle class="wave" cx="320" cy="62" r="13"/>
+                <path class="wave" d="M307 62 H333 M320 49 C313 55 313 69 320 75 M320 49 C327 55 327 69 320 75"/>
+                <text x="320" y="96" text-anchor="middle">internet · SSH</text>
+              </g>
+              <g class="only-mac">
+                <path class="wave" d="M309 66 Q320 56 331 66"/>
+                <path class="wave" d="M303 60 Q320 45 337 60"/>
+                <path class="wave" d="M297 54 Q320 34 343 54"/>
+                <text x="320" y="96" text-anchor="middle">mesma rede · SSH</text>
+              </g>
+            </g>
+
             <!-- lanes -->
             <path class="lane-ghost" d="M252 142 H388"/>
             <path class="lane-ghost" d="M252 222 H388"/>
@@ -338,10 +378,15 @@
             <!-- servidor -->
             <g class="server">
               <rect class="box" x="388" y="20" width="236" height="390" rx="16"/>
-              <text class="title" x="408" y="54">servidor</text>
-              <text class="item" x="408" y="76">conta sem sudo</text>
+              <text class="title swap only-linux" x="408" y="54">VPS Linux</text>
+              <text class="title swap only-mac" x="408" y="54">MacBook</text>
+              <text class="item swap only-linux" x="408" y="76">conta sem sudo</text>
+              <text class="item swap only-mac" x="408" y="76">usuário Padrão</text>
+              <g class="swap only-linux" aria-hidden="true"><rect class="dev" x="574" y="70" width="30" height="9" rx="2"/><rect class="dev" x="574" y="82" width="30" height="9" rx="2"/><rect class="dev" x="574" y="94" width="30" height="9" rx="2"/></g>
+              <g class="swap only-mac" aria-hidden="true"><rect class="dev" x="577" y="72" width="24" height="17" rx="2"/><path class="dev" d="M571 94 H607 L604 99 H574 Z"/></g>
               <rect class="chip" x="408" y="122" width="196" height="40" rx="9"/>
-              <text x="422" y="147">orca-ide serve</text>
+              <text class="swap only-linux" x="422" y="147">orca-ide serve</text>
+              <text class="swap only-mac" x="422" y="147">orca serve · orcad</text>
               <g class="badge"><rect class="chip-on" x="524" y="36" width="80" height="24" rx="6"/><text x="564" y="52" text-anchor="middle" style="fill:var(--accent)">pareado</text></g>
               <rect class="chip" x="408" y="202" width="196" height="40" rx="9"/>
               <text x="422" y="227">worker claude</text>
@@ -352,7 +397,8 @@
                 <rect x="462" y="346" width="142" height="12" rx="6" style="fill:var(--surface)"/>
                 <rect class="worker-fill" x="462" y="346" width="142" height="12" rx="6"/>
               </g>
-              <text class="item" x="408" y="388">só escuta em 127.0.0.1</text>
+              <text class="item swap only-linux" x="408" y="388">só escuta em 127.0.0.1</text>
+              <text class="item swap only-mac" x="408" y="388">rede local ou Tailscale</text>
             </g>
             <g class="askbubble"><rect x="268" y="152" width="104" height="26" rx="13" style="fill:var(--warn-soft);stroke:var(--warn)"/><text x="320" y="169" text-anchor="middle" style="fill:var(--warn)">? pergunta</text></g>
             <g class="lock"><rect x="436" y="168" width="140" height="34" rx="10" style="fill:var(--surface);stroke:var(--danger)"/><text x="506" y="190" text-anchor="middle" style="fill:var(--danger)">acesso cortado</text></g>
@@ -372,44 +418,53 @@
         <h2>Sua máquina no limite, o servidor parado.</h2>
         <p>Várias tarefas abertas, build e testes disputando CPU. Você tem um servidor com folga, mas o <b>código</b> e o <b>login do Claude Code</b> estão aqui.</p>
       </article>
-      <article class="step" data-step="2" data-caption="Uma conexão SSH aberta daqui: -L para o Orca do servidor, -R para o proxy de login.">
-        <span class="n">02 · CONECTAR</span>
+      <article class="step" data-step="2" data-caption="Um VPS Linux ou outro Mac da mesma rede. A skill detecta o sistema do servidor.">
+        <span class="n">02 · ONDE AJUDAR</span>
+        <h2>Um VPS, ou o Mac ao lado.</h2>
+        <p>O servidor pode ser um <b>Linux</b> (VPS, máquina dedicada) ou <b>outro Mac</b>: o do amigo na mesma rede (<code>coop@mac.local</code>) ou em outra casa pela <b>Tailscale</b>. A skill detecta o sistema: <code>orca-ide</code> no Linux; no Mac, <code>orca</code> com <code>ORCA_SERVE_RUNTIME=orcad</code>, que roda sem ninguém logado na tela.</p>
+        <div class="pick"><button type="button" class="btn" data-mode="linux">Ver como VPS Linux</button><button type="button" class="btn" data-mode="mac">Ver como Mac na rede</button></div>
+<pre class="term"><span class="ok">✓</span> remoto-so <span class="only-linux">Linux</span><span class="only-mac">Darwin</span>
+<span class="ok">✓</span> remoto-orca 1.4.253
+<span class="ok">✓</span> <span class="only-linux">remoto-sudo sem sudo · fora do grupo docker</span><span class="only-mac">remoto-admin fora do grupo admin (usuário Padrão)</span></pre>
+      </article>
+      <article class="step" data-step="3" data-caption="Uma conexão SSH aberta daqui: -L para o Orca do servidor, -R para o proxy de login.">
+        <span class="n">03 · CONECTAR</span>
         <h2>Uma conexão SSH, dois sentidos.</h2>
         <p>A skill checa tudo e liga um <b>proxy local</b> que lê o seu login do Claude Code no Keychain. Depois abre uma única conexão SSH: <code>-L</code> leva até o Orca do servidor e <code>-R</code> devolve o caminho até o proxy. Nenhuma porta pública.</p>
-<pre class="term"><span class="p">› </span><b>/carbon-coop connect carbon@servidor</b>
+<pre class="term"><span class="p">› </span><b>/carbon-coop connect <span class="only-linux">carbon@vps.exemplo.com</span><span class="only-mac">coop@macbook-do-amigo.local</span></b>
 <span class="ok">✓</span> preflight: orca · ssh por chave · node 22
 <span class="ok">✓</span> proxy em 127.0.0.1:8787 (login fica aqui)
 <span class="ok">✓</span> túnel aberto</pre>
       </article>
-      <article class="step" data-step="3" data-caption="orca-ide serve em 127.0.0.1, pareado como servidor Orca. O link de pareamento nunca aparece.">
-        <span class="n">03 · PAREAR</span>
+      <article class="step" data-step="4" data-caption="Orca do servidor em 127.0.0.1, pareado como servidor Orca. O link de pareamento nunca aparece.">
+        <span class="n">04 · PAREAR</span>
         <h2>O servidor vira um servidor Orca.</h2>
-        <p>No servidor sobe <code>orca-ide serve</code> escutando só em <code>127.0.0.1</code>. O link de pareamento vai direto para <code>orca environment add</code>: <b>nunca é impresso</b> e é apagado do log do servidor.</p>
-<pre class="term"><span class="ok">✓</span> orca-ide serve em 127.0.0.1:16768
+        <p>No servidor sobe <span class="only-linux"><code>orca-ide serve</code></span><span class="only-mac"><code>orca serve</code> (runtime <code>orcad</code>, sem tela)</span> escutando só em <code>127.0.0.1</code>. O link de pareamento vai direto para <code>orca environment add</code>: <b>nunca é impresso</b> e é apagado do log do servidor.</p>
+<pre class="term"><span class="ok">✓</span> <span class="only-linux">orca serve no ar (Linux</span><span class="only-mac">orca serve no ar (Darwin</span>, 127.0.0.1:16768)
 <span class="ok">✓</span> pareado como coop-servidor</pre>
       </article>
-      <article class="step" data-step="4" data-caption="git push do commit para ~/coop/<repo>.git. O que não está commitado fica aqui.">
-        <span class="n">04 · MANDAR</span>
+      <article class="step" data-step="5" data-caption="git push do commit para ~/coop/<repo>.git. O que não está commitado fica aqui.">
+        <span class="n">05 · MANDAR</span>
         <h2>Só o commitado viaja.</h2>
         <p>Você pede em linguagem natural. A skill envia <b>o commit atual</b> por git/SSH para um repositório no servidor e inicia um worker lá com uma spec clara. Mudanças não commitadas ficam aqui; repositórios em <code>blockedRepos</code> nunca saem.</p>
 <pre class="term"><span class="p">› </span><b>manda os testes do módulo de auth pro servidor</b>
 <span class="ok">✓</span> enviado a1f3c9e → coop/base-auth-tests
 <span class="ok">✓</span> worker iniciado em coop-servidor</pre>
       </article>
-      <article class="step" data-step="5" data-caption="O worker chama o proxy pelo túnel; o login é injetado aqui. Perguntas voltam para a sua sessão.">
-        <span class="n">05 · TRABALHAR</span>
+      <article class="step" data-step="6" data-caption="O worker chama o proxy pelo túnel; o login é injetado aqui. Perguntas voltam para a sua sessão.">
+        <span class="n">06 · TRABALHAR</span>
         <h2>O worker usa o seu login, sem levá-lo.</h2>
         <p>O Claude Code do servidor manda um <b>token falso</b> para <code>127.0.0.1:8787</code>; o túnel entrega no proxy daqui, que troca pelo login real. Se o worker tiver dúvida, a <b>pergunta chega na sua sessão</b>, e o que for decisão sua ele pergunta a você.</p>
       </article>
-      <article class="step" data-step="6" data-caption="git fetch traz coop/<slug>. Revisar, mesclar ou descartar é com você.">
-        <span class="n">06 · TRAZER</span>
+      <article class="step" data-step="7" data-caption="git fetch traz coop/<slug>. Revisar, mesclar ou descartar é com você.">
+        <span class="n">07 · TRAZER</span>
         <h2>O resultado volta como branch.</h2>
         <p>Quando o worker termina, a skill busca o branch <code>coop/&lt;slug&gt;</code> e mostra commits e diff. Revisar, mesclar aqui ou descartar é decisão sua; <b>a skill não faz push</b>.</p>
 <pre class="term"><span class="ok">✓</span> worker terminou · 3 commits
 <span class="ok">✓</span> coop-servidor/coop/auth-tests pronto para revisar</pre>
       </article>
-      <article class="step" data-step="7" data-caption="Túnel e proxy fechados: o servidor perde o acesso à conta na hora.">
-        <span class="n">07 · DESLIGAR</span>
+      <article class="step" data-step="8" data-caption="Túnel e proxy fechados: o servidor perde o acesso à conta na hora.">
+        <span class="n">08 · DESLIGAR</span>
         <h2>Desligou, acabou o acesso.</h2>
         <p><code>/carbon-coop disconnect</code> para o servidor Orca, fecha o túnel e o proxy. Sem túnel, o servidor <b>não alcança mais a sua conta</b>, e a credencial nunca esteve lá.</p>
       </article>
@@ -547,8 +602,32 @@
   const caption = document.getElementById("stage-caption");
   const steps = [...document.querySelectorAll(".step")];
   const TOTAL = steps.length;
+  // ---------------------------------------------------------------- server mode: VPS Linux | Mac on the same network
+  const modeButtons = [...document.querySelectorAll("[data-mode]")];
+  let userChose = false;
+  let autoTimer = null;
+  const setMode = (mode) => {
+    if (document.body.dataset.server === mode) return;
+    const apply = () => {
+      document.body.dataset.server = mode;
+      modeButtons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+      document.body.classList.remove("swapping");
+    };
+    if (reduce) return apply();
+    document.body.classList.add("swapping");
+    setTimeout(apply, 180);
+  };
+  modeButtons.forEach((b) => b.addEventListener("click", () => { userChose = true; stopAuto(); setMode(b.dataset.mode); }));
+  // On the "where" step, alternate on its own until the visitor picks one.
+  const startAuto = () => {
+    if (reduce || userChose || autoTimer) return;
+    autoTimer = setInterval(() => setMode(document.body.dataset.server === "linux" ? "mac" : "linux"), 2200);
+  };
+  function stopAuto() { clearInterval(autoTimer); autoTimer = null; }
+
   const setStep = (n) => {
     if (stage.dataset.step === String(n)) return;
+    if (n === 2) startAuto(); else stopAuto();
     stage.dataset.step = String(n);
     const classes = [...stage.classList].filter((c) => !/^(at|now)-\d+$/.test(c));
     for (let i = 1; i <= n; i += 1) classes.push(`at-${i}`);
