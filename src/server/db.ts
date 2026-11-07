@@ -227,6 +227,22 @@ export const MIGRATIONS: readonly string[] = [
     revoked_at INTEGER
   );
   `,
+  // Load view (Configurações → Máquinas → Carga): last host snapshot per worker, and one row per
+  // execution (local runner or pool/AgentCore worker) to measure throughput and utilization.
+  // worker_id NULL = this computer (local runner).
+  `
+  ALTER TABLE workers ADD COLUMN telemetry TEXT;
+  CREATE TABLE IF NOT EXISTS task_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    worker_id TEXT,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    outcome TEXT
+  );
+  CREATE INDEX IF NOT EXISTS task_runs_started ON task_runs (started_at);
+  CREATE INDEX IF NOT EXISTS task_runs_open ON task_runs (task_id, finished_at);
+  `,
 ];
 
 /**

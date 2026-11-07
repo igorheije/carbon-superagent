@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Form";
 import { Panel } from "@/components/ui/Panel";
 import { api } from "@/lib/client/api";
 import { ClusterJoinPanel } from "./ClusterJoinPanel";
+import { LoadPanel } from "./LoadPanel";
 import { MachineDialog } from "./MachineDialog";
 import { relativeTime, slotsLabel, STATUS_DOT, STATUS_LABEL, type Machine, type MachineAvailability } from "./machines-model";
 
@@ -131,6 +132,7 @@ export function MachinesTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      <LoadPanel />
       <ClusterJoinPanel onChanged={load} />
       <Panel
         eyebrow="Máquinas"

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ExecutorEvent } from "./executors/events";
+import { hostTelemetrySchema } from "./host-telemetry";
 
 /**
  * Wire contract between the panel (/api/worker/*) and remote workers (pool machines and
@@ -17,6 +18,8 @@ export const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
 const executorId = z.enum(["claude", "codex"]);
 const shortText = z.string().max(200);
+/** Host telemetry is best effort: an invalid snapshot is dropped, never a 400 that could cost a lease. */
+const optionalHost = hostTelemetrySchema.optional().catch(undefined);
 
 // ---------------------------------------------------------------- hello
 
@@ -27,6 +30,8 @@ export const helloRequestSchema = z.object({
   maxParallel: z.number().int().min(1).max(64).default(1),
   /** Free-form worker build label (e.g. "0.3.0"), shown in the panel. */
   workerVersion: shortText.optional(),
+  /** Additive: host snapshot for Configurações → Máquinas → Carga. Older workers omit it. */
+  host: optionalHost,
 });
 export type HelloRequest = z.infer<typeof helloRequestSchema>;
 
@@ -43,6 +48,7 @@ export type HelloResponse = z.infer<typeof helloResponseSchema>;
 
 export const claimRequestSchema = z.object({
   executors: z.array(executorId).min(1).max(2),
+  host: optionalHost,
 });
 export type ClaimRequest = z.infer<typeof claimRequestSchema>;
 
@@ -111,6 +117,10 @@ export const claimedTaskSchema = z.object({
 export type ClaimedTask = z.infer<typeof claimedTaskSchema>;
 
 // ---------------------------------------------------------------- heartbeat
+
+/** Additive: older workers send `{}`, which stays valid. */
+export const heartbeatRequestSchema = z.object({ host: optionalHost });
+export type HeartbeatRequest = z.infer<typeof heartbeatRequestSchema>;
 
 export const heartbeatResponseSchema = z.object({ cancel: z.boolean() });
 export type HeartbeatResponse = z.infer<typeof heartbeatResponseSchema>;

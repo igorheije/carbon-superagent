@@ -1,5 +1,6 @@
 import { requireWorker } from "@/server/auth/worker-auth";
 import { handle, HttpError, ok } from "@/server/http";
+import { finishRun, outcomeOfStatus } from "@/server/repo/task-runs";
 import { importRemoteResult, leaseOwnedBy } from "@/server/runner/remote-delivery";
 import { LEASE_LOST, resultRequestSchema } from "@/shared/worker-protocol";
 import { readWorkerJson } from "../../../_lib/body";
@@ -19,6 +20,7 @@ export function POST(request: Request, { params }: { params: Promise<{ id: strin
     const body = await readWorkerJson(request, resultRequestSchema);
     const outcome = await importRemoteResult(id, worker.id, body);
     if (outcome === "lease_lost") throw new HttpError(409, LEASE_LOST);
+    finishRun(id, outcomeOfStatus(outcome.status));
     if (body.status === "done" && outcome.status !== "done") throw new HttpError(422, outcome.error ?? "falha ao importar o resultado");
     return ok({ status: outcome.status });
   });

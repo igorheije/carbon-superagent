@@ -27,6 +27,7 @@ import { distributedPhase, type MergeReportEntry } from "./split-prompt";
 import { closeRunningSubagents } from "./subagents";
 import { collectDiff, commit, diffBetween, materializeSkills, prepareWorktree, pushAndOpenPr, writeClaudeMemory, writeProjectMap } from "./workspace";
 import { releaseWorktree } from "./worktree";
+import { finishRun, outcomeOfStatus, startRun } from "../repo/task-runs";
 
 const LESSON_CONFIDENCE = 0.6;
 
@@ -160,6 +161,7 @@ async function execute(task: Task): Promise<void> {
   s.activeTaskId = task.id;
   s.cancelled = false;
   s.runStartedAt = Date.now();
+  startRun(task.id, null, s.runStartedAt);
   // Resuming after an answer keeps logs, plan and stage; a fresh run keeps only the decisions already made.
   const resuming = task.snapshot.resume === true;
   const resumeStage: StageId = task.snapshot.stage ?? "plan";
@@ -287,6 +289,7 @@ async function execute(task: Task): Promise<void> {
   } catch (error) {
     finish(t, "failed", t.get().stage ?? "intake", error instanceof Error ? error.message : "falha inesperada", "warn");
   } finally {
+    finishRun(task.id, outcomeOfStatus(t.get().status));
     s.allowAll.delete(task.id);
     expirePending(task.id);
     s.executor = null;
