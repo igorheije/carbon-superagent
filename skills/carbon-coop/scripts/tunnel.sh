@@ -26,7 +26,7 @@ case "$action" in
       -L "127.0.0.1:$port:127.0.0.1:$port" \
       "$target" || die "não abriu o túnel (porta $proxy_port já usada no servidor? outro túnel aberto?)"
     alive || die "túnel caiu logo após abrir"
-    echo "túnel aberto: servidor 127.0.0.1:$proxy_port → proxy local; local 127.0.0.1:$port → orca-ide serve"
+    echo "túnel aberto: servidor 127.0.0.1:$proxy_port → proxy local; local 127.0.0.1:$port → orca serve do servidor"
     ;;
   stop)
     if alive; then "$COOP_SSH" -S "$sock" -O exit "$target" >/dev/null 2>&1; echo "túnel fechado"; else echo "túnel não estava aberto"; fi

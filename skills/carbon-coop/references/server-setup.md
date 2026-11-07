@@ -1,5 +1,8 @@
 # Preparar o servidor (uma vez)
 
+Servidor **Linux** (VPS, máquina dedicada): seções 1 a 5. Servidor **macOS** (outro Mac, por exemplo o de
+um amigo, na mesma rede ou pela Tailscale): seção [macOS](#servidor-macos) no fim.
+
 Mostre estes passos à pessoa e rode só com confirmação explícita. Os da parte **root** mudam o
 sistema do servidor: em máquina com serviços em produção, a pessoa decide.
 
@@ -83,3 +86,38 @@ mude em **Orca → Settings** o modo das novas abas de agente no servidor (os pe
 ## 5. Conferir
 
 No coordenador: `"$S/scripts/preflight.sh" <nome>` deve mostrar só `OK` (e no máximo `AVISO`).
+
+## Servidor macOS
+
+Outro Mac também serve de servidor: a skill detecta o sistema e usa `orca` (com
+`ORCA_SERVE_RUNTIME=orcad`, para rodar sem ninguém logado na tela) em vez de `orca-ide`, e `lsof` em vez de `ss`.
+Tudo isso é feito **pelo dono do Mac**, com a sua confirmação.
+
+1. **Usuário próprio, Padrão (sem admin).** Ajustes do Sistema → Usuários e Grupos → Adicionar Usuário →
+   tipo **Padrão** (ex.: `coop`). O agente roda sem pedir permissão: um usuário Padrão não mexe no resto do Mac.
+2. **Login Remoto.** Ajustes do Sistema → Geral → Compartilhamento → **Login Remoto** ligado, com
+   "Permitir acesso para: **Somente estes usuários**" → só `coop`.
+3. **Sua chave pública** em `/Users/coop/.ssh/authorized_keys` (dono `coop`, `chmod 600`; a pasta `.ssh` com `700`).
+   Teste daqui: `ssh coop@<mac>` entra sem senha.
+4. **Orca no Mac**, na **mesma versão** do seu (`orca --version`): o app em `/Applications` serve a todos os
+   usuários; o CLI fica em `/Applications/Orca.app/Contents/Resources/bin/orca` (a skill já procura lá).
+   Sem atualização automática nesse modo: atualize o app e reinicie o serviço.
+5. **Como `coop`** (`su - coop` ou `ssh coop@<mac>`): Node 22+ na home (pacote de
+   https://nodejs.org/dist/latest-v22.x/ `…-darwin-arm64.tar.xz` em `~/.local/node`, sem Homebrew/admin),
+   `npm i -g @anthropic-ai/claude-code` (sem login), identidade git (`git config --global user.name/user.email`)
+   e o passo 4 acima (primeira execução do Claude Code).
+6. **Rede.**
+   - Mesma rede local: `/carbon-coop connect coop@<nome>.local` (ou o IP do Mac).
+   - Redes diferentes: [Tailscale](https://tailscale.com/) nos dois Macs e `coop@<ip 100.x>`. **Não** abra a porta 22 no roteador.
+7. **Não deixar dormir** enquanto trabalha: na tomada, Ajustes → Bateria/Energia → impedir repouso automático
+   (ou `caffeinate -s` numa sessão do dono). Com a tampa fechada, o Mac dorme e o túnel cai.
+8. **macOS 15+:** programas iniciados pelo SSH podem perder acesso à **rede local** (TN3179 da Apple). Não
+   afeta o túnel nem a API do Claude (loopback e internet); afeta só tarefas que precisem falar com outros
+   aparelhos da rede.
+
+Confira daqui: `"$S/scripts/preflight.sh" <nome>` deve mostrar `OK remoto-so Darwin`, `OK remoto-orca`
+e `OK remoto-admin fora do grupo admin`.
+
+> **Mac de outra pessoa:** ela é administradora do próprio Mac. Enquanto o túnel estiver aberto, consegue
+> usar a sua conta do Claude pelo proxy (sem levar a credencial) e ler o código enviado. Use só com alguém
+> de total confiança e só com repositórios que podem estar lá — nunca código ou dados de empresa/clientes.

@@ -31,18 +31,22 @@ if [ $# -ge 1 ]; then
   if remote "$name" true 2>/dev/null; then
     ok ssh "$(cfg_get "$name" target) por chave"
     # One round trip; each line "chave valor".
-    facts="$(remote "$name" "$REMOTE_PATH"'
+    facts="$(remote "$name" "$REMOTE_LIB"'
+      echo "os $COOP_OS"
       echo "node $(node -v 2>/dev/null || echo -)"
       echo "claude $(command -v claude || echo -)"
       echo "git $(command -v git || echo -)"
-      echo "orca $(orca-ide --version 2>/dev/null | head -1 || echo -)"
+      echo "orca $("$ORCA_BIN" --version 2>/dev/null | head -1 || echo -)"
       echo "sudo $(sudo -n true 2>/dev/null && echo sim || echo nao)"
-      echo "docker $(id -nG | tr " " "\n" | grep -qx docker && echo sim || echo nao)"' 2>/dev/null)"
+      echo "admin $(id -Gn | tr " " "\n" | grep -qx admin && echo sim || echo nao)"
+      echo "docker $(id -Gn | tr " " "\n" | grep -qx docker && echo sim || echo nao)"' 2>/dev/null)"
     while read -r key value; do
       case "$key" in
         node) [[ "$value" =~ ^v(2[2-9]|[3-9][0-9]) ]] && ok remoto-node "$value" || miss remoto-node "Node 22+ na home do usuário (references/server-setup.md)" ;;
         claude|git) [ -n "$value" ] && [ "$value" != - ] && ok "remoto-$key" "$value" || miss "remoto-$key" "references/server-setup.md" ;;
-        orca) [ -n "$value" ] && [ "$value" != - ] && ok remoto-orca "$value" || miss remoto-orca "orca-ide no PATH (references/server-setup.md)" ;;
+        os) case "$value" in Linux|Darwin) ok remoto-so "$value" ;; *) miss remoto-so "sistema $value não suportado (Linux ou macOS)" ;; esac ;;
+        orca) [ -n "$value" ] && [ "$value" != - ] && ok remoto-orca "$value" || miss remoto-orca "Orca no PATH: orca-ide (Linux) ou orca (macOS) (references/server-setup.md)" ;;
+        admin) [ "$value" = nao ] && ok remoto-admin "fora do grupo admin" || warn remoto-admin "a conta do worker é administradora (macOS): use um usuário Padrão" ;;
         sudo) [ "$value" = nao ] && ok remoto-sudo "sem sudo" || warn remoto-sudo "a conta do worker tem sudo: o agente poderia mexer no servidor" ;;
         docker) [ "$value" = nao ] && ok remoto-docker "fora do grupo docker" || warn remoto-docker "a conta do worker está no grupo docker (equivale a root)" ;;
       esac

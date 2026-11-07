@@ -42,7 +42,8 @@ Confira: numa sessão nova, `/carbon-coop` aparece entre as skills.
 | Onde | O quê |
 | --- | --- |
 | Este computador | macOS (o proxy lê o login do Claude Code no Keychain), Orca, `ssh`, `git`, Node 22+, Claude Code logado |
-| Servidor | Conta própria **sem sudo e fora do grupo `docker`**, acesso SSH **por chave**, Node 22+, Claude Code (sem login), `orca-ide` na **mesma versão** do Orca daqui |
+| Servidor Linux | Conta própria **sem sudo e fora do grupo `docker`**, acesso SSH **por chave**, Node 22+, Claude Code (sem login), `orca-ide` na **mesma versão** do Orca daqui |
+| Servidor macOS (outro Mac) | Usuário **Padrão** (sem admin), **Login Remoto** só para ele, chave SSH, Orca.app na mesma versão, Node 22+ e Claude Code na home. Mesma rede local (`usuario@mac.local`) ou Tailscale. Ver a seção macOS da preparação |
 
 Passo a passo do servidor: [`skills/carbon-coop/references/server-setup.md`](../../skills/carbon-coop/references/server-setup.md).
 Fora do macOS, o proxy usa um token de `claude setup-token` num arquivo `0600` (ver [segurança](../../skills/carbon-coop/references/security.md)).
@@ -100,6 +101,7 @@ git (só o commitado) ── ssh ──▶ ~/coop/<repo>.git ◀── worker fa
 | Repo no servidor (`code-sync` + `orca repo add --environment`) | **Validado** |
 | Agente lançado pelo Orca no servidor recebe `ANTHROPIC_BASE_URL` e o token falso | **Validado** (ambiente do `orca-ide serve` é herdado) |
 | Worker Orca remoto concluir a tarefa | **Validado** (2026-11-07): worker no servidor criou `soma.test.mjs`, commitou, fez push de `coop/uat-soma-test`; o branch voltou com `code-sync fetch` e `node --test` passou 4/4 aqui. Pré-requisito: o passo 4 da preparação do servidor (1ª execução do Claude Code), feito pela pessoa |
+| Servidor macOS | Suportado (0.2.0): detecção do sistema, `orca` + `ORCA_SERVE_RUNTIME=orcad`, `lsof`; coberto por testes com Orca simulado nos dois sistemas. **Ainda não testado num Mac real** |
 | Uma sessão nova conduzindo o fluxo só pelo `SKILL.md` | **Validado** (2026-11-07): sessão independente, só com o plugin, conectou, enviou só o commit, despachou, encerrou o turno, foi acordada pelo Orca, trouxe `coop/slugify-tests` (17/17 testes aqui), mostrou o diff, desconectou e não integrou sem perguntar. Achou 2 bugs, corrigidos no 0.1.1 e 0.1.2 |
 | Permissões do worker remoto | O Orca abre o worker com `--dangerously-skip-permissions` (segue a configuração de novas abas de agente do Orca): **não há pedidos de permissão** para chegar ao coordenador. A proteção é a conta sem sudo/docker e a spec do worker |
 
